@@ -1,10 +1,17 @@
 {
   "name": "comfydex",
-  "version": "0.1.0",
+  "version": "0.1.0+codex.20260602185245",
   "description": "Connect Codex to ComfyUI workflows, queues, runs, and outputs.",
-  "author": {"name": "Local developer"},
+  "author": {
+    "name": "Local developer"
+  },
   "license": "MIT",
-  "keywords": ["comfyui", "workflow", "mcp", "image-generation"],
+  "keywords": [
+    "comfyui",
+    "workflow",
+    "mcp",
+    "image-generation"
+  ],
   "skills": "./skills/",
   "mcpServers": "./.mcp.json",
   "interface": {
@@ -13,8 +20,16 @@
     "longDescription": "Comfydex helps Codex inspect ComfyUI workflows, submit prompts, follow queue execution, and collect run outputs through a local Python MCP server.",
     "developerName": "Local developer",
     "category": "Productivity",
-    "capabilities": ["Interactive", "Read", "Write"],
+    "capabilities": [
+      "Interactive",
+      "Read",
+      "Write"
+    ],
     "brandColor": "#2F7D6D",
-    "defaultPrompt": ["Check my ComfyUI connection.", "Analyze this ComfyUI workflow.", "Submit a workflow and fetch outputs."]
+    "defaultPrompt": [
+      "Check my ComfyUI connection.",
+      "Analyze this ComfyUI workflow.",
+      "Submit a workflow and fetch outputs."
+    ]
   }
 }
