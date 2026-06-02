@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
@@ -41,6 +42,87 @@ def _resolve_config_dir(workspace: Path, value: str | None, current: Path) -> Pa
     if raw.is_absolute():
         return raw.resolve()
     return (workspace / raw).resolve()
+
+
+def _require_prompt_id(submit_response: Any) -> str:
+    prompt_id = (
+        submit_response.get("prompt_id")
+        if isinstance(submit_response, dict)
+        else None
+    )
+    if not isinstance(prompt_id, str) or not prompt_id.strip():
+        raise ValueError(
+            f"ComfyUI submit response missing non-empty prompt_id: {submit_response!r}"
+        )
+    return prompt_id
+
+
+def _prompt_history(history: Any, prompt_id: str) -> dict[str, Any] | None:
+    if not isinstance(history, dict):
+        return None
+    prompt_history = history.get(prompt_id)
+    if isinstance(prompt_history, dict):
+        return prompt_history
+    if "outputs" in history or "status" in history:
+        return history
+    return None
+
+
+def _status_strings(value: Any) -> list[str]:
+    if isinstance(value, str):
+        return [value.lower()]
+    if isinstance(value, dict):
+        strings: list[str] = []
+        for item in value.values():
+            strings.extend(_status_strings(item))
+        return strings
+    if isinstance(value, (list, tuple)):
+        strings = []
+        for item in value:
+            strings.extend(_status_strings(item))
+        return strings
+    return []
+
+
+def _status_indicates_failure(status: Any) -> bool:
+    return any(
+        marker in value
+        for value in _status_strings(status)
+        for marker in ("error", "exception", "failed", "failure")
+    )
+
+
+def _status_indicates_success(status: Any) -> bool:
+    if isinstance(status, dict) and status.get("completed") is True:
+        return True
+    return any(
+        marker in value
+        for value in _status_strings(status)
+        for marker in ("success", "completed", "complete")
+    )
+
+
+def _fallback_history_status(result: dict[str, Any], prompt_id: str) -> str | None:
+    fallback_history = result.get("fallback", {}).get("history", {})
+    prompt_history = _prompt_history(fallback_history, prompt_id)
+    if prompt_history is None:
+        return None
+
+    status = prompt_history.get("status")
+    if _status_indicates_failure(status):
+        return "failed"
+    if _status_indicates_success(status):
+        return "completed"
+
+    outputs = prompt_history.get("outputs")
+    if isinstance(outputs, dict) and bool(outputs):
+        return "completed"
+    return None
+
+
+def _safe_output_type(value: Any) -> str:
+    cleaned = re.sub(r"[^A-Za-z0-9_.-]+", "-", str(value or "output")).strip(".-")
+    return cleaned or "output"
 
 
 @mcp.tool()
@@ -165,7 +247,7 @@ async def comfy_submit_workflow(
     ) as client:
         submitted = await client.submit_prompt(loaded["json"], actual_client_id)
 
-    prompt_id = submitted.get("prompt_id")
+    prompt_id = _require_prompt_id(submitted)
     return create_run(
         ctx.config.runs_dir,
         name,
@@ -202,21 +284,25 @@ async def comfy_wait_for_run(run_id: str) -> dict[str, Any]:
                 "history": await client.get_history(prompt_id),
             }
 
-    result = await wait_for_prompt(
-        base_url=ctx.config.base_url,
-        prompt_id=prompt_id,
-        client_id=client_id,
-        headers=ctx.config.headers,
-        timeout_seconds=ctx.config.websocket_timeout_seconds,
-        on_event=on_event,
-        fallback=fallback,
-    )
-    fallback_history = result.get("fallback", {}).get("history", {})
-    fallback_has_history = isinstance(fallback_history, dict) and (
-        prompt_id in fallback_history or bool(fallback_history.get("outputs"))
-    )
-    if result.get("completed") or fallback_has_history:
+    try:
+        result = await wait_for_prompt(
+            base_url=ctx.config.base_url,
+            prompt_id=prompt_id,
+            client_id=client_id,
+            headers=ctx.config.headers,
+            timeout_seconds=ctx.config.websocket_timeout_seconds,
+            on_event=on_event,
+            fallback=fallback,
+        )
+    except Exception:
+        update_status(ctx.config.runs_dir, run_id, "failed")
+        raise
+
+    fallback_status = _fallback_history_status(result, prompt_id)
+    if result.get("completed") or fallback_status == "completed":
         update_status(ctx.config.runs_dir, run_id, "completed")
+    elif fallback_status == "failed":
+        update_status(ctx.config.runs_dir, run_id, "failed")
     elif result.get("fallback_used"):
         update_status(ctx.config.runs_dir, run_id, "unknown")
     return read_run(ctx.config.runs_dir, run_id) | {"wait_result": result}
@@ -277,12 +363,13 @@ async def comfy_fetch_outputs(
         for ref in refs:
             output = dict(ref)
             if download:
+                output_type = _safe_output_type(ref.get("type", "output"))
                 filename = (
                     ref["filename"]
                     if not ref.get("subfolder")
                     else f"{ref['subfolder']}/{ref['filename']}"
                 )
-                target = safe_output_path(output_dir, filename)
+                target = safe_output_path(output_dir, f"{output_type}/{filename}")
                 await client.download_output(ref, target)
                 output["downloaded_path"] = str(target)
             registered.append(output)
