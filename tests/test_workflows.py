@@ -61,6 +61,29 @@ def test_summarize_workflow_finds_node_types_and_models():
     assert summary["model_references"] == ["model.safetensors"]
 
 
+def test_summarize_ui_workflow_counts_nodes_and_model_widgets():
+    workflow = {
+        "nodes": [
+            {
+                "id": 1,
+                "type": "CheckpointLoaderSimple",
+                "widgets_values": ["model.safetensors"],
+            },
+            {"id": 2, "type": "PreviewImage"},
+        ],
+        "links": [],
+    }
+
+    summary = summarize_workflow(workflow)
+
+    assert summary["node_count"] == 2
+    assert summary["node_types"] == {
+        "CheckpointLoaderSimple": 1,
+        "PreviewImage": 1,
+    }
+    assert summary["model_references"] == ["model.safetensors"]
+
+
 def test_save_rejects_ui_workflow_when_api_required(tmp_path: Path):
     with pytest.raises(ValueError, match="API prompt JSON"):
         save_workflow(tmp_path, "ui.json", UI_WORKFLOW, require_api=True)

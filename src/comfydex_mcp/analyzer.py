@@ -11,12 +11,12 @@ def _extract_links(node_id: str, inputs: dict[str, Any]) -> list[dict[str, Any]]
         if (
             isinstance(value, list)
             and len(value) == 2
-            and isinstance(value[0], str)
+            and isinstance(value[0], (int, str))
             and isinstance(value[1], int)
         ):
             links.append(
                 {
-                    "from_node": value[0],
+                    "from_node": str(value[0]),
                     "from_slot": value[1],
                     "to_node": node_id,
                     "input": input_name,
@@ -46,11 +46,9 @@ def analyze_workflow(
             links.extend(_extract_links(node_id, inputs))
             if object_info and node_type not in object_info:
                 missing_node_types.add(node_type)
-            required = (
-                object_info.get(node_type, {})
-                .get("input", {})
-                .get("required", {})
-            )
+            node_info = object_info.get(node_type)
+            input_info = node_info.get("input") if isinstance(node_info, dict) else {}
+            required = input_info.get("required", {}) if isinstance(input_info, dict) else {}
             if isinstance(required, dict):
                 for input_name in required:
                     if input_name not in inputs:
@@ -61,7 +59,15 @@ def analyze_workflow(
                                 "missing_input": input_name,
                             }
                         )
-            if node_type.lower().startswith("save") or "output" in node_type.lower():
+            output_metadata = (
+                isinstance(node_info, dict)
+                and node_info.get("output_node") is True
+            )
+            if (
+                output_metadata
+                or node_type.lower().startswith("save")
+                or "output" in node_type.lower()
+            ):
                 potential_output_nodes.append({"node_id": node_id, "node_type": node_type})
 
     return {

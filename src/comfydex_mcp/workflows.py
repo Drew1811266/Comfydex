@@ -16,6 +16,7 @@ MODEL_KEYS = {
     "unet_name",
     "clip_name",
 }
+MODEL_EXTENSIONS = (".safetensors", ".ckpt", ".pt", ".pth", ".bin")
 
 
 def classify_workflow(payload: Any) -> str:
@@ -31,17 +32,31 @@ def classify_workflow(payload: Any) -> str:
 def summarize_workflow(payload: dict[str, Any]) -> dict[str, Any]:
     node_types: Counter[str] = Counter()
     model_refs: list[str] = []
-    if classify_workflow(payload) != "api":
+    kind = classify_workflow(payload)
+    if kind == "unknown":
         return {"node_count": 0, "node_types": {}, "model_references": []}
 
-    for node in payload.values():
-        node_type = str(node.get("class_type", "unknown"))
-        node_types[node_type] += 1
-        inputs = node.get("inputs", {})
-        if isinstance(inputs, dict):
-            for key, value in inputs.items():
-                if key in MODEL_KEYS and isinstance(value, str):
-                    model_refs.append(value)
+    if kind == "api":
+        for node in payload.values():
+            node_type = str(node.get("class_type", "unknown"))
+            node_types[node_type] += 1
+            inputs = node.get("inputs", {})
+            if isinstance(inputs, dict):
+                for key, value in inputs.items():
+                    if key in MODEL_KEYS and isinstance(value, str):
+                        model_refs.append(value)
+
+    if kind == "ui":
+        for node in payload.get("nodes", []):
+            if not isinstance(node, dict):
+                continue
+            node_type = str(node.get("type", "unknown"))
+            node_types[node_type] += 1
+            widgets = node.get("widgets_values", [])
+            if isinstance(widgets, list):
+                for value in widgets:
+                    if isinstance(value, str) and value.lower().endswith(MODEL_EXTENSIONS):
+                        model_refs.append(value)
 
     return {
         "node_count": sum(node_types.values()),
