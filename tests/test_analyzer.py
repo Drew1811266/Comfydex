@@ -34,3 +34,14 @@ def test_analyze_detects_required_input_issues():
     assert result["input_issues"] == [
         {"node_id": "1", "node_type": "KnownNode", "missing_input": "missing"}
     ]
+
+
+def test_analyze_detects_potential_output_nodes():
+    workflow = {
+        "1": {"class_type": "KSampler", "inputs": {}},
+        "9": {"class_type": "SaveImage", "inputs": {}},
+    }
+
+    result = analyze_workflow(workflow)
+
+    assert result["potential_output_nodes"] == [{"node_id": "9", "node_type": "SaveImage"}]
