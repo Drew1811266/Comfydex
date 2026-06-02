@@ -16,7 +16,9 @@ FallbackCallback = Callable[[], Awaitable[dict[str, Any]]]
 def websocket_url(base_url: str, client_id: str) -> str:
     parsed = urlparse(base_url.rstrip("/"))
     scheme = "wss" if parsed.scheme == "https" else "ws"
-    return urlunparse((scheme, parsed.netloc, "/ws", "", f"clientId={quote(client_id)}", ""))
+    base_path = parsed.path.rstrip("/")
+    ws_path = f"{base_path}/ws" if base_path else "/ws"
+    return urlunparse((scheme, parsed.netloc, ws_path, "", f"clientId={quote(client_id)}", ""))
 
 
 def event_matches_prompt(event: dict[str, Any], prompt_id: str) -> bool:

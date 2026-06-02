@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 import os
 import re
 import uuid
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -102,9 +104,8 @@ def _status_indicates_success(status: Any) -> bool:
     )
 
 
-def _fallback_history_status(result: dict[str, Any], prompt_id: str) -> str | None:
-    fallback_history = result.get("fallback", {}).get("history", {})
-    prompt_history = _prompt_history(fallback_history, prompt_id)
+def _history_status(history: Any, prompt_id: str) -> str | None:
+    prompt_history = _prompt_history(history, prompt_id)
     if prompt_history is None:
         return None
 
@@ -118,6 +119,45 @@ def _fallback_history_status(result: dict[str, Any], prompt_id: str) -> str | No
     if isinstance(outputs, dict) and bool(outputs):
         return "completed"
     return None
+
+
+def _fallback_history_status(result: dict[str, Any], prompt_id: str) -> str | None:
+    return _history_status(result.get("fallback", {}).get("history", {}), prompt_id)
+
+
+async def _poll_history_until_terminal(
+    *,
+    client: ComfyClient,
+    prompt_id: str,
+    timeout_seconds: int,
+    poll_interval_seconds: float = 0.25,
+    sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
+) -> dict[str, Any]:
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + max(timeout_seconds, 0)
+    polls = 0
+
+    while True:
+        polls += 1
+        queue = await client.get_queue()
+        history = await client.get_history(prompt_id)
+        status = _history_status(history, prompt_id)
+        result = {
+            "completed": status == "completed",
+            "fallback_used": True,
+            "fallback": {
+                "queue": queue,
+                "history": history,
+            },
+            "polls": polls,
+        }
+        if status is not None:
+            result["terminal_status"] = status
+            return result
+        if loop.time() >= deadline:
+            result["timeout"] = True
+            return result
+        await sleep(poll_interval_seconds)
 
 
 def _safe_output_type(value: Any) -> str:
@@ -245,7 +285,28 @@ async def comfy_submit_workflow(
         ctx.config.headers,
         ctx.config.request_timeout_seconds,
     ) as client:
-        submitted = await client.submit_prompt(loaded["json"], actual_client_id)
+        try:
+            submitted = await client.submit_prompt(loaded["json"], actual_client_id)
+        except Exception as exc:
+            failed_run = create_run(
+                ctx.config.runs_dir,
+                name,
+                loaded["json"],
+                ctx.config.base_url,
+                None,
+                actual_client_id,
+                run_label or Path(name).stem,
+            )
+            append_event(
+                ctx.config.runs_dir,
+                failed_run["run_id"],
+                {
+                    "type": "submission_error",
+                    "error": str(exc),
+                },
+            )
+            update_status(ctx.config.runs_dir, failed_run["run_id"], "failed")
+            raise
 
     prompt_id = _require_prompt_id(submitted)
     return create_run(
@@ -294,6 +355,23 @@ async def comfy_wait_for_run(run_id: str) -> dict[str, Any]:
             on_event=on_event,
             fallback=fallback,
         )
+        fallback_status = _fallback_history_status(result, prompt_id)
+        if result.get("fallback_used") and fallback_status is None:
+            async with ComfyClient(
+                ctx.config.base_url,
+                ctx.config.headers,
+                ctx.config.request_timeout_seconds,
+            ) as client:
+                poll_result = await _poll_history_until_terminal(
+                    client=client,
+                    prompt_id=prompt_id,
+                    timeout_seconds=ctx.config.websocket_timeout_seconds,
+                )
+            result = {
+                **result,
+                **poll_result,
+                "initial_fallback": result.get("fallback"),
+            }
     except Exception:
         update_status(ctx.config.runs_dir, run_id, "failed")
         raise

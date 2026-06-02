@@ -14,6 +14,10 @@ def test_websocket_url_converts_https_to_wss():
     assert websocket_url("https://comfy.example.test/", "client-1") == "wss://comfy.example.test/ws?clientId=client-1"
 
 
+def test_websocket_url_preserves_base_path_prefix():
+    assert websocket_url("https://example.test/comfy/", "client-1") == "wss://example.test/comfy/ws?clientId=client-1"
+
+
 def test_event_matches_prompt():
     event = {"type": "executing", "data": {"prompt_id": "p1", "node": "3"}}
     assert event_matches_prompt(event, "p1") is True

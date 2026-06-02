@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import pytest
@@ -122,6 +123,106 @@ async def test_wait_for_run_marks_fallback_outputs_completed(monkeypatch, tmp_pa
 
 
 @pytest.mark.asyncio
+async def test_wait_for_run_polls_fallback_until_outputs_completed(monkeypatch, tmp_path: Path):
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+    run = create_run(
+        tmp_path / "runs",
+        "wf.json",
+        API_WORKFLOW,
+        "http://127.0.0.1:8188",
+        "p1",
+        "client-1",
+    )
+    history_calls = 0
+
+    class PollingClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            pass
+
+        async def get_queue(self):
+            return {"queue_running": [], "queue_pending": [["p1"]]}
+
+        async def get_history(self, prompt_id):
+            nonlocal history_calls
+            history_calls += 1
+            if history_calls == 1:
+                return {"p1": {"status": {"status_str": "running"}}}
+            return {"p1": {"outputs": {"9": {"images": []}}}}
+
+    async def fake_wait_for_prompt(**kwargs):
+        return {
+            "completed": False,
+            "fallback_used": True,
+            "fallback": await kwargs["fallback"](),
+        }
+
+    monkeypatch.setattr(server, "ComfyClient", PollingClient)
+    monkeypatch.setattr(server, "wait_for_prompt", fake_wait_for_prompt)
+
+    result = await server.comfy_wait_for_run(run["run_id"])
+
+    assert result["status"] == "completed"
+    assert history_calls >= 2
+    assert read_run(tmp_path / "runs", run["run_id"])["status"] == "completed"
+
+
+@pytest.mark.asyncio
+async def test_wait_for_run_polls_fallback_until_error_failed(monkeypatch, tmp_path: Path):
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+    run = create_run(
+        tmp_path / "runs",
+        "wf.json",
+        API_WORKFLOW,
+        "http://127.0.0.1:8188",
+        "p1",
+        "client-1",
+    )
+    history_calls = 0
+
+    class PollingClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            pass
+
+        async def get_queue(self):
+            return {"queue_running": [], "queue_pending": [["p1"]]}
+
+        async def get_history(self, prompt_id):
+            nonlocal history_calls
+            history_calls += 1
+            if history_calls == 1:
+                return {"p1": {"status": {"status_str": "running"}}}
+            return {"p1": {"status": {"status_str": "error"}}}
+
+    async def fake_wait_for_prompt(**kwargs):
+        return {
+            "completed": False,
+            "fallback_used": True,
+            "fallback": await kwargs["fallback"](),
+        }
+
+    monkeypatch.setattr(server, "ComfyClient", PollingClient)
+    monkeypatch.setattr(server, "wait_for_prompt", fake_wait_for_prompt)
+
+    result = await server.comfy_wait_for_run(run["run_id"])
+
+    assert result["status"] == "failed"
+    assert history_calls >= 2
+    assert read_run(tmp_path / "runs", run["run_id"])["status"] == "failed"
+
+
+@pytest.mark.asyncio
 async def test_wait_for_run_marks_exception_failed(monkeypatch, tmp_path: Path):
     monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
     run = create_run(
@@ -142,6 +243,42 @@ async def test_wait_for_run_marks_exception_failed(monkeypatch, tmp_path: Path):
         await server.comfy_wait_for_run(run["run_id"])
 
     assert read_run(tmp_path / "runs", run["run_id"])["status"] == "failed"
+
+
+@pytest.mark.asyncio
+async def test_submit_workflow_records_failed_run_on_http_error(monkeypatch, tmp_path: Path):
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+    save_workflow(tmp_path / "workflows", "wf.json", API_WORKFLOW, require_api=True)
+
+    class FailingSubmitClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            pass
+
+        async def submit_prompt(self, workflow, client_id):
+            raise RuntimeError("submit exploded")
+
+    monkeypatch.setattr(server, "ComfyClient", FailingSubmitClient)
+
+    with pytest.raises(RuntimeError, match="submit exploded"):
+        await server.comfy_submit_workflow("wf.json")
+
+    run_paths = list((tmp_path / "runs").glob("*/run.json"))
+    assert len(run_paths) == 1
+    record = json.loads(run_paths[0].read_text(encoding="utf-8"))
+    workflow_snapshot = json.loads(
+        (run_paths[0].parent / "workflow.json").read_text(encoding="utf-8")
+    )
+    assert record["status"] == "failed"
+    assert record["prompt_id"] is None
+    assert record["workflow_name"] == "wf.json"
+    assert workflow_snapshot == API_WORKFLOW
+    assert any("submit exploded" in json.dumps(event) for event in record["events"])
 
 
 @pytest.mark.asyncio
