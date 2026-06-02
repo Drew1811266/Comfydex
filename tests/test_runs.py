@@ -1,3 +1,4 @@
+import json
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -39,6 +40,20 @@ def test_update_status_and_append_event(tmp_path: Path):
 
     assert loaded["status"] == "running"
     assert loaded["events"][0]["type"] == "executing"
+
+
+def test_create_run_avoids_same_second_label_collisions(tmp_path: Path):
+    now = datetime(2026, 6, 2, 2, 30, tzinfo=timezone.utc)
+    first = create_run(tmp_path, "first.json", {"first": True}, "http://127.0.0.1:8188", "p1", label="same", now=now)
+    second = create_run(tmp_path, "second.json", {"second": True}, "http://127.0.0.1:8188", "p2", label="same", now=now)
+
+    assert first["run_id"] == "2026-06-02T02-30-00_same"
+    assert second["run_id"] == "2026-06-02T02-30-00_same-2"
+    assert first["run_id"] != second["run_id"]
+    assert read_run(tmp_path, first["run_id"])["prompt_id"] == "p1"
+    assert read_run(tmp_path, second["run_id"])["prompt_id"] == "p2"
+    assert json.loads((tmp_path / first["run_id"] / "workflow.json").read_text(encoding="utf-8")) == {"first": True}
+    assert json.loads((tmp_path / second["run_id"] / "workflow.json").read_text(encoding="utf-8")) == {"second": True}
 
 
 def test_register_outputs_updates_run(tmp_path: Path):

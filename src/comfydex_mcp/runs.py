@@ -41,6 +41,18 @@ def _record_path(runs_dir: Path, run_id: str) -> Path:
     return _run_dir(runs_dir, run_id) / "run.json"
 
 
+def _create_unique_run_dir(runs_dir: Path, base_run_id: str) -> tuple[str, Path]:
+    for index in range(1, 1000):
+        run_id = base_run_id if index == 1 else f"{base_run_id}-{index}"
+        directory = _run_dir(runs_dir, run_id)
+        try:
+            directory.mkdir()
+            return run_id, directory
+        except FileExistsError:
+            continue
+    raise RuntimeError(f"could not allocate a unique run_id for {base_run_id}")
+
+
 def read_run(runs_dir: Path, run_id: str) -> dict[str, Any]:
     return json.loads(_record_path(runs_dir, run_id).read_text(encoding="utf-8"))
 
@@ -61,9 +73,9 @@ def create_run(
     now: datetime | None = None,
 ) -> dict[str, Any]:
     created = now or _now()
-    run_id = _run_id(created, label)
-    directory = _run_dir(ensure_directory(runs_dir), run_id)
-    ensure_directory(directory)
+    base_run_id = _run_id(created, label)
+    ensured_runs_dir = ensure_directory(runs_dir)
+    run_id, directory = _create_unique_run_dir(ensured_runs_dir, base_run_id)
     ensure_directory(directory / "outputs")
     (directory / "workflow.json").write_text(json.dumps(workflow_json, indent=2) + "\n", encoding="utf-8")
     record = {
