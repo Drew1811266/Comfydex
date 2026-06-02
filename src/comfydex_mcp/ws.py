@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import json
 from collections.abc import Awaitable, Callable
 from typing import Any
@@ -27,12 +28,25 @@ def event_matches_prompt(event: dict[str, Any], prompt_id: str) -> bool:
 
 def is_completion_event(event: dict[str, Any], prompt_id: str) -> bool:
     data = event.get("data", {})
+    if not isinstance(data, dict) or data.get("prompt_id") != prompt_id:
+        return False
+    if event.get("type") == "execution_success":
+        return True
     return (
         event.get("type") == "executing"
-        and isinstance(data, dict)
-        and data.get("prompt_id") == prompt_id
         and data.get("node") is None
     )
+
+
+def _websocket_headers_kwargs(connect_callable: Callable[..., Any], headers: dict[str, str]) -> dict[str, dict[str, str] | None]:
+    try:
+        parameters = inspect.signature(connect_callable).parameters
+    except (TypeError, ValueError):
+        parameters = {}
+    header_value = headers or None
+    if "additional_headers" in parameters:
+        return {"additional_headers": header_value}
+    return {"extra_headers": header_value}
 
 
 async def wait_for_prompt(
@@ -47,10 +61,15 @@ async def wait_for_prompt(
 ) -> dict[str, Any]:
     uri = websocket_url(base_url, client_id)
     try:
-        async with websockets.connect(uri, additional_headers=headers or None) as websocket:
+        async with websockets.connect(uri, **_websocket_headers_kwargs(websockets.connect, headers)) as websocket:
             while True:
                 raw = await asyncio.wait_for(websocket.recv(), timeout=timeout_seconds)
-                event = json.loads(raw)
+                if isinstance(raw, bytes):
+                    continue
+                try:
+                    event = json.loads(raw)
+                except (json.JSONDecodeError, TypeError):
+                    continue
                 if not isinstance(event, dict):
                     continue
                 if event_matches_prompt(event, prompt_id) or event.get("type") == "status":
