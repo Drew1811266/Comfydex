@@ -23,6 +23,21 @@ async def test_check_connection_calls_system_stats():
 
 @pytest.mark.asyncio
 @respx.mock
+async def test_check_connection_reports_exception_type_when_error_message_is_empty():
+    respx.get("http://127.0.0.1:8188/system_stats").mock(
+        side_effect=httpx.ReadTimeout("")
+    )
+
+    async with ComfyClient("http://127.0.0.1:8188", {}, 5) as client:
+        result = await client.check_connection()
+
+    assert result["reachable"] is False
+    assert result["error_type"] == "ReadTimeout"
+    assert result["error"]
+
+
+@pytest.mark.asyncio
+@respx.mock
 async def test_submit_prompt_returns_prompt_id():
     respx.post("http://127.0.0.1:8188/prompt").mock(
         return_value=httpx.Response(200, json={"prompt_id": "abc"})

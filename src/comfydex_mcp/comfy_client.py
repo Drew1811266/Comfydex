@@ -44,10 +44,12 @@ class ComfyClient:
                 "system_stats": response.json(),
             }
         except httpx.HTTPError as exc:
+            error_type = exc.__class__.__name__
             return {
                 "reachable": False,
                 "base_url": self.base_url,
-                "error": str(exc),
+                "error_type": error_type,
+                "error": str(exc) or error_type,
             }
 
     async def get_object_info(self) -> dict[str, Any]:
