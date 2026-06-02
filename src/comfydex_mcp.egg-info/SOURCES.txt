@@ -1,8 +1,0 @@
-README.md
-pyproject.toml
-src/comfydex_mcp/__init__.py
-src/comfydex_mcp.egg-info/PKG-INFO
-src/comfydex_mcp.egg-info/SOURCES.txt
-src/comfydex_mcp.egg-info/dependency_links.txt
-src/comfydex_mcp.egg-info/requires.txt
-src/comfydex_mcp.egg-info/top_level.txt
