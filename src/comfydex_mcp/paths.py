@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path, PurePosixPath
 
 
@@ -23,6 +24,18 @@ def safe_json_path(base_dir: Path, filename: str) -> Path:
     target = (base / filename).resolve()
     if not _is_relative_to(target, base):
         raise ValueError("workflow path must stay inside workflows_dir")
+    return target
+
+
+def safe_package_dir(base_dir: Path, package_name: str) -> Path:
+    if not re.fullmatch(r"[A-Za-z0-9_-]+", package_name or ""):
+        raise ValueError(
+            "package name must contain only letters, numbers, underscores, and hyphens"
+        )
+    base = base_dir.resolve()
+    target = (base / package_name).resolve()
+    if not _is_relative_to(target, base):
+        raise ValueError("package path must stay inside base directory")
     return target
 
 
