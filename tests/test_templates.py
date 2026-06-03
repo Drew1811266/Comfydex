@@ -59,6 +59,22 @@ def test_suggest_workflow_template_matches_common_intents(intent, expected_templ
     assert suggestion["id"] == expected_template_id
 
 
+@pytest.mark.parametrize(
+    ("intent", "expected_template_id"),
+    [
+        ("image to image with lora", "basic-image-to-image"),
+        ("upscale this sdxl image", "upscale"),
+    ],
+)
+def test_suggest_workflow_template_prefers_workflow_shape_over_model_modifier(
+    intent,
+    expected_template_id,
+):
+    suggestion = suggest_workflow_template(intent)
+
+    assert suggestion["id"] == expected_template_id
+
+
 def test_build_template_plan_merges_parameters_and_reports_missing_information(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
 

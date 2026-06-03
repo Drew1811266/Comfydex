@@ -205,10 +205,10 @@ _TEMPLATES_BY_ID = {template.id: template for template in _TEMPLATES}
 
 _INTENT_KEYWORDS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("controlnet-skeleton", ("controlnet", "pose", "skeleton", "openpose")),
-    ("lora-text-to-image", ("lora", "loras")),
-    ("sdxl-text-to-image", ("sdxl", "xl")),
     ("upscale", ("upscale", "upscaler", "enlarge", "enhance")),
     ("basic-image-to-image", ("image to image", "image-to-image", "img2img", "variation")),
+    ("lora-text-to-image", ("lora", "loras")),
+    ("sdxl-text-to-image", ("sdxl", "xl")),
     ("basic-text-to-image", ("text to image", "text-to-image", "txt2img", "prompt")),
 )
 
