@@ -36,6 +36,35 @@ def test_scaffold_custom_node_package_prefixes_numeric_class_names(tmp_path: Pat
     assert "class Custom123MathNode:" in nodes_py.read_text(encoding="utf-8")
 
 
+def test_scaffold_custom_node_package_rejects_existing_package(tmp_path: Path):
+    scaffold_custom_node_package(tmp_path, "simple_math")
+    nodes_py = tmp_path / "custom_nodes" / "simple_math" / "nodes.py"
+    nodes_py.write_text("# user code\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="already exists"):
+        scaffold_custom_node_package(tmp_path, "simple_math")
+
+    assert nodes_py.read_text(encoding="utf-8") == "# user code\n"
+
+
+def test_scaffold_custom_node_package_rejects_symlinked_custom_nodes_dir(
+    monkeypatch,
+    tmp_path: Path,
+):
+    custom_nodes = tmp_path / "custom_nodes"
+    custom_nodes.mkdir()
+
+    def fake_is_symlink(path: Path):
+        return path == custom_nodes
+
+    monkeypatch.setattr(Path, "is_symlink", fake_is_symlink)
+
+    with pytest.raises(ValueError, match="custom_nodes directory must be workspace-local"):
+        scaffold_custom_node_package(tmp_path, "simple_math")
+
+    assert not (custom_nodes / "simple_math").exists()
+
+
 @pytest.mark.parametrize("package_name", ["../bad", "nested/name", "", "bad name"])
 def test_scaffold_custom_node_package_rejects_unsafe_package_names(
     tmp_path: Path,

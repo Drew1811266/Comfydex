@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import stat
 from pathlib import Path
 from typing import Any
 
@@ -7,8 +8,14 @@ from .paths import ensure_directory, safe_package_dir
 
 
 def scaffold_custom_node_package(workspace: Path, package_name: str) -> dict[str, Any]:
-    custom_nodes_dir = ensure_directory(workspace / "custom_nodes")
+    custom_nodes_dir = workspace / "custom_nodes"
+    _reject_redirected_custom_nodes_dir(custom_nodes_dir)
+    ensure_directory(custom_nodes_dir)
+    _reject_redirected_custom_nodes_dir(custom_nodes_dir)
+
     package_dir = safe_package_dir(custom_nodes_dir, package_name)
+    if package_dir.exists():
+        raise ValueError(f"custom node package already exists: {package_name}")
     ensure_directory(package_dir)
     ensure_directory(package_dir / "tests")
 
@@ -63,3 +70,18 @@ def _node_class_name(package_name: str) -> str:
     if not class_name.isidentifier() or not class_name[0].isalpha():
         class_name = f"Custom{class_name}"
     return class_name
+
+
+def _reject_redirected_custom_nodes_dir(custom_nodes_dir: Path) -> None:
+    if not custom_nodes_dir.exists():
+        return
+    if custom_nodes_dir.is_symlink():
+        raise ValueError("custom_nodes directory must be workspace-local")
+
+    try:
+        file_attributes = custom_nodes_dir.stat(follow_symlinks=False).st_file_attributes
+    except (AttributeError, OSError):
+        return
+    reparse_point = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+    if file_attributes & reparse_point:
+        raise ValueError("custom_nodes directory must be workspace-local")
