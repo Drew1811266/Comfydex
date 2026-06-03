@@ -28,9 +28,9 @@ def safe_json_path(base_dir: Path, filename: str) -> Path:
 
 
 def safe_package_dir(base_dir: Path, package_name: str) -> Path:
-    if not re.fullmatch(r"[A-Za-z0-9_-]+", package_name or ""):
+    if not re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9_-]*[A-Za-z0-9])?", package_name or ""):
         raise ValueError(
-            "package name must contain only letters, numbers, underscores, and hyphens"
+            "package name must start and end with a letter or number and contain only letters, numbers, underscores, and hyphens"
         )
     base = base_dir.resolve()
     target = (base / package_name).resolve()

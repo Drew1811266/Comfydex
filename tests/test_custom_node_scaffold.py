@@ -1,4 +1,5 @@
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -65,7 +66,47 @@ def test_scaffold_custom_node_package_rejects_symlinked_custom_nodes_dir(
     assert not (custom_nodes / "simple_math").exists()
 
 
-@pytest.mark.parametrize("package_name", ["../bad", "nested/name", "", "bad name"])
+def test_scaffold_custom_node_package_rejects_reparse_custom_nodes_dir(
+    monkeypatch,
+    tmp_path: Path,
+):
+    custom_nodes = tmp_path / "custom_nodes"
+    custom_nodes.mkdir()
+
+    original_stat = Path.stat
+
+    def fake_stat(path: Path, *args, **kwargs):
+        if path == custom_nodes:
+            original = original_stat(path, *args, **kwargs)
+            return SimpleNamespace(
+                st_file_attributes=0x400,
+                st_mode=original.st_mode,
+            )
+        return original_stat(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "stat", fake_stat)
+
+    with pytest.raises(ValueError, match="custom_nodes directory must be workspace-local"):
+        scaffold_custom_node_package(tmp_path, "simple_math")
+
+    assert not (custom_nodes / "simple_math").exists()
+
+
+@pytest.mark.parametrize(
+    "package_name",
+    [
+        "../bad",
+        "nested/name",
+        "",
+        "bad name",
+        "_leading",
+        "trailing_",
+        "-leading",
+        "trailing-",
+        "-",
+        "___",
+    ],
+)
 def test_scaffold_custom_node_package_rejects_unsafe_package_names(
     tmp_path: Path,
     package_name: str,
