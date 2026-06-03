@@ -16,7 +16,17 @@ def patch_workflow(
     if not isinstance(workflow, dict):
         raise ValueError("workflow must be an object")
     if not isinstance(operations, list):
-        raise ValueError("operations must be a list")
+        if raise_on_error:
+            raise ValueError("operations must be a list")
+        return _patch_result(
+            status="failed",
+            patched=deepcopy(workflow),
+            submit_ready=False,
+            operations_applied=[],
+            changes=[],
+            errors=[{"message": "operations must be a list"}],
+            validation=None,
+        )
 
     patched = deepcopy(workflow)
     operations_applied: list[dict[str, Any]] = []
@@ -163,9 +173,10 @@ def _add_link(workflow: dict[str, Any], operation: dict[str, Any]) -> dict[str, 
     output_slot = operation.get("output_slot")
     if not isinstance(output_slot, int) or isinstance(output_slot, bool) or output_slot < 0:
         raise ValueError("add_link operation output_slot must be a non-negative integer")
-    source_node = workflow.get(source_node_id)
-    if source_node is None:
+    if source_node_id not in workflow:
         raise ValueError(f"source_node_id not found: {source_node_id}")
+
+    source_node = workflow[source_node_id]
     if not isinstance(source_node, dict):
         raise ValueError("source node must be an object")
 
