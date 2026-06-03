@@ -81,7 +81,7 @@ def workflow_metadata(
     kind = classify_workflow(payload)
     actual_source = (
         "converted"
-        if filename.endswith(".draft.json") and source == "manual"
+        if filename.endswith(".converted-draft.json") and source == "manual"
         else source
     )
     submit_ready = kind == "api" and validation_status in {"unknown", "valid"}

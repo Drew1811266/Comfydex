@@ -69,6 +69,27 @@ async def test_comfy_import_ui_workflow_rejects_api_before_object_info(
 
 
 @pytest.mark.asyncio
+async def test_comfy_import_ui_workflow_rejects_bad_name_before_object_info(
+    monkeypatch,
+    tmp_path: Path,
+):
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+
+    class RemoteShouldNotBeCalled:
+        def __init__(self, *args, **kwargs):
+            raise RuntimeError("remote called before path validation")
+
+    monkeypatch.setattr(server, "ComfyClient", RemoteShouldNotBeCalled)
+
+    with pytest.raises(ValueError, match="simple .json filename"):
+        await server.comfy_import_ui_workflow(
+            "../escape.json",
+            UI_WORKFLOW,
+            use_object_info=True,
+        )
+
+
+@pytest.mark.asyncio
 async def test_comfy_import_ui_workflow_uses_object_info_for_readiness(
     monkeypatch,
     tmp_path: Path,
@@ -254,12 +275,14 @@ async def test_comfy_convert_ui_to_api_allow_draft_saves_non_submit_ready_draft(
     assert result["report"]["status"] == "partial"
     assert result["draft_workflow"] is not None
     assert result["draft_saved"] is True
-    assert result["draft_workflow_name"] == "partial.api.draft.json"
+    assert result["draft_workflow_name"] == "partial.api.converted-draft.json"
     assert (tmp_path / "workflows" / ".reports" / "partial.ui.conversion.json").exists()
     assert not (tmp_path / "workflows" / "partial.api.json").exists()
-    assert (tmp_path / "workflows" / "partial.api.draft.json").exists()
+    assert (tmp_path / "workflows" / "partial.api.converted-draft.json").exists()
 
-    draft = server.read_workflow(tmp_path / "workflows", "partial.api.draft.json")
+    draft = server.read_workflow(
+        tmp_path / "workflows", "partial.api.converted-draft.json"
+    )
     assert draft["metadata"]["source"] == "converted"
     assert draft["metadata"]["validation_status"] == "partial"
     assert draft["metadata"]["submit_ready"] is False
@@ -273,24 +296,27 @@ async def test_comfy_convert_ui_to_api_allow_draft_saves_non_submit_ready_draft(
         ValueError,
         match="comfy_submit_workflow requires a submit-ready API workflow",
     ):
-        await server.comfy_submit_workflow("partial.api.draft.json")
+        await server.comfy_submit_workflow("partial.api.converted-draft.json")
 
     draft_metadata = (
-        tmp_path / "workflows" / ".metadata" / "partial.api.draft.metadata.json"
+        tmp_path
+        / "workflows"
+        / ".metadata"
+        / "partial.api.converted-draft.metadata.json"
     )
     draft_metadata.unlink()
     with pytest.raises(
         ValueError,
         match="comfy_submit_workflow requires a submit-ready API workflow",
     ):
-        await server.comfy_submit_workflow("partial.api.draft.json")
+        await server.comfy_submit_workflow("partial.api.converted-draft.json")
 
     draft_metadata.write_text("{", encoding="utf-8")
     with pytest.raises(
         ValueError,
         match="comfy_submit_workflow requires a submit-ready API workflow",
     ):
-        await server.comfy_submit_workflow("partial.api.draft.json")
+        await server.comfy_submit_workflow("partial.api.converted-draft.json")
 
 
 @pytest.mark.asyncio

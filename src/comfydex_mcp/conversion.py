@@ -88,6 +88,33 @@ def _is_widget_compatible(node_info: Any, input_name: str) -> bool:
     return False
 
 
+def _widget_value_valid(spec: Any, value: Any) -> bool | None:
+    if isinstance(spec, str):
+        type_name = spec.upper()
+    elif isinstance(spec, (list, tuple)) and spec:
+        first = spec[0]
+        if isinstance(first, list):
+            return value in first
+        if not isinstance(first, str):
+            return None
+        type_name = first.upper()
+    else:
+        return None
+
+    if type_name == "INT":
+        return isinstance(value, int) and not isinstance(value, bool)
+    if type_name == "FLOAT":
+        return (
+            isinstance(value, (int, float))
+            and not isinstance(value, bool)
+        )
+    if type_name in {"BOOL", "BOOLEAN"}:
+        return isinstance(value, bool)
+    if type_name == "STRING":
+        return isinstance(value, str)
+    return None
+
+
 def _valid_slot(value: Any) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and value >= 0
 
@@ -122,10 +149,26 @@ def _link_index(
                 }
             )
             continue
-        links_by_target[(str(target_node_id), target_slot)] = [
+        target_key = (str(target_node_id), target_slot)
+        link_value = [
             str(source_node_id),
             source_slot,
         ]
+        if target_key in links_by_target:
+            gaps.append(
+                {
+                    "link_id": link_id,
+                    "source_node_id": str(source_node_id),
+                    "source_slot": source_slot,
+                    "target_node_id": str(target_node_id),
+                    "target_slot": target_slot,
+                    "existing_source": links_by_target[target_key],
+                    "source": link_value,
+                    "reason": "duplicate_target_link",
+                }
+            )
+            continue
+        links_by_target[target_key] = link_value
     return links_by_target, gaps
 
 
@@ -164,6 +207,7 @@ def convert_ui_to_api(
     gaps.extend(link_gaps)
     nodes_failed = 0
     input_slots_by_node: dict[str, list[str | None]] = {}
+    seen_node_ids: set[str] = set()
 
     for raw_node in nodes:
         if not isinstance(raw_node, dict):
@@ -182,6 +226,18 @@ def convert_ui_to_api(
             continue
 
         node_id = str(raw_node["id"])
+        if node_id in seen_node_ids:
+            nodes_failed += 1
+            gaps.append(
+                {
+                    "node_id": node_id,
+                    "node_type": raw_node.get("type"),
+                    "reason": "duplicate_node_id",
+                }
+            )
+            continue
+        seen_node_ids.add(node_id)
+
         node_type = raw_node.get("type")
         if not isinstance(node_type, str) or not node_type:
             nodes_failed += 1
@@ -220,7 +276,22 @@ def convert_ui_to_api(
                 inputs[input_name] = link_value
                 continue
             if widget_compatible and widget_index < len(widgets):
-                inputs[input_name] = widgets[widget_index]
+                widget_value = widgets[widget_index]
+                inputs[input_name] = widget_value
+                valid_widget = _widget_value_valid(
+                    _input_spec(node_info, input_name),
+                    widget_value,
+                )
+                if valid_widget is False:
+                    gaps.append(
+                        {
+                            "node_id": node_id,
+                            "node_type": node_type,
+                            "input": input_name,
+                            "value": widget_value,
+                            "reason": "invalid_widget_value",
+                        }
+                    )
                 widget_index += 1
                 continue
             if (
@@ -237,6 +308,17 @@ def convert_ui_to_api(
                     }
                 )
                 missing_required_links.add(input_name)
+
+        if widget_index < len(widgets):
+            for widget_value in widgets[widget_index:]:
+                gaps.append(
+                    {
+                        "node_id": node_id,
+                        "node_type": node_type,
+                        "value": widget_value,
+                        "reason": "unmapped_widget_value",
+                    }
+                )
 
         draft_workflow[node_id] = {
             "class_type": node_type,

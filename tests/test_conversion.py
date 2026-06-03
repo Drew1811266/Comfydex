@@ -50,6 +50,52 @@ def test_convert_ui_to_api_reports_missing_object_info_without_fake_workflow():
     assert result["report"]["gaps"][0]["reason"] == "missing_object_info"
 
 
+def test_convert_ui_to_api_reports_duplicate_node_id():
+    object_info = {"NoOp": {"input": {"required": {}}}}
+    ui = {
+        "nodes": [
+            {"id": 1, "type": "NoOp"},
+            {"id": 1, "type": "NoOp"},
+        ],
+        "links": [],
+    }
+
+    result = convert_ui_to_api(ui, object_info, "duplicate.ui.json", "api.json")
+
+    assert result["workflow"] is None
+    assert result["report"]["status"] != "converted"
+    assert any(
+        gap["reason"] == "duplicate_node_id" for gap in result["report"]["gaps"]
+    )
+
+
+def test_convert_ui_to_api_reports_duplicate_target_link():
+    object_info = {
+        "ImageSource": {"input": {"required": {}}, "output": ["IMAGE"]},
+        "SaveImage": {"input": {"required": {"images": ("IMAGE",)}}},
+    }
+    ui = {
+        "nodes": [
+            {"id": 1, "type": "ImageSource"},
+            {"id": 2, "type": "ImageSource"},
+            {"id": 3, "type": "SaveImage", "inputs": [{"name": "images"}]},
+        ],
+        "links": [
+            [10, 1, 0, 3, 0, "IMAGE"],
+            [11, 2, 0, 3, 0, "IMAGE"],
+        ],
+    }
+
+    result = convert_ui_to_api(ui, object_info, "duplicate-link.ui.json", "api.json")
+
+    assert result["workflow"] is None
+    assert result["report"]["status"] != "converted"
+    assert any(
+        gap["reason"] == "duplicate_target_link"
+        for gap in result["report"]["gaps"]
+    )
+
+
 def test_save_conversion_report_writes_reports_directory(tmp_path: Path):
     report = {
         "source_workflow": "a.ui.json",
@@ -208,6 +254,60 @@ def test_convert_ui_to_api_consumes_widget_slot_when_widget_input_is_linked():
     assert result["report"]["status"] == "converted"
     assert result["workflow"]["2"]["inputs"]["seed"] == ["1", 0]
     assert result["workflow"]["2"]["inputs"]["steps"] == 222
+
+
+def test_convert_ui_to_api_reports_invalid_widget_value():
+    object_info = {
+        "Counter": {
+            "input": {
+                "required": {
+                    "steps": ("INT",),
+                }
+            }
+        },
+    }
+    ui = {
+        "nodes": [
+            {"id": 1, "type": "Counter", "widgets_values": ["twenty"]},
+        ],
+        "links": [],
+    }
+
+    result = convert_ui_to_api(ui, object_info, "invalid-widget.ui.json", "api.json")
+
+    assert result["workflow"] is None
+    assert result["report"]["status"] != "converted"
+    assert any(
+        gap["reason"] == "invalid_widget_value"
+        for gap in result["report"]["gaps"]
+    )
+
+
+def test_convert_ui_to_api_reports_unmapped_widget_value():
+    object_info = {
+        "Counter": {
+            "input": {
+                "required": {
+                    "steps": ("INT",),
+                }
+            }
+        },
+    }
+    ui = {
+        "nodes": [
+            {"id": 1, "type": "Counter", "widgets_values": [20, 30]},
+        ],
+        "links": [],
+    }
+
+    result = convert_ui_to_api(ui, object_info, "extra-widget.ui.json", "api.json")
+
+    assert result["workflow"] is None
+    assert result["report"]["status"] != "converted"
+    assert any(
+        gap["reason"] == "unmapped_widget_value"
+        for gap in result["report"]["gaps"]
+    )
 
 
 def test_save_conversion_report_rejects_traversal_source_names(tmp_path: Path):

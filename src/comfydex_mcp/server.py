@@ -305,7 +305,7 @@ async def comfy_convert_ui_to_api(
         )
         result["saved_workflow"] = target_name
     elif allow_draft and result["draft_workflow"] is not None:
-        draft_name = f"{Path(target_name).stem}.draft.json"
+        draft_name = f"{Path(target_name).stem}.converted-draft.json"
         save_workflow(
             ctx.config.workflows_dir,
             draft_name,
@@ -361,6 +361,7 @@ async def comfy_import_ui_workflow(
         raise ValueError(
             "comfy_import_ui_workflow requires ComfyUI UI workflow JSON"
         )
+    safe_json_path(ctx.config.workflows_dir, name)
 
     object_info = None
     if use_object_info:

@@ -73,6 +73,15 @@ def test_workflow_metadata_defaults_manual_unknown_for_api_workflow():
     }
 
 
+def test_manual_draft_workflow_remains_submit_ready(tmp_path: Path):
+    save_workflow(tmp_path, "manual.draft.json", API_WORKFLOW)
+
+    loaded = read_workflow(tmp_path, "manual.draft.json")
+
+    assert loaded["metadata"]["source"] == "manual"
+    assert loaded["metadata"]["submit_ready"] is True
+
+
 def test_save_and_read_workflow_metadata_round_trip(tmp_path: Path):
     metadata = workflow_metadata(
         "wf.json",
@@ -178,21 +187,25 @@ def test_read_workflow_uses_default_metadata_when_metadata_json_is_invalid(
 def test_draft_workflow_metadata_fails_closed_when_missing_or_corrupt(tmp_path: Path):
     save_workflow(
         tmp_path,
-        "partial.api.draft.json",
+        "partial.api.converted-draft.json",
         API_WORKFLOW,
         source="converted",
         validation_status="partial",
     )
-    metadata_path = tmp_path / ".metadata" / "partial.api.draft.metadata.json"
+    metadata_path = tmp_path / ".metadata" / "partial.api.converted-draft.metadata.json"
 
     metadata_path.unlink()
-    missing_metadata = read_workflow(tmp_path, "partial.api.draft.json")["metadata"]
+    missing_metadata = read_workflow(
+        tmp_path, "partial.api.converted-draft.json"
+    )["metadata"]
 
     assert missing_metadata["source"] == "converted"
     assert missing_metadata["submit_ready"] is False
 
     metadata_path.write_text("{", encoding="utf-8")
-    corrupt_metadata = read_workflow(tmp_path, "partial.api.draft.json")["metadata"]
+    corrupt_metadata = read_workflow(
+        tmp_path, "partial.api.converted-draft.json"
+    )["metadata"]
 
     assert corrupt_metadata["source"] == "converted"
     assert corrupt_metadata["submit_ready"] is False
