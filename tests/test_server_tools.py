@@ -152,6 +152,108 @@ async def test_comfy_validate_api_workflow_rejects_ui_before_object_info(
 
 
 @pytest.mark.asyncio
+async def test_comfy_convert_ui_to_api_writes_api_when_valid(
+    monkeypatch,
+    tmp_path: Path,
+):
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+    save_workflow(
+        tmp_path / "workflows",
+        "sample.ui.json",
+        {"nodes": [{"id": 1, "type": "SaveImage", "widgets_values": []}], "links": []},
+    )
+
+    class ObjectInfoClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            pass
+
+        async def get_object_info(self):
+            return {"SaveImage": {"input": {"required": {}}}}
+
+    monkeypatch.setattr(server, "ComfyClient", ObjectInfoClient)
+    result = await server.comfy_convert_ui_to_api("sample.ui.json", "sample.api.json")
+
+    assert result["report"]["status"] == "converted"
+    assert (tmp_path / "workflows" / "sample.api.json").exists()
+    loaded = server.read_workflow(tmp_path / "workflows", "sample.api.json")
+    assert loaded["metadata"]["source"] == "converted"
+    assert loaded["metadata"]["validation_status"] == "valid"
+
+
+@pytest.mark.asyncio
+async def test_comfy_convert_ui_to_api_failure_writes_report_not_api(
+    monkeypatch,
+    tmp_path: Path,
+):
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+    save_workflow(
+        tmp_path / "workflows",
+        "bad.ui.json",
+        {"nodes": [{"id": 1, "type": "CustomNode"}], "links": []},
+    )
+
+    class ObjectInfoClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            pass
+
+        async def get_object_info(self):
+            return {"SaveImage": {"input": {"required": {}}}}
+
+    monkeypatch.setattr(server, "ComfyClient", ObjectInfoClient)
+    result = await server.comfy_convert_ui_to_api("bad.ui.json", "bad.api.json")
+
+    assert result["report"]["status"] == "failed"
+    assert (tmp_path / "workflows" / ".reports" / "bad.ui.conversion.json").exists()
+    assert not (tmp_path / "workflows" / "bad.api.json").exists()
+
+
+@pytest.mark.asyncio
+async def test_comfy_explain_conversion_gaps_reads_saved_report(
+    monkeypatch,
+    tmp_path: Path,
+):
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+    save_workflow(
+        tmp_path / "workflows",
+        "bad.ui.json",
+        {"nodes": [{"id": 1, "type": "CustomNode"}], "links": []},
+    )
+
+    class ObjectInfoClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            pass
+
+        async def get_object_info(self):
+            return {}
+
+    monkeypatch.setattr(server, "ComfyClient", ObjectInfoClient)
+    await server.comfy_convert_ui_to_api("bad.ui.json", "bad.api.json")
+
+    result = await server.comfy_explain_conversion_gaps("bad.ui.json")
+
+    assert result["gap_count"] >= 1
+    assert "CustomNode" in result["summary"]
+
+
+@pytest.mark.asyncio
 async def test_submit_workflow_rejects_missing_prompt_id(monkeypatch, tmp_path: Path):
     monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
     save_workflow(tmp_path / "workflows", "wf.json", API_WORKFLOW, require_api=True)

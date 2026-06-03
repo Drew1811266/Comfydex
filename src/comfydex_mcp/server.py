@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import re
 import uuid
@@ -14,7 +15,13 @@ from mcp.server.fastmcp import FastMCP
 from .analyzer import analyze_workflow
 from .comfy_client import ComfyClient, extract_output_refs
 from .config import ComfydexConfig, load_config, redact_config, save_config
-from .paths import safe_output_path
+from .conversion import (
+    conversion_report_path,
+    convert_ui_to_api,
+    explain_conversion_gaps,
+    save_conversion_report,
+)
+from .paths import safe_json_path, safe_output_path
 from .runs import append_event, create_run, list_runs, read_run, register_outputs, update_status
 from .ui_workflows import classify_workflow_payload, import_ui_workflow
 from .validation import validate_api_workflow
@@ -252,6 +259,71 @@ async def comfy_validate_api_workflow(name: str) -> dict[str, Any]:
     ) as client:
         object_info = await client.get_object_info()
     return validate_api_workflow(loaded["json"], object_info)
+
+
+@mcp.tool()
+async def comfy_convert_ui_to_api(
+    source_name: str,
+    target_name: str,
+    allow_draft: bool = False,
+) -> dict[str, Any]:
+    ctx = tool_context()
+    loaded = read_workflow(ctx.config.workflows_dir, source_name)
+    if loaded["kind"] != "ui":
+        raise ValueError("comfy_convert_ui_to_api requires ComfyUI UI workflow JSON")
+    safe_json_path(ctx.config.workflows_dir, target_name)
+
+    async with ComfyClient(
+        ctx.config.base_url,
+        ctx.config.headers,
+        ctx.config.request_timeout_seconds,
+    ) as client:
+        object_info = await client.get_object_info()
+
+    result = convert_ui_to_api(
+        loaded["json"],
+        object_info,
+        source_name,
+        target_name,
+    )
+    report_path = save_conversion_report(
+        ctx.config.workflows_dir,
+        source_name,
+        result["report"],
+    )
+    result["report_path"] = str(report_path)
+
+    if result["workflow"] is not None:
+        save_workflow(
+            ctx.config.workflows_dir,
+            target_name,
+            result["workflow"],
+            require_api=True,
+            source="converted",
+            validation_status="valid",
+        )
+        result["saved_workflow"] = target_name
+    elif allow_draft and result.get("draft_workflow"):
+        draft_name = f"{Path(target_name).stem}.draft.json"
+        save_workflow(
+            ctx.config.workflows_dir,
+            draft_name,
+            result["draft_workflow"],
+            require_api=True,
+            source="converted",
+            validation_status=result["report"]["status"],
+        )
+        result["draft_workflow_name"] = draft_name
+
+    return result
+
+
+@mcp.tool()
+async def comfy_explain_conversion_gaps(source_name: str) -> dict[str, Any]:
+    ctx = tool_context()
+    report_path = conversion_report_path(ctx.config.workflows_dir, source_name)
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    return explain_conversion_gaps(report) | {"report_path": str(report_path)}
 
 
 @mcp.tool()
