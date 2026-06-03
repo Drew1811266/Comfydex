@@ -335,11 +335,12 @@ async def test_comfy_build_workflow_missing_information_does_not_save(
     tmp_path: Path,
 ):
     monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
-    monkeypatch.setattr(
-        server,
-        "ComfyClient",
-        object_info_client(TEXT_TO_IMAGE_OBJECT_INFO),
-    )
+
+    class RemoteShouldNotBeCalled:
+        def __init__(self, *args, **kwargs):
+            raise RuntimeError("missing information should not call remote object_info")
+
+    monkeypatch.setattr(server, "ComfyClient", RemoteShouldNotBeCalled)
 
     result = await server.comfy_build_workflow(
         "missing.json",
@@ -452,7 +453,12 @@ async def test_comfy_patch_workflow_returns_structured_failure_without_saving(
 ):
     monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
     save_workflow(tmp_path / "workflows", "source.json", API_WORKFLOW, require_api=True)
-    monkeypatch.setattr(server, "ComfyClient", object_info_client(PATCH_OBJECT_INFO))
+
+    class RemoteShouldNotBeCalled:
+        def __init__(self, *args, **kwargs):
+            raise RuntimeError("malformed operations should not call remote object_info")
+
+    monkeypatch.setattr(server, "ComfyClient", RemoteShouldNotBeCalled)
 
     result = await server.comfy_patch_workflow(
         "source.json",
@@ -463,6 +469,47 @@ async def test_comfy_patch_workflow_returns_structured_failure_without_saving(
     assert result["status"] == "failed"
     assert result["report"]["errors"] == [{"message": "operations must be a list"}]
     assert not (tmp_path / "workflows" / "failed.json").exists()
+
+
+@pytest.mark.asyncio
+async def test_comfy_patch_workflow_rejects_path_equivalent_target_before_remote_call(
+    monkeypatch,
+    tmp_path: Path,
+):
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+    workflow = {
+        "1": {"class_type": "ImageSource", "inputs": {}},
+        "2": {
+            "class_type": "SaveImage",
+            "inputs": {"images": ["1", 0], "filename_prefix": "old"},
+        },
+    }
+    save_workflow(tmp_path / "workflows", "source.json", workflow, require_api=True)
+
+    if not (tmp_path / "workflows" / "SOURCE.json").exists():
+        pytest.skip("filesystem treats case-variant workflow names as distinct")
+
+    class RemoteShouldNotBeCalled:
+        def __init__(self, *args, **kwargs):
+            raise RuntimeError("same-path target should not call remote object_info")
+
+    monkeypatch.setattr(server, "ComfyClient", RemoteShouldNotBeCalled)
+
+    with pytest.raises(ValueError, match="target workflow name must differ"):
+        await server.comfy_patch_workflow(
+            "source.json",
+            [
+                {
+                    "op": "set_input",
+                    "node_id": "2",
+                    "input": "filename_prefix",
+                    "value": "new",
+                }
+            ],
+            target_name="SOURCE.json",
+        )
+
+    assert server.read_workflow(tmp_path / "workflows", "source.json")["json"] == workflow
 
 
 @pytest.mark.asyncio

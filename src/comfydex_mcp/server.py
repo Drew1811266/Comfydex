@@ -294,6 +294,9 @@ async def comfy_build_workflow(
     safe_json_path(ctx.config.workflows_dir, name)
 
     plan = create_workflow_plan(intent, template_id, parameters or {})
+    if plan.get("missing_information"):
+        return build_workflow_from_plan(plan, {})
+
     async with ComfyClient(
         ctx.config.base_url,
         ctx.config.headers,
@@ -341,8 +344,22 @@ async def comfy_patch_workflow(
     loaded = read_workflow(ctx.config.workflows_dir, name)
     if loaded["kind"] != "api":
         raise ValueError("comfy_patch_workflow requires ComfyUI API prompt JSON")
+    source_path = safe_json_path(ctx.config.workflows_dir, name)
     if target_name is not None:
-        safe_json_path(ctx.config.workflows_dir, target_name)
+        target_path = safe_json_path(ctx.config.workflows_dir, target_name)
+        if _same_workflow_path(source_path, target_path):
+            raise ValueError(
+                "target workflow name must differ from source workflow name"
+            )
+
+    preflight = patch_workflow(
+        loaded["json"],
+        operations,
+        object_info=None,
+        raise_on_error=False,
+    )
+    if preflight["status"] == "failed":
+        return preflight
 
     async with ComfyClient(
         ctx.config.base_url,
