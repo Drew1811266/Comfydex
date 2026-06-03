@@ -8,4 +8,5 @@ build/
 dist/
 .venv/
 venv/
+.worktrees
 .worktrees/
