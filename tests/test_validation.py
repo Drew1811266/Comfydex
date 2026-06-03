@@ -148,6 +148,77 @@ def test_validate_api_workflow_reports_non_link_value_for_link_input():
         )
 
 
+def test_validate_api_workflow_reports_invalid_widget_literal_type():
+    object_info = {
+        "Counter": {
+            "input": {
+                "required": {
+                    "steps": ("INT",),
+                    "cfg": ("FLOAT",),
+                    "enabled": ("BOOL",),
+                    "label": ("STRING",),
+                }
+            }
+        }
+    }
+    workflow = {
+        "1": {
+            "class_type": "Counter",
+            "inputs": {
+                "steps": "wide",
+                "cfg": "strong",
+                "enabled": "yes",
+                "label": {"text": "bad"},
+            },
+        }
+    }
+
+    result = validate_api_workflow(workflow, object_info)
+
+    assert result["status"] == "invalid"
+    assert {
+        (error["input"], error["reason"])
+        for error in result["errors"]
+    } == {
+        ("steps", "invalid_input_value"),
+        ("cfg", "invalid_input_value"),
+        ("enabled", "invalid_input_value"),
+        ("label", "invalid_input_value"),
+    }
+
+
+def test_validate_api_workflow_accepts_valid_widget_literals_and_links():
+    object_info = {
+        "IntSource": {"input": {"required": {}}, "output": ["INT"]},
+        "Counter": {
+            "input": {
+                "required": {
+                    "steps": ("INT",),
+                    "cfg": ("FLOAT",),
+                    "enabled": ("BOOLEAN",),
+                    "label": ("STRING",),
+                }
+            }
+        },
+    }
+    workflow = {
+        "1": {"class_type": "IntSource", "inputs": {}},
+        "2": {
+            "class_type": "Counter",
+            "inputs": {
+                "steps": ["1", 0],
+                "cfg": 7.0,
+                "enabled": True,
+                "label": "ok",
+            },
+        },
+    }
+
+    result = validate_api_workflow(workflow, object_info)
+
+    assert result["status"] == "valid"
+
+
 def test_validate_api_workflow_reports_link_type_mismatch():
     object_info = {
         "ModelSource": {"input": {"required": {}}, "output": ["MODEL"]},

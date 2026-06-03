@@ -48,6 +48,28 @@ def _requires_link_value(spec: Any) -> bool:
     return all(target_type not in WIDGET_INPUT_TYPES for target_type in target_types)
 
 
+def _valid_widget_literal(value: Any, target_types: list[str] | None) -> bool | None:
+    if target_types is None:
+        return None
+
+    literal_checks: list[bool] = []
+    for target_type in target_types:
+        if target_type == "INT":
+            literal_checks.append(isinstance(value, int) and not isinstance(value, bool))
+        elif target_type == "FLOAT":
+            literal_checks.append(
+                isinstance(value, (int, float)) and not isinstance(value, bool)
+            )
+        elif target_type in {"BOOL", "BOOLEAN"}:
+            literal_checks.append(isinstance(value, bool))
+        elif target_type == "STRING":
+            literal_checks.append(isinstance(value, str))
+
+    if not literal_checks:
+        return None
+    return any(literal_checks)
+
+
 def _source_output_type(source_info: Any, output_slot: int) -> str | None:
     if not isinstance(source_info, dict):
         return None
@@ -179,6 +201,16 @@ def validate_api_workflow(
                 continue
 
             if not _is_link_reference(value):
+                valid_literal = _valid_widget_literal(value, target_types)
+                if valid_literal is False:
+                    errors.append(
+                        {
+                            "node_id": node_id_text,
+                            "input": input_name,
+                            "target_types": target_types,
+                            "reason": "invalid_input_value",
+                        }
+                    )
                 continue
 
             source_node_id = value[0]

@@ -176,6 +176,27 @@ def test_build_writes_user_parameters_to_expected_node_inputs():
     assert sampler_node["inputs"]["seed"] == 12345
 
 
+def test_build_invalid_widget_parameter_type_does_not_claim_submit_ready():
+    result = build_workflow_from_template(
+        "basic-text-to-image",
+        {
+            "checkpoint_name": "dream.safetensors",
+            "positive_prompt": "a quiet studio",
+            "width": "wide",
+        },
+        TEXT_TO_IMAGE_OBJECT_INFO,
+    )
+
+    assert result["status"] == "invalid"
+    assert result["submit_ready"] is False
+    assert result["workflow"] is None
+    assert result["draft_workflow"]["4"]["inputs"]["width"] == "wide"
+    assert any(
+        error["reason"] == "invalid_input_value" and error["input"] == "width"
+        for error in result["validation"]["errors"]
+    )
+
+
 def test_validate_workflow_against_object_info_wraps_validation_report():
     workflow = {
         "1": {
