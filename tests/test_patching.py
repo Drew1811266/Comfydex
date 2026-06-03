@@ -218,6 +218,26 @@ def test_add_link_rejects_non_object_target_node():
         )
 
 
+def test_add_link_rejects_missing_target_node_with_clear_error():
+    workflow = {
+        "1": {"class_type": "ImageSource", "inputs": {}},
+    }
+
+    with pytest.raises(ValueError, match="target_node_id not found: 2"):
+        patch_workflow(
+            workflow,
+            [
+                {
+                    "op": "add_link",
+                    "source_node_id": "1",
+                    "output_slot": 0,
+                    "target_node_id": "2",
+                    "input": "images",
+                }
+            ],
+        )
+
+
 def test_remove_input_deletes_input_and_reports_removed_operation():
     result = patch_workflow(
         sample_workflow(),

@@ -180,7 +180,12 @@ def _add_link(workflow: dict[str, Any], operation: dict[str, Any]) -> dict[str, 
     if not isinstance(source_node, dict):
         raise ValueError("source node must be an object")
 
-    inputs = _node_inputs(workflow, target_node_id, node_role="target node")
+    inputs = _node_inputs(
+        workflow,
+        target_node_id,
+        missing_field="target_node_id",
+        node_role="target node",
+    )
     old_value = deepcopy(inputs.get(input_name))
     inputs[input_name] = [source_node_id, output_slot]
     return {
@@ -198,10 +203,11 @@ def _node_inputs(
     workflow: dict[str, Any],
     node_id: str,
     *,
+    missing_field: str = "node_id",
     node_role: str = "node",
 ) -> dict[str, Any]:
     if node_id not in workflow:
-        raise ValueError(f"node_id not found: {node_id}")
+        raise ValueError(f"{missing_field} not found: {node_id}")
 
     node = workflow[node_id]
     if not isinstance(node, dict):
