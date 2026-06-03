@@ -56,6 +56,25 @@ def test_set_input_patches_copy_and_reports_applied_operation():
     assert result["submit_ready"] is False
 
 
+def test_set_input_report_records_old_and_new_values():
+    result = patch_workflow(
+        sample_workflow(),
+        [{"op": "set_input", "node_id": "1", "input": "seed", "value": 123}],
+    )
+
+    assert result["report"]["status"] == "patched"
+    assert result["report"]["errors"] == []
+    assert result["report"]["changes"] == [
+        {
+            "op": "set_input",
+            "node_id": "1",
+            "input": "seed",
+            "old_value": 42,
+            "new_value": 123,
+        }
+    ]
+
+
 def test_set_input_preserves_unrelated_nodes_inputs_and_links():
     workflow = sample_workflow()
 
@@ -128,6 +147,30 @@ def test_add_link_sets_target_input_and_preserves_other_inputs():
         "filename_prefix": "Comfydex",
         "images": ["1", 0],
     }
+
+
+def test_add_link_rejects_non_object_source_node():
+    workflow = {
+        "1": "not-a-node",
+        "2": {
+            "class_type": "SaveImage",
+            "inputs": {"filename_prefix": "Comfydex"},
+        },
+    }
+
+    with pytest.raises(ValueError, match="source node must be an object"):
+        patch_workflow(
+            workflow,
+            [
+                {
+                    "op": "add_link",
+                    "source_node_id": "1",
+                    "output_slot": 0,
+                    "target_node_id": "2",
+                    "input": "images",
+                }
+            ],
+        )
 
 
 def test_remove_input_deletes_input_and_reports_removed_operation():
