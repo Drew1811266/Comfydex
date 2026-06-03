@@ -278,6 +278,22 @@ def test_same_workflow_path_only_casefolds_on_windows(monkeypatch, tmp_path: Pat
     assert server._same_workflow_path(lower_path, upper_path) is True
 
 
+def test_same_workflow_path_uses_samefile_on_case_insensitive_filesystems(
+    monkeypatch,
+    tmp_path: Path,
+):
+    lower_path = tmp_path / "same.ui.json"
+    upper_path = tmp_path / "SAME.UI.json"
+
+    def samefile(_self, _other):
+        return True
+
+    monkeypatch.setattr(server.os, "name", "posix")
+    monkeypatch.setattr(Path, "samefile", samefile)
+
+    assert server._same_workflow_path(lower_path, upper_path) is True
+
+
 @pytest.mark.asyncio
 async def test_comfy_convert_ui_to_api_rejects_generated_draft_collision_before_remote_call(
     monkeypatch,

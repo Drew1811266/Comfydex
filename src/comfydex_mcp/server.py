@@ -135,8 +135,16 @@ def _fallback_history_status(result: dict[str, Any], prompt_id: str) -> str | No
 
 
 def _same_workflow_path(left: Path, right: Path) -> bool:
-    left_text = str(left.resolve())
-    right_text = str(right.resolve())
+    left_resolved = left.resolve()
+    right_resolved = right.resolve()
+    try:
+        if left_resolved.samefile(right_resolved):
+            return True
+    except OSError:
+        pass
+
+    left_text = str(left_resolved)
+    right_text = str(right_resolved)
     if os.name == "nt":
         left_text = left_text.casefold()
         right_text = right_text.casefold()
