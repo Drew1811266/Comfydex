@@ -220,7 +220,7 @@ async def test_comfy_convert_ui_to_api_failure_writes_report_not_api(
 
 
 @pytest.mark.asyncio
-async def test_comfy_convert_ui_to_api_allow_draft_does_not_save_partial_draft(
+async def test_comfy_convert_ui_to_api_allow_draft_saves_non_submit_ready_draft(
     monkeypatch,
     tmp_path: Path,
 ):
@@ -253,10 +253,27 @@ async def test_comfy_convert_ui_to_api_allow_draft_does_not_save_partial_draft(
 
     assert result["report"]["status"] == "partial"
     assert result["draft_workflow"] is not None
-    assert result["draft_saved"] is False
+    assert result["draft_saved"] is True
+    assert result["draft_workflow_name"] == "partial.api.draft.json"
     assert (tmp_path / "workflows" / ".reports" / "partial.ui.conversion.json").exists()
     assert not (tmp_path / "workflows" / "partial.api.json").exists()
-    assert not (tmp_path / "workflows" / "partial.api.draft.json").exists()
+    assert (tmp_path / "workflows" / "partial.api.draft.json").exists()
+
+    draft = server.read_workflow(tmp_path / "workflows", "partial.api.draft.json")
+    assert draft["metadata"]["source"] == "converted"
+    assert draft["metadata"]["validation_status"] == "partial"
+    assert draft["metadata"]["submit_ready"] is False
+
+    class DraftShouldNotBeSubmitted:
+        def __init__(self, *args, **kwargs):
+            raise RuntimeError("draft should not be submitted")
+
+    monkeypatch.setattr(server, "ComfyClient", DraftShouldNotBeSubmitted)
+    with pytest.raises(
+        ValueError,
+        match="comfy_submit_workflow requires a submit-ready API workflow",
+    ):
+        await server.comfy_submit_workflow("partial.api.draft.json")
 
 
 @pytest.mark.asyncio

@@ -304,6 +304,18 @@ async def comfy_convert_ui_to_api(
             validation_status="valid",
         )
         result["saved_workflow"] = target_name
+    elif allow_draft and result["draft_workflow"] is not None:
+        draft_name = f"{Path(target_name).stem}.draft.json"
+        save_workflow(
+            ctx.config.workflows_dir,
+            draft_name,
+            result["draft_workflow"],
+            require_api=True,
+            source="converted",
+            validation_status=result["report"]["status"],
+        )
+        result["draft_saved"] = True
+        result["draft_workflow_name"] = draft_name
 
     return result
 
@@ -394,6 +406,10 @@ async def comfy_submit_workflow(
     loaded = read_workflow(ctx.config.workflows_dir, name)
     if loaded["kind"] != "api":
         raise ValueError("comfy_submit_workflow requires ComfyUI API prompt JSON")
+    if loaded.get("metadata", {}).get("submit_ready", True) is False:
+        raise ValueError(
+            "comfy_submit_workflow requires a submit-ready API workflow"
+        )
 
     actual_client_id = client_id or f"comfydex-{uuid.uuid4()}"
     async with ComfyClient(

@@ -22,6 +22,17 @@ def _is_link(value: Any) -> bool:
         and isinstance(value[0], str)
         and isinstance(value[1], int)
         and not isinstance(value[1], bool)
+        and value[1] >= 0
+    )
+
+
+def _is_link_reference(value: Any) -> bool:
+    return (
+        isinstance(value, list)
+        and len(value) == 2
+        and isinstance(value[0], str)
+        and isinstance(value[1], int)
+        and not isinstance(value[1], bool)
     )
 
 
@@ -41,6 +52,7 @@ def validate_api_workflow(
         }
 
     node_ids = {str(node_id) for node_id in workflow}
+    nodes_by_id = {str(node_id): node for node_id, node in workflow.items()}
     has_probable_output_node = False
 
     for node_id, node in workflow.items():
@@ -93,13 +105,54 @@ def validate_api_workflow(
                 )
 
         for input_name, value in inputs.items():
-            if _is_link(value) and value[0] not in node_ids:
+            if not _is_link_reference(value):
+                continue
+
+            source_node_id = value[0]
+            source_slot = value[1]
+            if not _is_link(value):
                 errors.append(
                     {
                         "node_id": node_id_text,
                         "input": input_name,
-                        "target_node_id": value[0],
+                        "target_node_id": source_node_id,
+                        "output_slot": source_slot,
+                        "reason": "invalid_output_slot",
+                    }
+                )
+                continue
+
+            if source_node_id not in node_ids:
+                errors.append(
+                    {
+                        "node_id": node_id_text,
+                        "input": input_name,
+                        "target_node_id": source_node_id,
                         "reason": "broken_link",
+                    }
+                )
+                continue
+
+            source_node = nodes_by_id[source_node_id]
+            if not isinstance(source_node, dict):
+                continue
+            source_type = source_node.get("class_type")
+            if not isinstance(source_type, str):
+                continue
+            source_info = object_info.get(source_type)
+            if not isinstance(source_info, dict):
+                continue
+            source_outputs = source_info.get("output")
+            if isinstance(source_outputs, (list, tuple)) and source_slot >= len(
+                source_outputs
+            ):
+                errors.append(
+                    {
+                        "node_id": node_id_text,
+                        "input": input_name,
+                        "target_node_id": source_node_id,
+                        "output_slot": source_slot,
+                        "reason": "invalid_output_slot",
                     }
                 )
 

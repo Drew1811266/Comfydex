@@ -59,6 +59,39 @@ def test_validate_api_workflow_reports_broken_link_reference():
     assert result["errors"][0]["reason"] == "broken_link"
 
 
+def test_validate_api_workflow_reports_invalid_output_slot():
+    object_info = {
+        "Source": {"input": {"required": {}}, "output": ["IMAGE"]},
+        "SaveImage": {"input": {"required": {"images": ("IMAGE",)}}},
+    }
+
+    negative_slot = validate_api_workflow(
+        {
+            "1": {"class_type": "Source", "inputs": {}},
+            "2": {"class_type": "SaveImage", "inputs": {"images": ["1", -1]}},
+        },
+        object_info,
+    )
+    out_of_range_slot = validate_api_workflow(
+        {
+            "1": {"class_type": "Source", "inputs": {}},
+            "2": {"class_type": "SaveImage", "inputs": {"images": ["1", 99]}},
+        },
+        object_info,
+    )
+
+    assert negative_slot["status"] == "invalid"
+    assert any(
+        error["reason"] == "invalid_output_slot"
+        for error in negative_slot["errors"]
+    )
+    assert out_of_range_slot["status"] == "invalid"
+    assert any(
+        error["reason"] == "invalid_output_slot"
+        for error in out_of_range_slot["errors"]
+    )
+
+
 def test_validate_api_workflow_rejects_empty_workflow():
     result = validate_api_workflow({}, OBJECT_INFO)
 
