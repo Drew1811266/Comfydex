@@ -135,7 +135,12 @@ def _fallback_history_status(result: dict[str, Any], prompt_id: str) -> str | No
 
 
 def _same_workflow_path(left: Path, right: Path) -> bool:
-    return str(left.resolve()).casefold() == str(right.resolve()).casefold()
+    left_text = str(left.resolve())
+    right_text = str(right.resolve())
+    if os.name == "nt":
+        left_text = left_text.casefold()
+        right_text = right_text.casefold()
+    return left_text == right_text
 
 
 async def _poll_history_until_terminal(
@@ -294,7 +299,10 @@ async def comfy_convert_ui_to_api(
     draft_name = f"{Path(target_name).stem}.converted-draft.json"
     if allow_draft:
         draft_path = safe_json_path(ctx.config.workflows_dir, draft_name)
-        if _same_workflow_path(source_path, draft_path):
+        if _same_workflow_path(source_path, draft_path) or _same_workflow_path(
+            target_path,
+            draft_path,
+        ):
             raise ValueError(
                 "draft workflow name must differ from source and target workflow names"
             )

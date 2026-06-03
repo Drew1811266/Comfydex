@@ -247,7 +247,7 @@ async def test_comfy_convert_ui_to_api_rejects_case_variant_target_before_remote
         "links": [],
     }
     save_workflow(tmp_path / "workflows", "same.ui.json", original_workflow)
-    if not (tmp_path / "workflows" / "SAME.UI.json").exists():
+    if not (tmp_path / "workflows" / "SAME.UI.JSON").exists():
         pytest.skip("filesystem treats case-variant workflow names as distinct")
 
     class RemoteShouldNotBeCalled:
@@ -260,11 +260,22 @@ async def test_comfy_convert_ui_to_api_rejects_case_variant_target_before_remote
         ValueError,
         match="target workflow name must differ from source workflow name",
     ):
-        await server.comfy_convert_ui_to_api("same.ui.json", "SAME.UI.json")
+        await server.comfy_convert_ui_to_api("same.ui.json", "SAME.UI.JSON")
 
     loaded = server.read_workflow(tmp_path / "workflows", "same.ui.json")
     assert loaded["kind"] == "ui"
     assert loaded["json"] == original_workflow
+
+
+def test_same_workflow_path_only_casefolds_on_windows(monkeypatch, tmp_path: Path):
+    lower_path = tmp_path / "same.ui.json"
+    upper_path = tmp_path / "SAME.UI.json"
+
+    monkeypatch.setattr(server.os, "name", "posix")
+    assert server._same_workflow_path(lower_path, upper_path) is False
+
+    monkeypatch.setattr(server.os, "name", "nt")
+    assert server._same_workflow_path(lower_path, upper_path) is True
 
 
 @pytest.mark.asyncio
