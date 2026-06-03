@@ -11,6 +11,82 @@ from comfydex_mcp.workflows import save_workflow
 
 API_WORKFLOW = {"1": {"class_type": "SaveImage", "inputs": {}}}
 UI_WORKFLOW = {"nodes": [{"id": 1, "type": "SaveImage"}], "links": []}
+PATCH_OBJECT_INFO = {
+    "ImageSource": {"input": {"required": {}}, "output": ["IMAGE"]},
+    "SaveImage": {
+        "input": {
+            "required": {
+                "images": ("IMAGE",),
+                "filename_prefix": ("STRING",),
+            }
+        },
+        "output": [],
+    },
+}
+TEXT_TO_IMAGE_OBJECT_INFO = {
+    "CheckpointLoaderSimple": {
+        "input": {"required": {"ckpt_name": ("STRING",)}},
+        "output": ["MODEL", "CLIP", "VAE"],
+    },
+    "CLIPTextEncode": {
+        "input": {"required": {"text": ("STRING",), "clip": ("CLIP",)}},
+        "output": ["CONDITIONING"],
+    },
+    "EmptyLatentImage": {
+        "input": {
+            "required": {
+                "width": ("INT",),
+                "height": ("INT",),
+                "batch_size": ("INT",),
+            }
+        },
+        "output": ["LATENT"],
+    },
+    "KSampler": {
+        "input": {
+            "required": {
+                "model": ("MODEL",),
+                "seed": ("INT",),
+                "steps": ("INT",),
+                "cfg": ("FLOAT",),
+                "sampler_name": ("STRING",),
+                "scheduler": ("STRING",),
+                "positive": ("CONDITIONING",),
+                "negative": ("CONDITIONING",),
+                "latent_image": ("LATENT",),
+                "denoise": ("FLOAT",),
+            }
+        },
+        "output": ["LATENT"],
+    },
+    "VAEDecode": {
+        "input": {"required": {"samples": ("LATENT",), "vae": ("VAE",)}},
+        "output": ["IMAGE"],
+    },
+    "SaveImage": {
+        "input": {
+            "required": {"images": ("IMAGE",), "filename_prefix": ("STRING",)}
+        },
+        "output": [],
+    },
+}
+
+
+def object_info_client(object_info: dict):
+    class ObjectInfoClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            pass
+
+        async def get_object_info(self):
+            return object_info
+
+    return ObjectInfoClient
 
 
 def test_resolve_workspace_uses_environment(monkeypatch, tmp_path: Path):
@@ -152,6 +228,241 @@ async def test_comfy_validate_api_workflow_tool(monkeypatch, tmp_path: Path):
     monkeypatch.setattr(server, "ComfyClient", ObjectInfoClient)
     result = await server.comfy_validate_api_workflow("wf.json")
     assert result["status"] == "valid"
+
+
+@pytest.mark.asyncio
+async def test_comfy_validate_workflow_against_object_info_alias(
+    monkeypatch,
+    tmp_path: Path,
+):
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+    save_workflow(tmp_path / "workflows", "wf.json", API_WORKFLOW)
+    monkeypatch.setattr(
+        server,
+        "ComfyClient",
+        object_info_client({"SaveImage": {"input": {"required": {}}}}),
+    )
+
+    result = await server.comfy_validate_workflow_against_object_info("wf.json")
+
+    assert result["status"] == "valid"
+
+
+@pytest.mark.asyncio
+async def test_comfy_list_workflow_templates_tool():
+    result = await server.comfy_list_workflow_templates()
+
+    assert any(template["id"] == "basic-text-to-image" for template in result)
+
+
+@pytest.mark.asyncio
+async def test_comfy_suggest_workflow_template_tool():
+    result = await server.comfy_suggest_workflow_template("upscale this image")
+
+    assert result["id"] == "upscale"
+
+
+@pytest.mark.asyncio
+async def test_comfy_build_workflow_plan_tool_does_not_write_or_call_remote(
+    monkeypatch,
+    tmp_path: Path,
+):
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+
+    class RemoteShouldNotBeCalled:
+        def __init__(self, *args, **kwargs):
+            raise RuntimeError("plan should not call remote object_info")
+
+    monkeypatch.setattr(server, "ComfyClient", RemoteShouldNotBeCalled)
+
+    result = await server.comfy_build_workflow_plan(
+        "Create text to image",
+        {"positive_prompt": "a quiet studio", "width": 512},
+    )
+
+    assert result["template"]["id"] == "basic-text-to-image"
+    assert result["parameters"]["width"] == 512
+    assert "checkpoint_name" in result["missing_information"]
+    assert not (tmp_path / "workflows").exists()
+
+
+@pytest.mark.asyncio
+async def test_comfy_explain_workflow_plan_tool():
+    plan = await server.comfy_build_workflow_plan(
+        "Create text to image",
+        {"positive_prompt": "a quiet studio"},
+    )
+
+    result = await server.comfy_explain_workflow_plan(plan)
+
+    assert result["selected_template"]["id"] == "basic-text-to-image"
+    assert "checkpoint_name" in result["missing_information"]
+
+
+@pytest.mark.asyncio
+async def test_comfy_build_workflow_saves_valid_generated_workflow(
+    monkeypatch,
+    tmp_path: Path,
+):
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+    monkeypatch.setattr(
+        server,
+        "ComfyClient",
+        object_info_client(TEXT_TO_IMAGE_OBJECT_INFO),
+    )
+
+    result = await server.comfy_build_workflow(
+        "generated.json",
+        "Create text to image",
+        {
+            "checkpoint_name": "dream.safetensors",
+            "positive_prompt": "a quiet studio",
+        },
+    )
+
+    assert result["status"] == "valid"
+    assert result["submit_ready"] is True
+    assert result["saved_workflow"] == "generated.json"
+    loaded = server.read_workflow(tmp_path / "workflows", "generated.json")
+    assert loaded["metadata"]["source"] == "generated"
+    assert loaded["metadata"]["validation_status"] == "valid"
+    assert loaded["metadata"]["submit_ready"] is True
+
+
+@pytest.mark.asyncio
+async def test_comfy_build_workflow_missing_information_does_not_save(
+    monkeypatch,
+    tmp_path: Path,
+):
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+    monkeypatch.setattr(
+        server,
+        "ComfyClient",
+        object_info_client(TEXT_TO_IMAGE_OBJECT_INFO),
+    )
+
+    result = await server.comfy_build_workflow(
+        "missing.json",
+        "Create text to image",
+        {"positive_prompt": "a quiet studio"},
+    )
+
+    assert result["status"] == "missing_information"
+    assert result["submit_ready"] is False
+    assert "saved_workflow" not in result
+    assert not (tmp_path / "workflows" / "missing.json").exists()
+
+
+@pytest.mark.asyncio
+async def test_comfy_build_workflow_allow_draft_saves_invalid_non_submit_ready_workflow(
+    monkeypatch,
+    tmp_path: Path,
+):
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+    monkeypatch.setattr(
+        server,
+        "ComfyClient",
+        object_info_client(TEXT_TO_IMAGE_OBJECT_INFO),
+    )
+
+    result = await server.comfy_build_workflow(
+        "draft.json",
+        "Create text to image",
+        {
+            "checkpoint_name": "dream.safetensors",
+            "positive_prompt": "a quiet studio",
+            "width": "wide",
+        },
+        allow_draft=True,
+    )
+
+    assert result["status"] == "invalid"
+    assert result["submit_ready"] is False
+    assert result["workflow"] is None
+    assert result["draft_saved"] is True
+    loaded = server.read_workflow(tmp_path / "workflows", "draft.json")
+    assert loaded["metadata"]["source"] == "generated"
+    assert loaded["metadata"]["validation_status"] == "invalid"
+    assert loaded["metadata"]["submit_ready"] is False
+
+
+@pytest.mark.asyncio
+async def test_comfy_patch_workflow_saves_valid_patch_to_target(
+    monkeypatch,
+    tmp_path: Path,
+):
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+    original = {
+        "1": {"class_type": "ImageSource", "inputs": {}},
+        "2": {
+            "class_type": "SaveImage",
+            "inputs": {"images": ["1", 0], "filename_prefix": "old"},
+        },
+    }
+    save_workflow(tmp_path / "workflows", "source.json", original, require_api=True)
+    monkeypatch.setattr(server, "ComfyClient", object_info_client(PATCH_OBJECT_INFO))
+
+    result = await server.comfy_patch_workflow(
+        "source.json",
+        [{"op": "set_input", "node_id": "2", "input": "filename_prefix", "value": "new"}],
+        target_name="patched.json",
+    )
+
+    assert result["status"] == "patched"
+    assert result["submit_ready"] is True
+    assert result["saved_workflow"] == "patched.json"
+    assert server.read_workflow(tmp_path / "workflows", "source.json")["json"] == original
+    patched = server.read_workflow(tmp_path / "workflows", "patched.json")
+    assert patched["json"]["2"]["inputs"]["filename_prefix"] == "new"
+    assert patched["metadata"]["validation_status"] == "valid"
+
+
+@pytest.mark.asyncio
+async def test_comfy_patch_workflow_invalid_patch_does_not_save_without_draft(
+    monkeypatch,
+    tmp_path: Path,
+):
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+    workflow = {
+        "1": {"class_type": "ImageSource", "inputs": {}},
+        "2": {
+            "class_type": "SaveImage",
+            "inputs": {"images": ["1", 0], "filename_prefix": "old"},
+        },
+    }
+    save_workflow(tmp_path / "workflows", "source.json", workflow, require_api=True)
+    monkeypatch.setattr(server, "ComfyClient", object_info_client(PATCH_OBJECT_INFO))
+
+    result = await server.comfy_patch_workflow(
+        "source.json",
+        [{"op": "remove_input", "node_id": "2", "input": "images"}],
+        target_name="invalid.json",
+    )
+
+    assert result["status"] == "invalid"
+    assert result["submit_ready"] is False
+    assert "saved_workflow" not in result
+    assert not (tmp_path / "workflows" / "invalid.json").exists()
+
+
+@pytest.mark.asyncio
+async def test_comfy_patch_workflow_returns_structured_failure_without_saving(
+    monkeypatch,
+    tmp_path: Path,
+):
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+    save_workflow(tmp_path / "workflows", "source.json", API_WORKFLOW, require_api=True)
+    monkeypatch.setattr(server, "ComfyClient", object_info_client(PATCH_OBJECT_INFO))
+
+    result = await server.comfy_patch_workflow(
+        "source.json",
+        {"op": "set_input"},
+        target_name="failed.json",
+    )
+
+    assert result["status"] == "failed"
+    assert result["report"]["errors"] == [{"message": "operations must be a list"}]
+    assert not (tmp_path / "workflows" / "failed.json").exists()
 
 
 @pytest.mark.asyncio

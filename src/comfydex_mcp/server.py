@@ -13,6 +13,10 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 
 from .analyzer import analyze_workflow
+from .builder import (
+    build_workflow_from_plan,
+    build_workflow_plan as create_workflow_plan,
+)
 from .comfy_client import ComfyClient, extract_output_refs
 from .config import ComfydexConfig, load_config, redact_config, save_config
 from .conversion import (
@@ -21,8 +25,14 @@ from .conversion import (
     explain_conversion_gaps,
     save_conversion_report,
 )
+from .patching import patch_workflow
 from .paths import safe_json_path, safe_output_path
 from .runs import append_event, create_run, list_runs, read_run, register_outputs, update_status
+from .templates import (
+    explain_workflow_plan,
+    list_workflow_templates,
+    suggest_workflow_template,
+)
 from .ui_workflows import classify_workflow_payload, import_ui_workflow
 from .validation import validate_api_workflow
 from .workflows import list_workflows, read_workflow, save_workflow
@@ -249,6 +259,128 @@ async def comfy_get_object_info() -> dict[str, Any]:
 
 
 @mcp.tool()
+async def comfy_list_workflow_templates() -> list[dict[str, Any]]:
+    return list_workflow_templates()
+
+
+@mcp.tool()
+async def comfy_suggest_workflow_template(intent: str) -> dict[str, Any]:
+    return suggest_workflow_template(intent)
+
+
+@mcp.tool()
+async def comfy_build_workflow_plan(
+    intent: str,
+    parameters: dict[str, Any] | None = None,
+    template_id: str | None = None,
+) -> dict[str, Any]:
+    return create_workflow_plan(intent, template_id, parameters or {})
+
+
+@mcp.tool()
+async def comfy_explain_workflow_plan(plan: dict[str, Any]) -> dict[str, Any]:
+    return explain_workflow_plan(plan)
+
+
+@mcp.tool()
+async def comfy_build_workflow(
+    name: str,
+    intent: str,
+    parameters: dict[str, Any] | None = None,
+    template_id: str | None = None,
+    allow_draft: bool = False,
+) -> dict[str, Any]:
+    ctx = tool_context()
+    safe_json_path(ctx.config.workflows_dir, name)
+
+    plan = create_workflow_plan(intent, template_id, parameters or {})
+    async with ComfyClient(
+        ctx.config.base_url,
+        ctx.config.headers,
+        ctx.config.request_timeout_seconds,
+    ) as client:
+        object_info = await client.get_object_info()
+
+    result = build_workflow_from_plan(plan, object_info)
+    workflow_to_save = result["workflow"]
+    draft_saved = False
+    if workflow_to_save is None and allow_draft:
+        workflow_to_save = result.get("draft_workflow")
+        draft_saved = workflow_to_save is not None
+
+    if workflow_to_save is not None and (result["submit_ready"] or draft_saved):
+        validation = result.get("validation")
+        validation_status = (
+            validation["status"]
+            if isinstance(validation, dict) and isinstance(validation.get("status"), str)
+            else result["status"]
+        )
+        save_workflow(
+            ctx.config.workflows_dir,
+            name,
+            workflow_to_save,
+            require_api=True,
+            source="generated",
+            validation_status=validation_status,
+        )
+        result["saved_workflow"] = name
+        if draft_saved:
+            result["draft_saved"] = True
+
+    return result
+
+
+@mcp.tool()
+async def comfy_patch_workflow(
+    name: str,
+    operations: list[dict[str, Any]],
+    target_name: str | None = None,
+    allow_draft: bool = False,
+) -> dict[str, Any]:
+    ctx = tool_context()
+    loaded = read_workflow(ctx.config.workflows_dir, name)
+    if loaded["kind"] != "api":
+        raise ValueError("comfy_patch_workflow requires ComfyUI API prompt JSON")
+    if target_name is not None:
+        safe_json_path(ctx.config.workflows_dir, target_name)
+
+    async with ComfyClient(
+        ctx.config.base_url,
+        ctx.config.headers,
+        ctx.config.request_timeout_seconds,
+    ) as client:
+        object_info = await client.get_object_info()
+
+    result = patch_workflow(
+        loaded["json"],
+        operations,
+        object_info,
+        raise_on_error=False,
+    )
+    if result["submit_ready"] or (allow_draft and result["status"] == "invalid"):
+        validation = result.get("validation")
+        validation_status = (
+            validation["status"]
+            if isinstance(validation, dict) and isinstance(validation.get("status"), str)
+            else result["status"]
+        )
+        saved_name = target_name or name
+        save_workflow(
+            ctx.config.workflows_dir,
+            saved_name,
+            result["workflow"],
+            require_api=True,
+            source="patched",
+            validation_status=validation_status,
+        )
+        result["saved_workflow"] = saved_name
+        if not result["submit_ready"]:
+            result["draft_saved"] = True
+
+    return result
+
+
+@mcp.tool()
 async def comfy_list_workflows() -> list[dict[str, Any]]:
     ctx = tool_context()
     return list_workflows(ctx.config.workflows_dir)
@@ -276,6 +408,11 @@ async def comfy_validate_api_workflow(name: str) -> dict[str, Any]:
     ) as client:
         object_info = await client.get_object_info()
     return validate_api_workflow(loaded["json"], object_info)
+
+
+@mcp.tool()
+async def comfy_validate_workflow_against_object_info(name: str) -> dict[str, Any]:
+    return await comfy_validate_api_workflow(name)
 
 
 @mcp.tool()
