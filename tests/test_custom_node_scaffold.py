@@ -97,6 +97,9 @@ def test_scaffold_custom_node_package_rejects_reparse_custom_nodes_dir(
     [
         "../bad",
         "nested/name",
+        "nested\\name",
+        "/tmp/bad",
+        "C:\\bad",
         "",
         "bad name",
         "_leading",
