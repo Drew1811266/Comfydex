@@ -185,6 +185,35 @@ def test_save_conversion_report_writes_reports_directory(tmp_path: Path):
     assert path.exists()
 
 
+def test_save_conversion_report_rejects_auxiliary_dir_outside_workflows(
+    monkeypatch,
+    tmp_path: Path,
+):
+    workflows_dir = tmp_path / "workflows"
+    external_dir = tmp_path / "external"
+    workflows_dir.mkdir()
+    external_dir.mkdir()
+    original_resolve = Path.resolve
+
+    def fake_resolve(path: Path, *args, **kwargs):
+        if path == workflows_dir / ".reports":
+            return external_dir
+        if path == workflows_dir / ".reports" / "a.ui.conversion.json":
+            return external_dir / "a.ui.conversion.json"
+        return original_resolve(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "resolve", fake_resolve)
+
+    with pytest.raises(ValueError, match="workflow path must stay inside workflows_dir"):
+        save_conversion_report(
+            workflows_dir,
+            "a.ui.json",
+            {"status": "failed", "gaps": []},
+        )
+
+    assert not (external_dir / "a.ui.conversion.json").exists()
+
+
 def test_explain_conversion_gaps_returns_text_and_gaps():
     report = {
         "status": "partial",

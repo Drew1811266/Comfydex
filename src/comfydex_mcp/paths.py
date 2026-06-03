@@ -26,6 +26,18 @@ def safe_json_path(base_dir: Path, filename: str) -> Path:
     return target
 
 
+def safe_auxiliary_json_path(base_dir: Path, directory_name: str, filename: str) -> Path:
+    if not directory_name or directory_name != Path(directory_name).name:
+        raise ValueError("auxiliary directory name must be simple")
+    if not filename or filename != Path(filename).name or not filename.endswith(".json"):
+        raise ValueError("workflow filename must be a simple .json filename")
+    base = base_dir.resolve()
+    target = (base_dir / directory_name / filename).resolve()
+    if not _is_relative_to(target, base):
+        raise ValueError("workflow path must stay inside workflows_dir")
+    return target
+
+
 def safe_output_path(base_dir: Path, relative_name: str) -> Path:
     if not relative_name:
         raise ValueError("output filename must be non-empty")

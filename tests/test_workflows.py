@@ -103,6 +103,35 @@ def test_save_and_read_workflow_metadata_round_trip(tmp_path: Path):
     }
 
 
+def test_save_workflow_metadata_rejects_auxiliary_dir_outside_workflows(
+    monkeypatch,
+    tmp_path: Path,
+):
+    workflows_dir = tmp_path / "workflows"
+    external_dir = tmp_path / "external"
+    workflows_dir.mkdir()
+    external_dir.mkdir()
+    original_resolve = Path.resolve
+
+    def fake_resolve(path: Path, *args, **kwargs):
+        if path == workflows_dir / ".metadata":
+            return external_dir
+        if path == workflows_dir / ".metadata" / "wf.metadata.json":
+            return external_dir / "wf.metadata.json"
+        return original_resolve(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "resolve", fake_resolve)
+
+    with pytest.raises(ValueError, match="workflow path must stay inside workflows_dir"):
+        save_workflow_metadata(
+            workflows_dir,
+            "wf.json",
+            workflow_metadata("wf.json", API_WORKFLOW),
+        )
+
+    assert not (external_dir / "wf.metadata.json").exists()
+
+
 def test_read_workflow_metadata_defaults_when_missing(tmp_path: Path):
     assert read_workflow_metadata(tmp_path, "wf.json", API_WORKFLOW) == {
         "name": "wf.json",

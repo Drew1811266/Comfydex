@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from .paths import ensure_directory, safe_json_path
+from .paths import ensure_directory, safe_auxiliary_json_path, safe_json_path
 from .validation import validate_api_workflow
 
 WIDGET_INPUT_TYPES = {"STRING", "INT", "FLOAT", "BOOLEAN", "BOOL"}
@@ -214,8 +214,11 @@ def _conversion_report_filename(source_name: str) -> str:
 
 
 def conversion_report_path(workflows_dir: Path, source_name: str) -> Path:
-    reports_dir = workflows_dir / ".reports"
-    return safe_json_path(reports_dir, _conversion_report_filename(source_name))
+    return safe_auxiliary_json_path(
+        workflows_dir,
+        ".reports",
+        _conversion_report_filename(source_name),
+    )
 
 
 def convert_ui_to_api(
@@ -420,8 +423,12 @@ def save_conversion_report(
     source_name: str,
     report: dict[str, Any],
 ) -> Path:
-    reports_dir = ensure_directory(workflows_dir / ".reports")
-    path = safe_json_path(reports_dir, _conversion_report_filename(source_name))
+    ensure_directory(workflows_dir / ".reports")
+    path = safe_auxiliary_json_path(
+        workflows_dir,
+        ".reports",
+        _conversion_report_filename(source_name),
+    )
     path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     return path
 

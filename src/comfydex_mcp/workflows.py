@@ -5,7 +5,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
-from .paths import ensure_directory, safe_json_path
+from .paths import ensure_directory, safe_auxiliary_json_path, safe_json_path
 
 MODEL_KEYS = {
     "ckpt_name",
@@ -101,8 +101,12 @@ def save_workflow_metadata(
     filename: str,
     metadata: dict[str, Any],
 ) -> Path:
-    metadata_dir = ensure_directory(workflows_dir / ".metadata")
-    target = safe_json_path(metadata_dir, workflow_metadata_filename(filename))
+    ensure_directory(workflows_dir / ".metadata")
+    target = safe_auxiliary_json_path(
+        workflows_dir,
+        ".metadata",
+        workflow_metadata_filename(filename),
+    )
     target.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
     return target
 
@@ -112,8 +116,11 @@ def read_workflow_metadata(
     filename: str,
     payload: dict[str, Any],
 ) -> dict[str, Any]:
-    metadata_dir = workflows_dir / ".metadata"
-    target = safe_json_path(metadata_dir, workflow_metadata_filename(filename))
+    target = safe_auxiliary_json_path(
+        workflows_dir,
+        ".metadata",
+        workflow_metadata_filename(filename),
+    )
     default = workflow_metadata(filename, payload)
     if not target.exists():
         return default
