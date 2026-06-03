@@ -71,6 +71,10 @@ def _is_link_reference(value: Any) -> bool:
     )
 
 
+def _is_link_like(value: Any) -> bool:
+    return isinstance(value, list) and len(value) == 2
+
+
 def validate_api_workflow(
     workflow: dict[str, Any],
     object_info: dict[str, Any],
@@ -140,6 +144,22 @@ def validate_api_workflow(
                 )
 
         for input_name, value in inputs.items():
+            input_spec = _input_spec(object_info[class_type], input_name)
+            target_types = _target_input_types(input_spec)
+            if (
+                _is_link_like(value)
+                and target_types is not None
+                and not _is_link_reference(value)
+            ):
+                errors.append(
+                    {
+                        "node_id": node_id_text,
+                        "input": input_name,
+                        "reason": "invalid_link_reference",
+                    }
+                )
+                continue
+
             if not _is_link_reference(value):
                 continue
 
@@ -193,9 +213,6 @@ def validate_api_workflow(
                 continue
 
             source_output_type = _source_output_type(source_info, source_slot)
-            target_types = _target_input_types(
-                _input_spec(object_info[class_type], input_name)
-            )
             if (
                 source_output_type is not None
                 and target_types is not None

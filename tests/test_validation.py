@@ -92,6 +92,34 @@ def test_validate_api_workflow_reports_invalid_output_slot():
     )
 
 
+def test_validate_api_workflow_reports_malformed_link_reference():
+    object_info = {
+        "Source": {"input": {"required": {}}, "output": ["IMAGE"]},
+        "SaveImage": {"input": {"required": {"images": ("IMAGE",)}}},
+    }
+
+    malformed_values = ([1, 0], ["1", "bad"], ["1", True])
+
+    for malformed_value in malformed_values:
+        result = validate_api_workflow(
+            {
+                "1": {"class_type": "Source", "inputs": {}},
+                "2": {
+                    "class_type": "SaveImage",
+                    "inputs": {"images": malformed_value},
+                },
+            },
+            object_info,
+        )
+
+        assert result["status"] == "invalid"
+        assert any(
+            error["reason"] == "invalid_link_reference"
+            and error["input"] == "images"
+            for error in result["errors"]
+        )
+
+
 def test_validate_api_workflow_reports_link_type_mismatch():
     object_info = {
         "ModelSource": {"input": {"required": {}}, "output": ["MODEL"]},
