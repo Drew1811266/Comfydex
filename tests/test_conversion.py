@@ -10,7 +10,10 @@ from comfydex_mcp.conversion import (
 
 
 OBJECT_INFO = {
-    "CheckpointLoaderSimple": {"input": {"required": {"ckpt_name": ("STRING",)}}},
+    "CheckpointLoaderSimple": {
+        "input": {"required": {"ckpt_name": ("STRING",)}},
+        "output": ["IMAGE"],
+    },
     "SaveImage": {
         "input": {
             "required": {"images": ("IMAGE",)},
@@ -268,8 +271,11 @@ def test_convert_ui_to_api_does_not_fill_required_link_input_from_widget():
 
 def test_convert_ui_to_api_uses_ui_input_names_for_link_slots():
     object_info = {
-        "ModelSource": {"input": {"required": {}}},
-        "ConditioningSource": {"input": {"required": {}}},
+        "ModelSource": {"input": {"required": {}}, "output": ["MODEL"]},
+        "ConditioningSource": {
+            "input": {"required": {}},
+            "output": ["CONDITIONING"],
+        },
         "KSampler": {
             "input": {
                 "required": {

@@ -41,6 +41,16 @@ def _target_input_types(spec: Any) -> list[str] | None:
     return None
 
 
+def _combo_values(spec: Any) -> list[Any] | None:
+    if (
+        isinstance(spec, (list, tuple))
+        and spec
+        and isinstance(spec[0], (list, tuple))
+    ):
+        return list(spec[0])
+    return None
+
+
 def _requires_link_value(spec: Any) -> bool:
     target_types = _target_input_types(spec)
     if target_types is None:
@@ -68,6 +78,13 @@ def _valid_widget_literal(value: Any, target_types: list[str] | None) -> bool | 
     if not literal_checks:
         return None
     return any(literal_checks)
+
+
+def _valid_literal_value(value: Any, spec: Any, target_types: list[str] | None) -> bool | None:
+    combo_values = _combo_values(spec)
+    if combo_values is not None:
+        return value in combo_values
+    return _valid_widget_literal(value, target_types)
 
 
 def _source_output_type(source_info: Any, output_slot: int) -> str | None:
@@ -201,7 +218,7 @@ def validate_api_workflow(
                 continue
 
             if not _is_link_reference(value):
-                valid_literal = _valid_widget_literal(value, target_types)
+                valid_literal = _valid_literal_value(value, input_spec, target_types)
                 if valid_literal is False:
                     errors.append(
                         {
@@ -248,6 +265,16 @@ def validate_api_workflow(
             if not isinstance(source_info, dict):
                 continue
             source_outputs = source_info.get("output")
+            if not isinstance(source_outputs, (list, tuple)):
+                errors.append(
+                    {
+                        "node_id": node_id_text,
+                        "input": input_name,
+                        "target_node_id": source_node_id,
+                        "reason": "missing_output_metadata",
+                    }
+                )
+                continue
             if isinstance(source_outputs, (list, tuple)) and source_slot >= len(
                 source_outputs
             ):

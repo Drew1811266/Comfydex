@@ -2,14 +2,19 @@ from comfydex_mcp.validation import validate_api_workflow
 
 
 OBJECT_INFO = {
-    "SaveImage": {"input": {"required": {"images": ("IMAGE",)}}},
-    "KSampler": {"input": {"required": {"model": ("MODEL",), "seed": ("INT",)}}},
+    "ImageSource": {"input": {"required": {}}, "output": ["IMAGE"]},
+    "ModelSource": {"input": {"required": {}}, "output": ["MODEL"]},
+    "SaveImage": {"input": {"required": {"images": ("IMAGE",)}}, "output": []},
+    "KSampler": {
+        "input": {"required": {"model": ("MODEL",), "seed": ("INT",)}},
+        "output": ["MODEL"],
+    },
 }
 
 
 def test_validate_api_workflow_passes_valid_links():
     workflow = {
-        "1": {"class_type": "KSampler", "inputs": {"model": ["2", 0], "seed": 1}},
+        "1": {"class_type": "ImageSource", "inputs": {}},
         "2": {"class_type": "SaveImage", "inputs": {"images": ["1", 0]}},
     }
 
@@ -219,6 +224,52 @@ def test_validate_api_workflow_accepts_valid_widget_literals_and_links():
     assert result["status"] == "valid"
 
 
+def test_validate_api_workflow_reports_invalid_combo_widget_literal():
+    object_info = {
+        "Sampler": {
+            "input": {
+                "required": {
+                    "sampler_name": (["euler", "dpmpp_2m"],),
+                }
+            }
+        }
+    }
+
+    invalid = validate_api_workflow(
+        {"1": {"class_type": "Sampler", "inputs": {"sampler_name": 123}}},
+        object_info,
+    )
+    valid = validate_api_workflow(
+        {"1": {"class_type": "Sampler", "inputs": {"sampler_name": "euler"}}},
+        object_info,
+    )
+
+    assert invalid["status"] == "invalid"
+    assert invalid["errors"][0]["reason"] == "invalid_input_value"
+    assert invalid["errors"][0]["input"] == "sampler_name"
+    assert valid["status"] == "valid"
+
+
+def test_validate_api_workflow_reports_missing_source_output_metadata():
+    object_info = {
+        "Source": {"input": {"required": {}}},
+        "SaveImage": {"input": {"required": {"images": ("IMAGE",)}}},
+    }
+    workflow = {
+        "1": {"class_type": "Source", "inputs": {}},
+        "2": {"class_type": "SaveImage", "inputs": {"images": ["1", 0]}},
+    }
+
+    result = validate_api_workflow(workflow, object_info)
+
+    assert result["status"] == "invalid"
+    assert any(
+        error["reason"] == "missing_output_metadata"
+        and error["target_node_id"] == "1"
+        for error in result["errors"]
+    )
+
+
 def test_validate_api_workflow_reports_link_type_mismatch():
     object_info = {
         "ModelSource": {"input": {"required": {}}, "output": ["MODEL"]},
@@ -250,7 +301,10 @@ def test_validate_api_workflow_rejects_empty_workflow():
 
 def test_validate_api_workflow_warns_when_no_probable_output_node():
     result = validate_api_workflow(
-        {"1": {"class_type": "KSampler", "inputs": {"model": ["1", 0], "seed": 1}}},
+        {
+            "1": {"class_type": "ModelSource", "inputs": {}},
+            "2": {"class_type": "KSampler", "inputs": {"model": ["1", 0], "seed": 1}},
+        },
         OBJECT_INFO,
     )
 

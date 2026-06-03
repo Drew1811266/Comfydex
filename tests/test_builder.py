@@ -197,6 +197,63 @@ def test_build_invalid_widget_parameter_type_does_not_claim_submit_ready():
     )
 
 
+def test_build_invalid_combo_parameter_does_not_claim_submit_ready():
+    object_info = dict(TEXT_TO_IMAGE_OBJECT_INFO)
+    object_info["KSampler"] = {
+        "input": {
+            "required": {
+                **TEXT_TO_IMAGE_OBJECT_INFO["KSampler"]["input"]["required"],
+                "sampler_name": (["euler", "dpmpp_2m"],),
+            }
+        },
+        "output": ["LATENT"],
+    }
+
+    result = build_workflow_from_template(
+        "basic-text-to-image",
+        {
+            "checkpoint_name": "dream.safetensors",
+            "positive_prompt": "a quiet studio",
+            "sampler_name": 123,
+        },
+        object_info,
+    )
+
+    assert result["status"] == "invalid"
+    assert result["submit_ready"] is False
+    assert result["workflow"] is None
+    assert any(
+        error["reason"] == "invalid_input_value"
+        and error["input"] == "sampler_name"
+        for error in result["validation"]["errors"]
+    )
+
+
+def test_build_missing_source_output_metadata_does_not_claim_submit_ready():
+    object_info = dict(TEXT_TO_IMAGE_OBJECT_INFO)
+    object_info["CheckpointLoaderSimple"] = {
+        "input": {"required": {"ckpt_name": ("STRING",)}},
+    }
+
+    result = build_workflow_from_template(
+        "basic-text-to-image",
+        {
+            "checkpoint_name": "dream.safetensors",
+            "positive_prompt": "a quiet studio",
+        },
+        object_info,
+    )
+
+    assert result["status"] == "invalid"
+    assert result["submit_ready"] is False
+    assert result["workflow"] is None
+    assert any(
+        error["reason"] == "missing_output_metadata"
+        and error["target_node_id"] == "1"
+        for error in result["validation"]["errors"]
+    )
+
+
 def test_validate_workflow_against_object_info_wraps_validation_report():
     workflow = {
         "1": {
