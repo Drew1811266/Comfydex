@@ -472,6 +472,34 @@ async def test_comfy_patch_workflow_returns_structured_failure_without_saving(
 
 
 @pytest.mark.asyncio
+async def test_comfy_patch_workflow_mcp_call_returns_structured_failure_for_bad_operations(
+    monkeypatch,
+    tmp_path: Path,
+):
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+    save_workflow(tmp_path / "workflows", "source.json", API_WORKFLOW, require_api=True)
+
+    class RemoteShouldNotBeCalled:
+        def __init__(self, *args, **kwargs):
+            raise RuntimeError("malformed operations should not call remote object_info")
+
+    monkeypatch.setattr(server, "ComfyClient", RemoteShouldNotBeCalled)
+
+    _content, structured = await server.mcp.call_tool(
+        "comfy_patch_workflow",
+        {
+            "name": "source.json",
+            "operations": {"op": "set_input"},
+            "target_name": "failed.json",
+        },
+    )
+
+    assert structured["status"] == "failed"
+    assert structured["report"]["errors"] == [{"message": "operations must be a list"}]
+    assert not (tmp_path / "workflows" / "failed.json").exists()
+
+
+@pytest.mark.asyncio
 async def test_comfy_patch_workflow_rejects_path_equivalent_target_before_remote_call(
     monkeypatch,
     tmp_path: Path,

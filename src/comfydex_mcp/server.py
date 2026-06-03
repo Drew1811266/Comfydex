@@ -336,7 +336,7 @@ async def comfy_build_workflow(
 @mcp.tool()
 async def comfy_patch_workflow(
     name: str,
-    operations: list[dict[str, Any]],
+    operations: Any,
     target_name: str | None = None,
     allow_draft: bool = False,
 ) -> dict[str, Any]:
