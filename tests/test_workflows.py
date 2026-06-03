@@ -6,8 +6,12 @@ from comfydex_mcp.workflows import (
     classify_workflow,
     list_workflows,
     read_workflow,
+    read_workflow_metadata,
     save_workflow,
+    save_workflow_metadata,
     summarize_workflow,
+    workflow_metadata,
+    workflow_metadata_filename,
 )
 
 
@@ -48,6 +52,105 @@ def test_save_read_and_list_workflow(tmp_path: Path):
     assert loaded["kind"] == "api"
     assert listed[0]["name"] == "text2img.json"
     assert listed[0]["valid_json"] is True
+
+
+def test_workflow_metadata_filename_uses_workflow_stem():
+    assert workflow_metadata_filename("text2img.json") == "text2img.metadata.json"
+
+
+def test_workflow_metadata_defaults_manual_unknown_for_api_workflow():
+    assert workflow_metadata("wf.json", API_WORKFLOW) == {
+        "name": "wf.json",
+        "kind": "api",
+        "source": "manual",
+        "submit_ready": True,
+        "validation_status": "unknown",
+    }
+
+
+def test_save_and_read_workflow_metadata_round_trip(tmp_path: Path):
+    metadata = workflow_metadata(
+        "wf.json",
+        API_WORKFLOW,
+        source="generated",
+        validation_status="valid",
+    )
+
+    path = save_workflow_metadata(tmp_path, "wf.json", metadata)
+    loaded = read_workflow_metadata(tmp_path, "wf.json", API_WORKFLOW)
+
+    assert path == tmp_path / ".metadata" / "wf.metadata.json"
+    assert loaded == {
+        "name": "wf.json",
+        "kind": "api",
+        "source": "generated",
+        "submit_ready": True,
+        "validation_status": "valid",
+    }
+
+
+def test_read_workflow_metadata_defaults_when_missing(tmp_path: Path):
+    assert read_workflow_metadata(tmp_path, "wf.json", API_WORKFLOW) == {
+        "name": "wf.json",
+        "kind": "api",
+        "source": "manual",
+        "submit_ready": True,
+        "validation_status": "unknown",
+    }
+
+
+def test_read_workflow_metadata_uses_current_payload_for_name_and_kind(tmp_path: Path):
+    save_workflow_metadata(
+        tmp_path,
+        "wf.json",
+        {
+            "name": "stale.json",
+            "kind": "ui",
+            "source": "generated",
+            "submit_ready": False,
+            "validation_status": "invalid",
+        },
+    )
+
+    loaded = read_workflow_metadata(tmp_path, "wf.json", API_WORKFLOW)
+
+    assert loaded == {
+        "name": "wf.json",
+        "kind": "api",
+        "source": "generated",
+        "submit_ready": False,
+        "validation_status": "invalid",
+    }
+
+
+def test_read_workflow_includes_metadata_fields(tmp_path: Path):
+    save_workflow(tmp_path, "wf.json", API_WORKFLOW)
+
+    loaded = read_workflow(tmp_path, "wf.json")
+
+    assert loaded["metadata"] == {
+        "name": "wf.json",
+        "kind": "api",
+        "source": "manual",
+        "submit_ready": True,
+        "validation_status": "unknown",
+    }
+
+
+def test_workflow_metadata_persists_source_and_validation_status(tmp_path: Path):
+    save_workflow(
+        tmp_path,
+        "generated.json",
+        API_WORKFLOW,
+        source="generated",
+        validation_status="valid",
+    )
+
+    loaded = read_workflow(tmp_path, "generated.json")
+
+    assert loaded["metadata"]["source"] == "generated"
+    assert loaded["metadata"]["validation_status"] == "valid"
+    assert loaded["metadata"]["submit_ready"] is True
 
 
 def test_summarize_workflow_finds_node_types_and_models():

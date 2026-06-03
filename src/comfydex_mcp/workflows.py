@@ -65,18 +65,90 @@ def summarize_workflow(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def workflow_metadata_filename(filename: str) -> str:
+    return f"{Path(filename).stem}.metadata.json"
+
+
+def workflow_metadata(
+    filename: str,
+    payload: dict[str, Any],
+    *,
+    source: str = "manual",
+    validation_status: str = "unknown",
+) -> dict[str, Any]:
+    kind = classify_workflow(payload)
+    return {
+        "name": filename,
+        "kind": kind,
+        "source": source,
+        "submit_ready": kind == "api" and validation_status in {"unknown", "valid"},
+        "validation_status": validation_status,
+    }
+
+
+def save_workflow_metadata(
+    workflows_dir: Path,
+    filename: str,
+    metadata: dict[str, Any],
+) -> Path:
+    metadata_dir = ensure_directory(workflows_dir / ".metadata")
+    target = safe_json_path(metadata_dir, workflow_metadata_filename(filename))
+    target.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
+    return target
+
+
+def read_workflow_metadata(
+    workflows_dir: Path,
+    filename: str,
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    metadata_dir = workflows_dir / ".metadata"
+    target = safe_json_path(metadata_dir, workflow_metadata_filename(filename))
+    default = workflow_metadata(filename, payload)
+    if not target.exists():
+        return default
+
+    saved = json.loads(target.read_text(encoding="utf-8"))
+    if not isinstance(saved, dict):
+        return default
+
+    source = saved.get("source", default["source"])
+    validation_status = saved.get("validation_status", default["validation_status"])
+    merged = workflow_metadata(
+        filename,
+        payload,
+        source=source,
+        validation_status=validation_status,
+    )
+    if "submit_ready" in saved:
+        merged["submit_ready"] = saved["submit_ready"]
+    return merged
+
+
 def save_workflow(
     workflows_dir: Path,
     filename: str,
     payload: dict[str, Any],
     *,
     require_api: bool = False,
+    source: str = "manual",
+    validation_status: str = "unknown",
 ) -> Path:
     if require_api and classify_workflow(payload) != "api":
         raise ValueError("workflow must be ComfyUI API prompt JSON")
     ensure_directory(workflows_dir)
     target = safe_json_path(workflows_dir, filename)
     target.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    save_workflow_metadata(
+        workflows_dir,
+        filename,
+        workflow_metadata(
+            filename,
+            payload,
+            source=source,
+            validation_status=validation_status,
+        ),
+    )
     return target
 
 
@@ -88,6 +160,7 @@ def read_workflow(workflows_dir: Path, filename: str) -> dict[str, Any]:
         "path": str(target),
         "kind": classify_workflow(payload),
         "summary": summarize_workflow(payload),
+        "metadata": read_workflow_metadata(workflows_dir, filename, payload),
         "json": payload,
     }
 
