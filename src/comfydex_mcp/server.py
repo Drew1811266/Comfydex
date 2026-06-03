@@ -272,6 +272,8 @@ async def comfy_convert_ui_to_api(
     if loaded["kind"] != "ui":
         raise ValueError("comfy_convert_ui_to_api requires ComfyUI UI workflow JSON")
     safe_json_path(ctx.config.workflows_dir, target_name)
+    if source_name == target_name:
+        raise ValueError("target workflow name must differ from source workflow name")
 
     async with ComfyClient(
         ctx.config.base_url,

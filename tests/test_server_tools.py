@@ -208,6 +208,35 @@ async def test_comfy_convert_ui_to_api_writes_api_when_valid(
 
 
 @pytest.mark.asyncio
+async def test_comfy_convert_ui_to_api_rejects_same_name_before_remote_call(
+    monkeypatch,
+    tmp_path: Path,
+):
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+    original_workflow = {
+        "nodes": [{"id": 1, "type": "SaveImage", "widgets_values": []}],
+        "links": [],
+    }
+    save_workflow(tmp_path / "workflows", "same.ui.json", original_workflow)
+
+    class RemoteShouldNotBeCalled:
+        def __init__(self, *args, **kwargs):
+            raise RuntimeError("remote called before same-name validation")
+
+    monkeypatch.setattr(server, "ComfyClient", RemoteShouldNotBeCalled)
+
+    with pytest.raises(
+        ValueError,
+        match="target workflow name must differ from source workflow name",
+    ):
+        await server.comfy_convert_ui_to_api("same.ui.json", "same.ui.json")
+
+    loaded = server.read_workflow(tmp_path / "workflows", "same.ui.json")
+    assert loaded["kind"] == "ui"
+    assert loaded["json"] == original_workflow
+
+
+@pytest.mark.asyncio
 async def test_comfy_convert_ui_to_api_failure_writes_report_not_api(
     monkeypatch,
     tmp_path: Path,
