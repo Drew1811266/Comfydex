@@ -58,6 +58,11 @@ def test_workflow_metadata_filename_uses_workflow_stem():
     assert workflow_metadata_filename("text2img.json") == "text2img.metadata.json"
 
 
+def test_workflow_metadata_filename_rejects_nested_workflow_filename():
+    with pytest.raises(ValueError, match="simple .json filename"):
+        workflow_metadata_filename("../wf.json")
+
+
 def test_workflow_metadata_defaults_manual_unknown_for_api_workflow():
     assert workflow_metadata("wf.json", API_WORKFLOW) == {
         "name": "wf.json",
@@ -151,6 +156,46 @@ def test_workflow_metadata_persists_source_and_validation_status(tmp_path: Path)
     assert loaded["metadata"]["source"] == "generated"
     assert loaded["metadata"]["validation_status"] == "valid"
     assert loaded["metadata"]["submit_ready"] is True
+
+
+def test_read_workflow_uses_default_metadata_when_metadata_json_is_invalid(
+    tmp_path: Path,
+):
+    save_workflow(tmp_path, "wf.json", API_WORKFLOW)
+    (tmp_path / ".metadata" / "wf.metadata.json").write_text("{", encoding="utf-8")
+
+    loaded = read_workflow(tmp_path, "wf.json")
+
+    assert loaded["metadata"] == {
+        "name": "wf.json",
+        "kind": "api",
+        "source": "manual",
+        "submit_ready": True,
+        "validation_status": "unknown",
+    }
+
+
+def test_read_workflow_ignores_metadata_fields_with_invalid_types(tmp_path: Path):
+    save_workflow(tmp_path, "wf.json", API_WORKFLOW)
+    save_workflow_metadata(
+        tmp_path,
+        "wf.json",
+        {
+            "source": ["generated"],
+            "validation_status": {"status": "valid"},
+            "submit_ready": "yes",
+        },
+    )
+
+    loaded = read_workflow(tmp_path, "wf.json")
+
+    assert loaded["metadata"] == {
+        "name": "wf.json",
+        "kind": "api",
+        "source": "manual",
+        "submit_ready": True,
+        "validation_status": "unknown",
+    }
 
 
 def test_summarize_workflow_finds_node_types_and_models():

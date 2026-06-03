@@ -66,6 +66,8 @@ def summarize_workflow(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def workflow_metadata_filename(filename: str) -> str:
+    if not filename or filename != Path(filename).name or not filename.endswith(".json"):
+        raise ValueError("workflow filename must be a simple .json filename")
     return f"{Path(filename).stem}.metadata.json"
 
 
@@ -108,20 +110,30 @@ def read_workflow_metadata(
     if not target.exists():
         return default
 
-    saved = json.loads(target.read_text(encoding="utf-8"))
+    try:
+        saved = json.loads(target.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return default
     if not isinstance(saved, dict):
         return default
 
-    source = saved.get("source", default["source"])
-    validation_status = saved.get("validation_status", default["validation_status"])
+    saved_source = saved.get("source")
+    source = saved_source if isinstance(saved_source, str) else default["source"]
+    saved_validation_status = saved.get("validation_status")
+    validation_status = (
+        saved_validation_status
+        if isinstance(saved_validation_status, str)
+        else default["validation_status"]
+    )
     merged = workflow_metadata(
         filename,
         payload,
         source=source,
         validation_status=validation_status,
     )
-    if "submit_ready" in saved:
-        merged["submit_ready"] = saved["submit_ready"]
+    saved_submit_ready = saved.get("submit_ready")
+    if isinstance(saved_submit_ready, bool):
+        merged["submit_ready"] = saved_submit_ready
     return merged
 
 
