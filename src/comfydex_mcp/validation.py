@@ -49,13 +49,22 @@ def validate_api_workflow(
             errors.append({"node_id": node_id_text, "reason": "node_not_object"})
             continue
 
-        class_type = node.get("class_type")
-        if class_type in PROBABLE_OUTPUT_NODE_TYPES:
-            has_probable_output_node = True
-
         if "class_type" not in node:
             errors.append({"node_id": node_id_text, "reason": "missing_class_type"})
             continue
+
+        class_type = node["class_type"]
+        if not isinstance(class_type, str):
+            errors.append(
+                {
+                    "node_id": node_id_text,
+                    "reason": "invalid_class_type",
+                }
+            )
+            continue
+
+        if class_type in PROBABLE_OUTPUT_NODE_TYPES:
+            has_probable_output_node = True
 
         if class_type not in object_info:
             errors.append(

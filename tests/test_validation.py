@@ -29,6 +29,16 @@ def test_validate_api_workflow_reports_missing_node_type():
     assert result["errors"][0]["reason"] == "missing_object_info"
 
 
+def test_validate_api_workflow_reports_invalid_class_type_without_raising():
+    result = validate_api_workflow(
+        {"1": {"class_type": ["SaveImage"], "inputs": {}}},
+        OBJECT_INFO,
+    )
+
+    assert result["status"] == "invalid"
+    assert result["errors"][0]["reason"] == "invalid_class_type"
+
+
 def test_validate_api_workflow_reports_missing_required_input():
     result = validate_api_workflow(
         {"1": {"class_type": "SaveImage", "inputs": {}}},
