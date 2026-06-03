@@ -447,6 +447,61 @@ async def test_comfy_patch_workflow_invalid_patch_does_not_save_without_draft(
 
 
 @pytest.mark.asyncio
+async def test_comfy_patch_workflow_allow_draft_saves_invalid_non_submit_ready_workflow(
+    monkeypatch,
+    tmp_path: Path,
+):
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+    workflow = {
+        "1": {"class_type": "ImageSource", "inputs": {}},
+        "2": {
+            "class_type": "SaveImage",
+            "inputs": {"images": ["1", 0], "filename_prefix": "old"},
+        },
+    }
+    save_workflow(tmp_path / "workflows", "source.json", workflow, require_api=True)
+    monkeypatch.setattr(server, "ComfyClient", object_info_client(PATCH_OBJECT_INFO))
+
+    result = await server.comfy_patch_workflow(
+        "source.json",
+        [{"op": "remove_input", "node_id": "2", "input": "images"}],
+        target_name="draft.json",
+        allow_draft=True,
+    )
+
+    assert result["status"] == "invalid"
+    assert result["submit_ready"] is False
+    assert result["saved_workflow"] == "draft.json"
+    assert result["draft_saved"] is True
+    draft = server.read_workflow(tmp_path / "workflows", "draft.json")
+    assert draft["json"]["2"]["inputs"] == {"filename_prefix": "old"}
+    assert draft["metadata"]["source"] == "patched"
+    assert draft["metadata"]["validation_status"] == "invalid"
+    assert draft["metadata"]["submit_ready"] is False
+
+
+@pytest.mark.asyncio
+async def test_comfy_patch_workflow_rejects_ui_before_object_info(
+    monkeypatch,
+    tmp_path: Path,
+):
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+    save_workflow(tmp_path / "workflows", "ui.json", UI_WORKFLOW)
+
+    class RemoteShouldNotBeCalled:
+        def __init__(self, *args, **kwargs):
+            raise RuntimeError("ui workflow should be rejected before object_info")
+
+    monkeypatch.setattr(server, "ComfyClient", RemoteShouldNotBeCalled)
+
+    with pytest.raises(ValueError, match="requires ComfyUI API prompt JSON"):
+        await server.comfy_patch_workflow(
+            "ui.json",
+            [{"op": "set_input", "node_id": "1", "input": "seed", "value": 1}],
+        )
+
+
+@pytest.mark.asyncio
 async def test_comfy_patch_workflow_returns_structured_failure_without_saving(
     monkeypatch,
     tmp_path: Path,
