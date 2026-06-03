@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 PROBABLE_OUTPUT_NODE_TYPES = {"PreviewImage", "SaveAudio", "SaveImage"}
+WIDGET_INPUT_TYPES = {"BOOL", "BOOLEAN", "FLOAT", "INT", "STRING"}
 
 
 def _required_inputs(node_info: Any) -> dict[str, Any]:
@@ -38,6 +39,13 @@ def _target_input_types(spec: Any) -> list[str] | None:
     if isinstance(first, str) and first:
         return [first]
     return None
+
+
+def _requires_link_value(spec: Any) -> bool:
+    target_types = _target_input_types(spec)
+    if target_types is None:
+        return False
+    return all(target_type not in WIDGET_INPUT_TYPES for target_type in target_types)
 
 
 def _source_output_type(source_info: Any, output_slot: int) -> str | None:
@@ -146,6 +154,16 @@ def validate_api_workflow(
         for input_name, value in inputs.items():
             input_spec = _input_spec(object_info[class_type], input_name)
             target_types = _target_input_types(input_spec)
+            if _requires_link_value(input_spec) and not _is_link_reference(value):
+                errors.append(
+                    {
+                        "node_id": node_id_text,
+                        "input": input_name,
+                        "reason": "invalid_link_reference",
+                    }
+                )
+                continue
+
             if (
                 _is_link_like(value)
                 and target_types is not None
