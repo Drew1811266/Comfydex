@@ -47,6 +47,69 @@ async def test_comfy_import_ui_workflow_tool(monkeypatch, tmp_path: Path):
 
 
 @pytest.mark.asyncio
+async def test_comfy_import_ui_workflow_rejects_api_before_object_info(
+    monkeypatch,
+    tmp_path: Path,
+):
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+
+    class RemoteShouldNotBeCalled:
+        def __init__(self, *args, **kwargs):
+            raise RuntimeError("remote called before payload validation")
+
+    monkeypatch.setattr(server, "ComfyClient", RemoteShouldNotBeCalled)
+
+    with pytest.raises(ValueError, match="requires ComfyUI UI workflow JSON"):
+        await server.comfy_import_ui_workflow(
+            "bad.ui.json",
+            API_WORKFLOW,
+            use_object_info=True,
+        )
+
+
+@pytest.mark.asyncio
+async def test_comfy_import_ui_workflow_uses_object_info_for_readiness(
+    monkeypatch,
+    tmp_path: Path,
+):
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+    calls = []
+
+    class ObjectInfoClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            pass
+
+        async def get_object_info(self):
+            calls.append("get_object_info")
+            return {"SaveImage": {}}
+
+    monkeypatch.setattr(server, "ComfyClient", ObjectInfoClient)
+
+    result = await server.comfy_import_ui_workflow(
+        "sample.ui.json",
+        {
+            "nodes": [
+                {"id": 1, "type": "SaveImage"},
+                {"id": 2, "type": "CustomNode"},
+            ],
+            "links": [],
+        },
+        use_object_info=True,
+    )
+
+    assert calls == ["get_object_info"]
+    assert result["readiness"]["known_node_types"] == ["SaveImage"]
+    assert result["readiness"]["unknown_node_types"] == ["CustomNode"]
+    assert result["readiness"]["conversion_ready"] is False
+
+
+@pytest.mark.asyncio
 async def test_submit_workflow_rejects_missing_prompt_id(monkeypatch, tmp_path: Path):
     monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
     save_workflow(tmp_path / "workflows", "wf.json", API_WORKFLOW, require_api=True)

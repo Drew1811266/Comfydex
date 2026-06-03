@@ -263,6 +263,12 @@ async def comfy_import_ui_workflow(
     use_object_info: bool = True,
 ) -> dict[str, Any]:
     ctx = tool_context()
+    classification = classify_workflow_payload(workflow)
+    if classification["kind"] != "ui":
+        raise ValueError(
+            "comfy_import_ui_workflow requires ComfyUI UI workflow JSON"
+        )
+
     object_info = None
     if use_object_info:
         async with ComfyClient(
