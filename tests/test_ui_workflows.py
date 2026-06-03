@@ -1,7 +1,17 @@
+from pathlib import Path
+
 from comfydex_mcp.ui_workflows import (
     classify_workflow_payload,
+    import_ui_workflow,
     summarize_import_readiness,
 )
+
+
+UI_WORKFLOW = {
+    "last_node_id": 2,
+    "nodes": [{"id": 1, "type": "CheckpointLoaderSimple"}, {"id": 2, "type": "SaveImage"}],
+    "links": [],
+}
 
 
 def test_classify_workflow_payload_identifies_ui_with_evidence():
@@ -68,3 +78,22 @@ def test_summarize_import_readiness_does_not_mark_unknown_without_object_info():
     assert result["unknown_node_types"] == []
     assert result["node_types"] == {"CustomNode": 1, "SaveImage": 1}
     assert result["conversion_ready"] is True
+
+
+def test_import_ui_workflow_saves_original_json(tmp_path: Path):
+    result = import_ui_workflow(tmp_path, "sample.ui.json", UI_WORKFLOW, object_info={})
+
+    assert result["name"] == "sample.ui.json"
+    assert result["metadata"]["kind"] == "ui"
+    assert result["metadata"]["source"] == "imported"
+    assert (tmp_path / "sample.ui.json").exists()
+
+
+def test_import_ui_workflow_rejects_api_payload(tmp_path: Path):
+    api = {"1": {"class_type": "SaveImage", "inputs": {}}}
+    try:
+        import_ui_workflow(tmp_path, "bad.ui.json", api)
+    except ValueError as exc:
+        assert "requires ComfyUI UI workflow JSON" in str(exc)
+    else:
+        raise AssertionError("expected ValueError")

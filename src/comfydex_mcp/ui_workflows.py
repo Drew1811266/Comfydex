@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 from collections import Counter
+from pathlib import Path
 from typing import Any
+
+from .workflows import read_workflow, save_workflow
 
 
 def classify_workflow_payload(payload: Any) -> dict[str, Any]:
@@ -62,4 +65,33 @@ def summarize_import_readiness(
         "unknown_node_types": unknown_node_types,
         "node_types": dict(sorted(node_types.items())),
         "conversion_ready": object_info is None or not unknown_node_types,
+    }
+
+
+def import_ui_workflow(
+    workflows_dir: Path,
+    filename: str,
+    payload: dict[str, Any],
+    object_info: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    classification = classify_workflow_payload(payload)
+    if classification["kind"] != "ui":
+        raise ValueError(
+            "comfy_import_ui_workflow requires ComfyUI UI workflow JSON"
+        )
+
+    path = save_workflow(
+        workflows_dir,
+        filename,
+        payload,
+        source="imported",
+        validation_status="unknown",
+    )
+    loaded = read_workflow(path.parent, path.name)
+    return {
+        "name": loaded["name"],
+        "path": loaded["path"],
+        "metadata": loaded["metadata"],
+        "classification": classification,
+        "readiness": summarize_import_readiness(payload, object_info),
     }

@@ -16,6 +16,7 @@ from .comfy_client import ComfyClient, extract_output_refs
 from .config import ComfydexConfig, load_config, redact_config, save_config
 from .paths import safe_output_path
 from .runs import append_event, create_run, list_runs, read_run, register_outputs, update_status
+from .ui_workflows import classify_workflow_payload, import_ui_workflow
 from .workflows import list_workflows, read_workflow, save_workflow
 from .ws import wait_for_prompt
 
@@ -248,6 +249,34 @@ async def comfy_save_workflow(
         require_api=require_api,
     )
     return read_workflow(path.parent, path.name)
+
+
+@mcp.tool()
+async def comfy_classify_workflow(workflow: dict[str, Any]) -> dict[str, Any]:
+    return classify_workflow_payload(workflow)
+
+
+@mcp.tool()
+async def comfy_import_ui_workflow(
+    name: str,
+    workflow: dict[str, Any],
+    use_object_info: bool = True,
+) -> dict[str, Any]:
+    ctx = tool_context()
+    object_info = None
+    if use_object_info:
+        async with ComfyClient(
+            ctx.config.base_url,
+            ctx.config.headers,
+            ctx.config.request_timeout_seconds,
+        ) as client:
+            object_info = await client.get_object_info()
+    return import_ui_workflow(
+        ctx.config.workflows_dir,
+        name,
+        workflow,
+        object_info=object_info,
+    )
 
 
 @mcp.tool()

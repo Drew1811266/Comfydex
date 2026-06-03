@@ -24,6 +24,29 @@ def test_tool_context_loads_default_config(tmp_path: Path):
 
 
 @pytest.mark.asyncio
+async def test_comfy_classify_workflow_tool():
+    result = await server.comfy_classify_workflow(
+        {"nodes": [{"id": 1, "type": "SaveImage"}], "links": []}
+    )
+
+    assert result["kind"] == "ui"
+    assert "nodes is a list" in result["evidence"]
+
+
+@pytest.mark.asyncio
+async def test_comfy_import_ui_workflow_tool(monkeypatch, tmp_path: Path):
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+    result = await server.comfy_import_ui_workflow(
+        "sample.ui.json",
+        {"nodes": [{"id": 1, "type": "SaveImage"}], "links": []},
+        use_object_info=False,
+    )
+
+    assert result["metadata"]["kind"] == "ui"
+    assert (tmp_path / "workflows" / "sample.ui.json").exists()
+
+
+@pytest.mark.asyncio
 async def test_submit_workflow_rejects_missing_prompt_id(monkeypatch, tmp_path: Path):
     monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
     save_workflow(tmp_path / "workflows", "wf.json", API_WORKFLOW, require_api=True)
