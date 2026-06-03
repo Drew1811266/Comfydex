@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from copy import deepcopy
 from dataclasses import asdict, dataclass
 from typing import Any
@@ -11,6 +12,8 @@ class WorkflowTemplate:
     name: str
     description: str
     required_nodes: list[str]
+    nodes: list[dict[str, Any]]
+    links: list[dict[str, Any]]
     parameters: dict[str, Any]
     required_inputs: list[str]
     assumptions: list[str]
@@ -28,9 +31,90 @@ _TEMPLATES: tuple[WorkflowTemplate, ...] = (
         required_nodes=[
             "CheckpointLoaderSimple",
             "CLIPTextEncode",
+            "EmptyLatentImage",
             "KSampler",
             "VAEDecode",
             "SaveImage",
+        ],
+        nodes=[
+            {
+                "key": "checkpoint",
+                "class_type": "CheckpointLoaderSimple",
+                "inputs": {"ckpt_name": {"parameter": "checkpoint_name"}},
+            },
+            {
+                "key": "positive_prompt",
+                "class_type": "CLIPTextEncode",
+                "inputs": {"text": {"parameter": "positive_prompt"}},
+            },
+            {
+                "key": "negative_prompt",
+                "class_type": "CLIPTextEncode",
+                "inputs": {"text": {"parameter": "negative_prompt"}},
+            },
+            {
+                "key": "latent",
+                "class_type": "EmptyLatentImage",
+                "inputs": {
+                    "width": {"parameter": "width"},
+                    "height": {"parameter": "height"},
+                    "batch_size": {"value": 1},
+                },
+            },
+            {
+                "key": "sampler",
+                "class_type": "KSampler",
+                "inputs": {
+                    "seed": {"parameter": "seed"},
+                    "steps": {"parameter": "steps"},
+                    "cfg": {"parameter": "cfg"},
+                    "sampler_name": {"parameter": "sampler_name"},
+                    "scheduler": {"parameter": "scheduler"},
+                    "denoise": {"value": 1.0},
+                },
+            },
+            {"key": "decode", "class_type": "VAEDecode", "inputs": {}},
+            {
+                "key": "save",
+                "class_type": "SaveImage",
+                "inputs": {"filename_prefix": {"value": "Comfydex"}},
+            },
+        ],
+        links=[
+            {"from": "checkpoint", "output_slot": 0, "to": "sampler", "input": "model"},
+            {
+                "from": "checkpoint",
+                "output_slot": 1,
+                "to": "positive_prompt",
+                "input": "clip",
+            },
+            {
+                "from": "checkpoint",
+                "output_slot": 1,
+                "to": "negative_prompt",
+                "input": "clip",
+            },
+            {
+                "from": "positive_prompt",
+                "output_slot": 0,
+                "to": "sampler",
+                "input": "positive",
+            },
+            {
+                "from": "negative_prompt",
+                "output_slot": 0,
+                "to": "sampler",
+                "input": "negative",
+            },
+            {
+                "from": "latent",
+                "output_slot": 0,
+                "to": "sampler",
+                "input": "latent_image",
+            },
+            {"from": "sampler", "output_slot": 0, "to": "decode", "input": "samples"},
+            {"from": "checkpoint", "output_slot": 2, "to": "decode", "input": "vae"},
+            {"from": "decode", "output_slot": 0, "to": "save", "input": "images"},
         ],
         parameters={
             "width": 512,
@@ -62,6 +146,85 @@ _TEMPLATES: tuple[WorkflowTemplate, ...] = (
             "VAEDecode",
             "SaveImage",
         ],
+        nodes=[
+            {
+                "key": "load_image",
+                "class_type": "LoadImage",
+                "inputs": {"image": {"parameter": "image"}},
+            },
+            {
+                "key": "checkpoint",
+                "class_type": "CheckpointLoaderSimple",
+                "inputs": {"ckpt_name": {"parameter": "checkpoint_name"}},
+            },
+            {
+                "key": "positive_prompt",
+                "class_type": "CLIPTextEncode",
+                "inputs": {"text": {"parameter": "positive_prompt"}},
+            },
+            {
+                "key": "negative_prompt",
+                "class_type": "CLIPTextEncode",
+                "inputs": {"text": {"parameter": "negative_prompt"}},
+            },
+            {"key": "encode", "class_type": "VAEEncode", "inputs": {}},
+            {
+                "key": "sampler",
+                "class_type": "KSampler",
+                "inputs": {
+                    "seed": {"parameter": "seed"},
+                    "steps": {"parameter": "steps"},
+                    "cfg": {"parameter": "cfg"},
+                    "sampler_name": {"parameter": "sampler_name"},
+                    "scheduler": {"parameter": "scheduler"},
+                    "denoise": {"parameter": "denoise"},
+                },
+            },
+            {"key": "decode", "class_type": "VAEDecode", "inputs": {}},
+            {
+                "key": "save",
+                "class_type": "SaveImage",
+                "inputs": {"filename_prefix": {"value": "Comfydex"}},
+            },
+        ],
+        links=[
+            {"from": "load_image", "output_slot": 0, "to": "encode", "input": "pixels"},
+            {"from": "checkpoint", "output_slot": 2, "to": "encode", "input": "vae"},
+            {"from": "checkpoint", "output_slot": 0, "to": "sampler", "input": "model"},
+            {
+                "from": "checkpoint",
+                "output_slot": 1,
+                "to": "positive_prompt",
+                "input": "clip",
+            },
+            {
+                "from": "checkpoint",
+                "output_slot": 1,
+                "to": "negative_prompt",
+                "input": "clip",
+            },
+            {
+                "from": "positive_prompt",
+                "output_slot": 0,
+                "to": "sampler",
+                "input": "positive",
+            },
+            {
+                "from": "negative_prompt",
+                "output_slot": 0,
+                "to": "sampler",
+                "input": "negative",
+            },
+            {
+                "from": "encode",
+                "output_slot": 0,
+                "to": "sampler",
+                "input": "latent_image",
+            },
+            {"from": "sampler", "output_slot": 0, "to": "decode", "input": "samples"},
+            {"from": "checkpoint", "output_slot": 2, "to": "decode", "input": "vae"},
+            {"from": "decode", "output_slot": 0, "to": "save", "input": "images"},
+        ],
         parameters={
             "steps": 20,
             "cfg": 7.0,
@@ -88,6 +251,34 @@ _TEMPLATES: tuple[WorkflowTemplate, ...] = (
             "ImageUpscaleWithModel",
             "SaveImage",
         ],
+        nodes=[
+            {
+                "key": "load_image",
+                "class_type": "LoadImage",
+                "inputs": {"image": {"parameter": "image"}},
+            },
+            {
+                "key": "upscale_model",
+                "class_type": "UpscaleModelLoader",
+                "inputs": {"model_name": {"parameter": "upscale_model_name"}},
+            },
+            {"key": "upscale", "class_type": "ImageUpscaleWithModel", "inputs": {}},
+            {
+                "key": "save",
+                "class_type": "SaveImage",
+                "inputs": {"filename_prefix": {"parameter": "output_prefix"}},
+            },
+        ],
+        links=[
+            {"from": "load_image", "output_slot": 0, "to": "upscale", "input": "image"},
+            {
+                "from": "upscale_model",
+                "output_slot": 0,
+                "to": "upscale",
+                "input": "upscale_model",
+            },
+            {"from": "upscale", "output_slot": 0, "to": "save", "input": "images"},
+        ],
         parameters={
             "upscale_model_name": None,
             "output_prefix": "Comfydex_upscale",
@@ -110,6 +301,86 @@ _TEMPLATES: tuple[WorkflowTemplate, ...] = (
             "KSampler",
             "VAEDecode",
             "SaveImage",
+        ],
+        nodes=[
+            {
+                "key": "checkpoint",
+                "class_type": "CheckpointLoaderSimple",
+                "inputs": {"ckpt_name": {"parameter": "checkpoint_name"}},
+            },
+            {
+                "key": "positive_prompt",
+                "class_type": "CLIPTextEncode",
+                "inputs": {"text": {"parameter": "positive_prompt"}},
+            },
+            {
+                "key": "negative_prompt",
+                "class_type": "CLIPTextEncode",
+                "inputs": {"text": {"parameter": "negative_prompt"}},
+            },
+            {
+                "key": "latent",
+                "class_type": "EmptyLatentImage",
+                "inputs": {
+                    "width": {"parameter": "width"},
+                    "height": {"parameter": "height"},
+                    "batch_size": {"value": 1},
+                },
+            },
+            {
+                "key": "sampler",
+                "class_type": "KSampler",
+                "inputs": {
+                    "seed": {"parameter": "seed"},
+                    "steps": {"parameter": "steps"},
+                    "cfg": {"parameter": "cfg"},
+                    "sampler_name": {"parameter": "sampler_name"},
+                    "scheduler": {"parameter": "scheduler"},
+                    "denoise": {"value": 1.0},
+                },
+            },
+            {"key": "decode", "class_type": "VAEDecode", "inputs": {}},
+            {
+                "key": "save",
+                "class_type": "SaveImage",
+                "inputs": {"filename_prefix": {"value": "Comfydex"}},
+            },
+        ],
+        links=[
+            {"from": "checkpoint", "output_slot": 0, "to": "sampler", "input": "model"},
+            {
+                "from": "checkpoint",
+                "output_slot": 1,
+                "to": "positive_prompt",
+                "input": "clip",
+            },
+            {
+                "from": "checkpoint",
+                "output_slot": 1,
+                "to": "negative_prompt",
+                "input": "clip",
+            },
+            {
+                "from": "positive_prompt",
+                "output_slot": 0,
+                "to": "sampler",
+                "input": "positive",
+            },
+            {
+                "from": "negative_prompt",
+                "output_slot": 0,
+                "to": "sampler",
+                "input": "negative",
+            },
+            {
+                "from": "latent",
+                "output_slot": 0,
+                "to": "sampler",
+                "input": "latent_image",
+            },
+            {"from": "sampler", "output_slot": 0, "to": "decode", "input": "samples"},
+            {"from": "checkpoint", "output_slot": 2, "to": "decode", "input": "vae"},
+            {"from": "decode", "output_slot": 0, "to": "save", "input": "images"},
         ],
         parameters={
             "width": 1024,
@@ -140,6 +411,97 @@ _TEMPLATES: tuple[WorkflowTemplate, ...] = (
             "KSampler",
             "VAEDecode",
             "SaveImage",
+        ],
+        nodes=[
+            {
+                "key": "checkpoint",
+                "class_type": "CheckpointLoaderSimple",
+                "inputs": {"ckpt_name": {"parameter": "checkpoint_name"}},
+            },
+            {
+                "key": "lora",
+                "class_type": "LoraLoader",
+                "inputs": {
+                    "lora_name": {"parameter": "lora_name"},
+                    "strength_model": {"parameter": "strength_model"},
+                    "strength_clip": {"parameter": "strength_clip"},
+                },
+            },
+            {
+                "key": "positive_prompt",
+                "class_type": "CLIPTextEncode",
+                "inputs": {"text": {"parameter": "positive_prompt"}},
+            },
+            {
+                "key": "negative_prompt",
+                "class_type": "CLIPTextEncode",
+                "inputs": {"text": {"parameter": "negative_prompt"}},
+            },
+            {
+                "key": "latent",
+                "class_type": "EmptyLatentImage",
+                "inputs": {
+                    "width": {"parameter": "width"},
+                    "height": {"parameter": "height"},
+                    "batch_size": {"value": 1},
+                },
+            },
+            {
+                "key": "sampler",
+                "class_type": "KSampler",
+                "inputs": {
+                    "seed": {"parameter": "seed"},
+                    "steps": {"parameter": "steps"},
+                    "cfg": {"parameter": "cfg"},
+                    "sampler_name": {"parameter": "sampler_name"},
+                    "scheduler": {"parameter": "scheduler"},
+                    "denoise": {"value": 1.0},
+                },
+            },
+            {"key": "decode", "class_type": "VAEDecode", "inputs": {}},
+            {
+                "key": "save",
+                "class_type": "SaveImage",
+                "inputs": {"filename_prefix": {"value": "Comfydex"}},
+            },
+        ],
+        links=[
+            {"from": "checkpoint", "output_slot": 0, "to": "lora", "input": "model"},
+            {"from": "checkpoint", "output_slot": 1, "to": "lora", "input": "clip"},
+            {"from": "lora", "output_slot": 0, "to": "sampler", "input": "model"},
+            {
+                "from": "lora",
+                "output_slot": 1,
+                "to": "positive_prompt",
+                "input": "clip",
+            },
+            {
+                "from": "lora",
+                "output_slot": 1,
+                "to": "negative_prompt",
+                "input": "clip",
+            },
+            {
+                "from": "positive_prompt",
+                "output_slot": 0,
+                "to": "sampler",
+                "input": "positive",
+            },
+            {
+                "from": "negative_prompt",
+                "output_slot": 0,
+                "to": "sampler",
+                "input": "negative",
+            },
+            {
+                "from": "latent",
+                "output_slot": 0,
+                "to": "sampler",
+                "input": "latent_image",
+            },
+            {"from": "sampler", "output_slot": 0, "to": "decode", "input": "samples"},
+            {"from": "checkpoint", "output_slot": 2, "to": "decode", "input": "vae"},
+            {"from": "decode", "output_slot": 0, "to": "save", "input": "images"},
         ],
         parameters={
             "width": 512,
@@ -174,6 +536,119 @@ _TEMPLATES: tuple[WorkflowTemplate, ...] = (
             "KSampler",
             "VAEDecode",
             "SaveImage",
+        ],
+        nodes=[
+            {
+                "key": "pose_image",
+                "class_type": "LoadImage",
+                "inputs": {"image": {"parameter": "pose_image"}},
+            },
+            {
+                "key": "checkpoint",
+                "class_type": "CheckpointLoaderSimple",
+                "inputs": {"ckpt_name": {"parameter": "checkpoint_name"}},
+            },
+            {
+                "key": "controlnet",
+                "class_type": "ControlNetLoader",
+                "inputs": {"control_net_name": {"parameter": "controlnet_name"}},
+            },
+            {
+                "key": "positive_prompt",
+                "class_type": "CLIPTextEncode",
+                "inputs": {"text": {"parameter": "positive_prompt"}},
+            },
+            {
+                "key": "negative_prompt",
+                "class_type": "CLIPTextEncode",
+                "inputs": {"text": {"parameter": "negative_prompt"}},
+            },
+            {
+                "key": "apply_controlnet",
+                "class_type": "ControlNetApply",
+                "inputs": {"strength": {"parameter": "control_strength"}},
+            },
+            {
+                "key": "latent",
+                "class_type": "EmptyLatentImage",
+                "inputs": {
+                    "width": {"parameter": "width"},
+                    "height": {"parameter": "height"},
+                    "batch_size": {"value": 1},
+                },
+            },
+            {
+                "key": "sampler",
+                "class_type": "KSampler",
+                "inputs": {
+                    "seed": {"parameter": "seed"},
+                    "steps": {"parameter": "steps"},
+                    "cfg": {"parameter": "cfg"},
+                    "sampler_name": {"parameter": "sampler_name"},
+                    "scheduler": {"parameter": "scheduler"},
+                    "denoise": {"value": 1.0},
+                },
+            },
+            {"key": "decode", "class_type": "VAEDecode", "inputs": {}},
+            {
+                "key": "save",
+                "class_type": "SaveImage",
+                "inputs": {"filename_prefix": {"value": "Comfydex"}},
+            },
+        ],
+        links=[
+            {
+                "from": "checkpoint",
+                "output_slot": 1,
+                "to": "positive_prompt",
+                "input": "clip",
+            },
+            {
+                "from": "checkpoint",
+                "output_slot": 1,
+                "to": "negative_prompt",
+                "input": "clip",
+            },
+            {
+                "from": "positive_prompt",
+                "output_slot": 0,
+                "to": "apply_controlnet",
+                "input": "conditioning",
+            },
+            {
+                "from": "controlnet",
+                "output_slot": 0,
+                "to": "apply_controlnet",
+                "input": "control_net",
+            },
+            {
+                "from": "pose_image",
+                "output_slot": 0,
+                "to": "apply_controlnet",
+                "input": "image",
+            },
+            {
+                "from": "apply_controlnet",
+                "output_slot": 0,
+                "to": "sampler",
+                "input": "positive",
+            },
+            {
+                "from": "negative_prompt",
+                "output_slot": 0,
+                "to": "sampler",
+                "input": "negative",
+            },
+            {"from": "checkpoint", "output_slot": 0, "to": "sampler", "input": "model"},
+            {
+                "from": "latent",
+                "output_slot": 0,
+                "to": "sampler",
+                "input": "latent_image",
+            },
+            {"from": "sampler", "output_slot": 0, "to": "decode", "input": "samples"},
+            {"from": "checkpoint", "output_slot": 2, "to": "decode", "input": "vae"},
+            {"from": "decode", "output_slot": 0, "to": "save", "input": "images"},
         ],
         parameters={
             "width": 512,
@@ -243,6 +718,7 @@ def build_template_plan(
         else suggest_workflow_template(intent)
     )
     user_parameters = parameters or {}
+    _require_json_serializable(user_parameters)
     merged_parameters = {
         **deepcopy(template["parameters"]),
         **deepcopy(user_parameters),
@@ -282,3 +758,10 @@ def _has_parameter_value(parameters: dict[str, Any], name: str) -> bool:
         return False
     value = parameters[name]
     return value is not None and value != ""
+
+
+def _require_json_serializable(value: Any) -> None:
+    try:
+        json.dumps(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("parameters must be JSON serializable") from exc

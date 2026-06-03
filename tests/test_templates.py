@@ -1,7 +1,10 @@
+from pathlib import Path
+
 import pytest
 
 from comfydex_mcp.templates import (
     build_template_plan,
+    get_workflow_template,
     list_workflow_templates,
     suggest_workflow_template,
 )
@@ -40,6 +43,41 @@ def test_each_template_has_required_metadata():
         }
         assert isinstance(template["required_nodes"], list)
         assert template["required_nodes"]
+
+
+def test_each_template_has_graph_recipe_metadata():
+    templates = list_workflow_templates()
+
+    for template in templates:
+        assert isinstance(template["nodes"], list)
+        assert template["nodes"]
+        assert isinstance(template["links"], list)
+        node_keys = {node["key"] for node in template["nodes"]}
+        assert len(node_keys) == len(template["nodes"])
+        node_class_types = {node["class_type"] for node in template["nodes"]}
+        assert set(template["required_nodes"]).issubset(node_class_types)
+
+        for node in template["nodes"]:
+            assert set(node) >= {"key", "class_type", "inputs"}
+            assert isinstance(node["key"], str)
+            assert isinstance(node["class_type"], str)
+            assert isinstance(node["inputs"], dict)
+
+        for link in template["links"]:
+            assert set(link) == {"from", "output_slot", "to", "input"}
+            assert link["from"] in node_keys
+            assert link["to"] in node_keys
+            assert isinstance(link["output_slot"], int)
+            assert isinstance(link["input"], str)
+
+
+def test_template_accessors_return_deep_copies():
+    listed_template = list_workflow_templates()[0]
+    listed_template["nodes"][0]["inputs"]["mutated"] = {"value": "bad"}
+
+    fresh_template = get_workflow_template(listed_template["id"])
+
+    assert "mutated" not in fresh_template["nodes"][0]["inputs"]
 
 
 @pytest.mark.parametrize(
@@ -106,3 +144,12 @@ def test_build_template_plan_selects_template_when_id_is_not_provided():
 def test_build_template_plan_raises_for_unknown_template_id():
     with pytest.raises(ValueError):
         build_template_plan("make an image", "missing-template", {})
+
+
+def test_build_template_plan_rejects_non_json_serializable_parameters():
+    with pytest.raises(ValueError, match="parameters must be JSON serializable"):
+        build_template_plan(
+            "make an image from a prompt",
+            "basic-text-to-image",
+            {"checkpoint_name": Path("model.safetensors")},
+        )
