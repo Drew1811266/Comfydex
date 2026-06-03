@@ -173,6 +173,27 @@ def test_add_link_rejects_non_object_source_node():
         )
 
 
+def test_add_link_rejects_non_object_target_node():
+    workflow = {
+        "1": {"class_type": "ImageSource", "inputs": {}},
+        "2": "not-a-node",
+    }
+
+    with pytest.raises(ValueError, match="target node must be an object"):
+        patch_workflow(
+            workflow,
+            [
+                {
+                    "op": "add_link",
+                    "source_node_id": "1",
+                    "output_slot": 0,
+                    "target_node_id": "2",
+                    "input": "images",
+                }
+            ],
+        )
+
+
 def test_remove_input_deletes_input_and_reports_removed_operation():
     result = patch_workflow(
         sample_workflow(),
@@ -196,6 +217,24 @@ def test_remove_input_deletes_input_and_reports_removed_operation():
 def test_invalid_operations_raise_stable_value_errors(operation, match):
     with pytest.raises(ValueError, match=match):
         patch_workflow(sample_workflow(), [operation])
+
+
+def test_invalid_operation_can_return_structured_failure_report():
+    result = patch_workflow(
+        sample_workflow(),
+        [{"op": "set_input", "input": "seed", "value": 1}],
+        raise_on_error=False,
+    )
+
+    assert result["status"] == "failed"
+    assert result["submit_ready"] is False
+    assert result["validation"] is None
+    assert result["operations_applied"] == []
+    assert result["report"] == {
+        "status": "failed",
+        "changes": [],
+        "errors": [{"message": "operation must include node_id"}],
+    }
 
 
 def test_validation_invalid_keeps_patched_workflow_as_draft_and_not_submit_ready():

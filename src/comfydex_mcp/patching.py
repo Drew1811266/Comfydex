@@ -10,6 +10,8 @@ def patch_workflow(
     workflow: dict[str, Any],
     operations: list[dict[str, Any]],
     object_info: dict[str, Any] | None = None,
+    *,
+    raise_on_error: bool = True,
 ) -> dict[str, Any]:
     if not isinstance(workflow, dict):
         raise ValueError("workflow must be an object")
@@ -20,27 +22,40 @@ def patch_workflow(
     operations_applied: list[dict[str, Any]] = []
     changes: list[dict[str, Any]] = []
 
-    for operation in operations:
-        if not isinstance(operation, dict):
-            raise ValueError("operation must be an object")
+    try:
+        for operation in operations:
+            if not isinstance(operation, dict):
+                raise ValueError("operation must be an object")
 
-        op = operation.get("op")
-        if op == "set_input":
-            changes.append(_set_input(patched, operation))
-            operations_applied.append(deepcopy(operation))
-        elif op == "remove_input":
-            changes.append(_remove_input(patched, operation))
-            applied = deepcopy(operation)
-            applied["status"] = "removed"
-            operations_applied.append(applied)
-        elif op == "add_node":
-            changes.append(_add_node(patched, operation))
-            operations_applied.append(deepcopy(operation))
-        elif op == "add_link":
-            changes.append(_add_link(patched, operation))
-            operations_applied.append(deepcopy(operation))
-        else:
-            raise ValueError(f"unsupported operation: {op}")
+            op = operation.get("op")
+            if op == "set_input":
+                changes.append(_set_input(patched, operation))
+                operations_applied.append(deepcopy(operation))
+            elif op == "remove_input":
+                changes.append(_remove_input(patched, operation))
+                applied = deepcopy(operation)
+                applied["status"] = "removed"
+                operations_applied.append(applied)
+            elif op == "add_node":
+                changes.append(_add_node(patched, operation))
+                operations_applied.append(deepcopy(operation))
+            elif op == "add_link":
+                changes.append(_add_link(patched, operation))
+                operations_applied.append(deepcopy(operation))
+            else:
+                raise ValueError(f"unsupported operation: {op}")
+    except ValueError as exc:
+        if raise_on_error:
+            raise
+        return _patch_result(
+            status="failed",
+            patched=patched,
+            submit_ready=False,
+            operations_applied=operations_applied,
+            changes=changes,
+            errors=[{"message": str(exc)}],
+            validation=None,
+        )
 
     validation = (
         validate_api_workflow(patched, object_info)
@@ -50,15 +65,36 @@ def patch_workflow(
     validation_status = validation["status"] if validation is not None else None
 
     status = "patched" if validation_status != "invalid" else "invalid"
+    return _patch_result(
+        status=status,
+        patched=patched,
+        submit_ready=validation_status == "valid",
+        operations_applied=operations_applied,
+        changes=changes,
+        errors=[],
+        validation=validation,
+    )
+
+
+def _patch_result(
+    *,
+    status: str,
+    patched: dict[str, Any],
+    submit_ready: bool,
+    operations_applied: list[dict[str, Any]],
+    changes: list[dict[str, Any]],
+    errors: list[dict[str, Any]],
+    validation: dict[str, Any] | None,
+) -> dict[str, Any]:
     return {
         "report": {
             "status": status,
             "changes": changes,
-            "errors": [],
+            "errors": errors,
         },
-        "status": "patched" if validation_status != "invalid" else "invalid",
+        "status": status,
         "workflow": patched,
-        "submit_ready": validation_status == "valid",
+        "submit_ready": submit_ready,
         "operations_applied": operations_applied,
         "validation": validation,
     }
@@ -133,7 +169,7 @@ def _add_link(workflow: dict[str, Any], operation: dict[str, Any]) -> dict[str, 
     if not isinstance(source_node, dict):
         raise ValueError("source node must be an object")
 
-    inputs = _node_inputs(workflow, target_node_id)
+    inputs = _node_inputs(workflow, target_node_id, node_role="target node")
     old_value = deepcopy(inputs.get(input_name))
     inputs[input_name] = [source_node_id, output_slot]
     return {
@@ -147,10 +183,18 @@ def _add_link(workflow: dict[str, Any], operation: dict[str, Any]) -> dict[str, 
     }
 
 
-def _node_inputs(workflow: dict[str, Any], node_id: str) -> dict[str, Any]:
-    node = workflow.get(node_id)
-    if not isinstance(node, dict):
+def _node_inputs(
+    workflow: dict[str, Any],
+    node_id: str,
+    *,
+    node_role: str = "node",
+) -> dict[str, Any]:
+    if node_id not in workflow:
         raise ValueError(f"node_id not found: {node_id}")
+
+    node = workflow[node_id]
+    if not isinstance(node, dict):
+        raise ValueError(f"{node_role} must be an object")
 
     inputs = node.setdefault("inputs", {})
     if not isinstance(inputs, dict):
