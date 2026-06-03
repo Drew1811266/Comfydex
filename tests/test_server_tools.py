@@ -220,6 +220,46 @@ async def test_comfy_convert_ui_to_api_failure_writes_report_not_api(
 
 
 @pytest.mark.asyncio
+async def test_comfy_convert_ui_to_api_allow_draft_does_not_save_partial_draft(
+    monkeypatch,
+    tmp_path: Path,
+):
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+    save_workflow(
+        tmp_path / "workflows",
+        "partial.ui.json",
+        {"nodes": [{"id": 1, "type": "SaveImage", "widgets_values": []}], "links": []},
+    )
+
+    class ObjectInfoClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            pass
+
+        async def get_object_info(self):
+            return {"SaveImage": {"input": {"required": {"images": ("IMAGE",)}}}}
+
+    monkeypatch.setattr(server, "ComfyClient", ObjectInfoClient)
+    result = await server.comfy_convert_ui_to_api(
+        "partial.ui.json",
+        "partial.api.json",
+        allow_draft=True,
+    )
+
+    assert result["report"]["status"] == "partial"
+    assert result["draft_workflow"] is not None
+    assert result["draft_saved"] is False
+    assert (tmp_path / "workflows" / ".reports" / "partial.ui.conversion.json").exists()
+    assert not (tmp_path / "workflows" / "partial.api.json").exists()
+    assert not (tmp_path / "workflows" / "partial.api.draft.json").exists()
+
+
+@pytest.mark.asyncio
 async def test_comfy_explain_conversion_gaps_reads_saved_report(
     monkeypatch,
     tmp_path: Path,

@@ -292,6 +292,7 @@ async def comfy_convert_ui_to_api(
         result["report"],
     )
     result["report_path"] = str(report_path)
+    result["draft_saved"] = False
 
     if result["workflow"] is not None:
         save_workflow(
@@ -303,17 +304,6 @@ async def comfy_convert_ui_to_api(
             validation_status="valid",
         )
         result["saved_workflow"] = target_name
-    elif allow_draft and result.get("draft_workflow"):
-        draft_name = f"{Path(target_name).stem}.draft.json"
-        save_workflow(
-            ctx.config.workflows_dir,
-            draft_name,
-            result["draft_workflow"],
-            require_api=True,
-            source="converted",
-            validation_status=result["report"]["status"],
-        )
-        result["draft_workflow_name"] = draft_name
 
     return result
 
