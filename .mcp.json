@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "comfydex": {
+      "command": "python",
+      "args": ["-m", "comfydex_mcp.server"],
+      "env": {"PYTHONPATH": "./src"}
+    }
+  }
+}
