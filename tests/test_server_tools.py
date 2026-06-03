@@ -10,6 +10,7 @@ from comfydex_mcp.workflows import save_workflow
 
 
 API_WORKFLOW = {"1": {"class_type": "SaveImage", "inputs": {}}}
+UI_WORKFLOW = {"nodes": [{"id": 1, "type": "SaveImage"}], "links": []}
 
 
 def test_resolve_workspace_uses_environment(monkeypatch, tmp_path: Path):
@@ -107,6 +108,47 @@ async def test_comfy_import_ui_workflow_uses_object_info_for_readiness(
     assert result["readiness"]["known_node_types"] == ["SaveImage"]
     assert result["readiness"]["unknown_node_types"] == ["CustomNode"]
     assert result["readiness"]["conversion_ready"] is False
+
+
+@pytest.mark.asyncio
+async def test_comfy_validate_api_workflow_tool(monkeypatch, tmp_path: Path):
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+    save_workflow(tmp_path / "workflows", "wf.json", API_WORKFLOW)
+
+    class ObjectInfoClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            pass
+
+        async def get_object_info(self):
+            return {"SaveImage": {"input": {"required": {}}}}
+
+    monkeypatch.setattr(server, "ComfyClient", ObjectInfoClient)
+    result = await server.comfy_validate_api_workflow("wf.json")
+    assert result["status"] == "valid"
+
+
+@pytest.mark.asyncio
+async def test_comfy_validate_api_workflow_rejects_ui_before_object_info(
+    monkeypatch,
+    tmp_path: Path,
+):
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+    save_workflow(tmp_path / "workflows", "ui.json", UI_WORKFLOW)
+
+    class RemoteShouldNotBeCalled:
+        def __init__(self, *args, **kwargs):
+            raise RuntimeError("remote called before payload validation")
+
+    monkeypatch.setattr(server, "ComfyClient", RemoteShouldNotBeCalled)
+
+    with pytest.raises(ValueError, match="requires ComfyUI API prompt JSON"):
+        await server.comfy_validate_api_workflow("ui.json")
 
 
 @pytest.mark.asyncio

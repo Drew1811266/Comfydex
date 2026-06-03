@@ -17,6 +17,7 @@ from .config import ComfydexConfig, load_config, redact_config, save_config
 from .paths import safe_output_path
 from .runs import append_event, create_run, list_runs, read_run, register_outputs, update_status
 from .ui_workflows import classify_workflow_payload, import_ui_workflow
+from .validation import validate_api_workflow
 from .workflows import list_workflows, read_workflow, save_workflow
 from .ws import wait_for_prompt
 
@@ -233,6 +234,24 @@ async def comfy_list_workflows() -> list[dict[str, Any]]:
 async def comfy_read_workflow(name: str) -> dict[str, Any]:
     ctx = tool_context()
     return read_workflow(ctx.config.workflows_dir, name)
+
+
+@mcp.tool()
+async def comfy_validate_api_workflow(name: str) -> dict[str, Any]:
+    ctx = tool_context()
+    loaded = read_workflow(ctx.config.workflows_dir, name)
+    if loaded["kind"] != "api":
+        raise ValueError(
+            "comfy_validate_api_workflow requires ComfyUI API prompt JSON"
+        )
+
+    async with ComfyClient(
+        ctx.config.base_url,
+        ctx.config.headers,
+        ctx.config.request_timeout_seconds,
+    ) as client:
+        object_info = await client.get_object_info()
+    return validate_api_workflow(loaded["json"], object_info)
 
 
 @mcp.tool()
