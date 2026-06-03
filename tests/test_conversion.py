@@ -178,6 +178,38 @@ def test_convert_ui_to_api_rejects_malformed_source_slot():
     assert any(gap["reason"] == "malformed_link" for gap in result["report"]["gaps"])
 
 
+def test_convert_ui_to_api_consumes_widget_slot_when_widget_input_is_linked():
+    object_info = {
+        "IntSource": {"input": {"required": {}}, "output": ["INT"]},
+        "Counter": {
+            "input": {
+                "required": {
+                    "seed": ("INT",),
+                    "steps": ("INT",),
+                }
+            }
+        },
+    }
+    ui = {
+        "nodes": [
+            {"id": 1, "type": "IntSource"},
+            {
+                "id": 2,
+                "type": "Counter",
+                "inputs": [{"name": "seed"}, {"name": "steps"}],
+                "widgets_values": [111, 222],
+            },
+        ],
+        "links": [[7, 1, 0, 2, 0, "INT"]],
+    }
+
+    result = convert_ui_to_api(ui, object_info, "linked-widget.ui.json", "api.json")
+
+    assert result["report"]["status"] == "converted"
+    assert result["workflow"]["2"]["inputs"]["seed"] == ["1", 0]
+    assert result["workflow"]["2"]["inputs"]["steps"] == 222
+
+
 def test_save_conversion_report_rejects_traversal_source_names(tmp_path: Path):
     report = {"status": "failed", "gaps": []}
 

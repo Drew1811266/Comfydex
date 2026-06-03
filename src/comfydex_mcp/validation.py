@@ -15,6 +15,41 @@ def _required_inputs(node_info: Any) -> dict[str, Any]:
     return required if isinstance(required, dict) else {}
 
 
+def _input_spec(node_info: Any, input_name: str) -> Any:
+    if not isinstance(node_info, dict):
+        return None
+    input_info = node_info.get("input", {})
+    if not isinstance(input_info, dict):
+        return None
+    for group_name in ("required", "optional"):
+        group = input_info.get(group_name, {})
+        if isinstance(group, dict) and input_name in group:
+            return group[input_name]
+    return None
+
+
+def _target_input_types(spec: Any) -> list[str] | None:
+    if isinstance(spec, str) and spec:
+        return [spec]
+    if not isinstance(spec, (list, tuple)) or not spec:
+        return None
+
+    first = spec[0]
+    if isinstance(first, str) and first:
+        return [first]
+    return None
+
+
+def _source_output_type(source_info: Any, output_slot: int) -> str | None:
+    if not isinstance(source_info, dict):
+        return None
+    outputs = source_info.get("output")
+    if not isinstance(outputs, (list, tuple)) or output_slot >= len(outputs):
+        return None
+    output_type = outputs[output_slot]
+    return output_type if isinstance(output_type, str) and output_type else None
+
+
 def _is_link(value: Any) -> bool:
     return (
         isinstance(value, list)
@@ -153,6 +188,28 @@ def validate_api_workflow(
                         "target_node_id": source_node_id,
                         "output_slot": source_slot,
                         "reason": "invalid_output_slot",
+                    }
+                )
+                continue
+
+            source_output_type = _source_output_type(source_info, source_slot)
+            target_types = _target_input_types(
+                _input_spec(object_info[class_type], input_name)
+            )
+            if (
+                source_output_type is not None
+                and target_types is not None
+                and source_output_type not in target_types
+            ):
+                errors.append(
+                    {
+                        "node_id": node_id_text,
+                        "input": input_name,
+                        "target_node_id": source_node_id,
+                        "output_slot": source_slot,
+                        "source_type": source_output_type,
+                        "target_types": target_types,
+                        "reason": "link_type_mismatch",
                     }
                 )
 

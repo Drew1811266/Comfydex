@@ -92,6 +92,27 @@ def test_validate_api_workflow_reports_invalid_output_slot():
     )
 
 
+def test_validate_api_workflow_reports_link_type_mismatch():
+    object_info = {
+        "ModelSource": {"input": {"required": {}}, "output": ["MODEL"]},
+        "SaveImage": {"input": {"required": {"images": ("IMAGE",)}}},
+    }
+    workflow = {
+        "1": {"class_type": "ModelSource", "inputs": {}},
+        "2": {"class_type": "SaveImage", "inputs": {"images": ["1", 0]}},
+    }
+
+    result = validate_api_workflow(workflow, object_info)
+
+    assert result["status"] == "invalid"
+    assert any(
+        error["reason"] == "link_type_mismatch"
+        and error["source_type"] == "MODEL"
+        and error["target_types"] == ["IMAGE"]
+        for error in result["errors"]
+    )
+
+
 def test_validate_api_workflow_rejects_empty_workflow():
     result = validate_api_workflow({}, OBJECT_INFO)
 

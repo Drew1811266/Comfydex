@@ -79,11 +79,19 @@ def workflow_metadata(
     validation_status: str = "unknown",
 ) -> dict[str, Any]:
     kind = classify_workflow(payload)
+    actual_source = (
+        "converted"
+        if filename.endswith(".draft.json") and source == "manual"
+        else source
+    )
+    submit_ready = kind == "api" and validation_status in {"unknown", "valid"}
+    if actual_source == "converted" and validation_status != "valid":
+        submit_ready = False
     return {
         "name": filename,
         "kind": kind,
-        "source": source,
-        "submit_ready": kind == "api" and validation_status in {"unknown", "valid"},
+        "source": actual_source,
+        "submit_ready": submit_ready,
         "validation_status": validation_status,
     }
 
@@ -132,7 +140,9 @@ def read_workflow_metadata(
         validation_status=validation_status,
     )
     saved_submit_ready = saved.get("submit_ready")
-    if isinstance(saved_submit_ready, bool):
+    if isinstance(saved_submit_ready, bool) and (
+        saved_submit_ready is False or merged["submit_ready"] is True
+    ):
         merged["submit_ready"] = saved_submit_ready
     return merged
 

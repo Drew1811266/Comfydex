@@ -275,6 +275,23 @@ async def test_comfy_convert_ui_to_api_allow_draft_saves_non_submit_ready_draft(
     ):
         await server.comfy_submit_workflow("partial.api.draft.json")
 
+    draft_metadata = (
+        tmp_path / "workflows" / ".metadata" / "partial.api.draft.metadata.json"
+    )
+    draft_metadata.unlink()
+    with pytest.raises(
+        ValueError,
+        match="comfy_submit_workflow requires a submit-ready API workflow",
+    ):
+        await server.comfy_submit_workflow("partial.api.draft.json")
+
+    draft_metadata.write_text("{", encoding="utf-8")
+    with pytest.raises(
+        ValueError,
+        match="comfy_submit_workflow requires a submit-ready API workflow",
+    ):
+        await server.comfy_submit_workflow("partial.api.draft.json")
+
 
 @pytest.mark.asyncio
 async def test_comfy_explain_conversion_gaps_reads_saved_report(

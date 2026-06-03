@@ -175,6 +175,29 @@ def test_read_workflow_uses_default_metadata_when_metadata_json_is_invalid(
     }
 
 
+def test_draft_workflow_metadata_fails_closed_when_missing_or_corrupt(tmp_path: Path):
+    save_workflow(
+        tmp_path,
+        "partial.api.draft.json",
+        API_WORKFLOW,
+        source="converted",
+        validation_status="partial",
+    )
+    metadata_path = tmp_path / ".metadata" / "partial.api.draft.metadata.json"
+
+    metadata_path.unlink()
+    missing_metadata = read_workflow(tmp_path, "partial.api.draft.json")["metadata"]
+
+    assert missing_metadata["source"] == "converted"
+    assert missing_metadata["submit_ready"] is False
+
+    metadata_path.write_text("{", encoding="utf-8")
+    corrupt_metadata = read_workflow(tmp_path, "partial.api.draft.json")["metadata"]
+
+    assert corrupt_metadata["source"] == "converted"
+    assert corrupt_metadata["submit_ready"] is False
+
+
 def test_read_workflow_ignores_metadata_fields_with_invalid_types(tmp_path: Path):
     save_workflow(tmp_path, "wf.json", API_WORKFLOW)
     save_workflow_metadata(

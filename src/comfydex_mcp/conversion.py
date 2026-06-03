@@ -213,10 +213,12 @@ def convert_ui_to_api(
             if input_name is None:
                 continue
             link_value = links_by_target.get((node_id, input_slot))
+            widget_compatible = _is_widget_compatible(node_info, input_name)
             if link_value is not None:
+                if widget_compatible and widget_index < len(widgets):
+                    widget_index += 1
                 inputs[input_name] = link_value
                 continue
-            widget_compatible = _is_widget_compatible(node_info, input_name)
             if widget_compatible and widget_index < len(widgets):
                 inputs[input_name] = widgets[widget_index]
                 widget_index += 1
