@@ -7,42 +7,126 @@ from typing import Any
 from .paths import ensure_directory, safe_json_path
 from .validation import validate_api_workflow
 
+WIDGET_INPUT_TYPES = {"STRING", "INT", "FLOAT", "BOOLEAN", "BOOL"}
 
-def _input_names(node_info: Any) -> list[str]:
+
+def _input_groups(node_info: Any) -> tuple[dict[str, Any], dict[str, Any]]:
     if not isinstance(node_info, dict):
-        return []
+        return {}, {}
     input_info = node_info.get("input", {})
     if not isinstance(input_info, dict):
-        return []
+        return {}, {}
+    required = input_info.get("required", {})
+    optional = input_info.get("optional", {})
+    return (
+        required if isinstance(required, dict) else {},
+        optional if isinstance(optional, dict) else {},
+    )
+
+
+def _input_names(node_info: Any) -> list[str]:
+    required, optional = _input_groups(node_info)
 
     names: list[str] = []
-    for group_name in ("required", "optional"):
-        group = input_info.get(group_name, {})
-        if isinstance(group, dict):
-            names.extend(str(name) for name in group)
+    for group in (required, optional):
+        names.extend(str(name) for name in group)
     return names
 
 
-def _link_index(ui_workflow: dict[str, Any]) -> dict[tuple[str, int], list[Any]]:
+def _ui_input_slots(raw_node: dict[str, Any], node_info: Any) -> list[str | None]:
+    object_input_names = _input_names(node_info)
+    ui_inputs = raw_node.get("inputs", [])
+    if not isinstance(ui_inputs, list):
+        return object_input_names
+
+    slots: list[str | None] = []
+    has_named_slot = False
+    for ui_input in ui_inputs:
+        input_name = (
+            ui_input.get("name")
+            if isinstance(ui_input, dict)
+            else None
+        )
+        if isinstance(input_name, str) and input_name:
+            slots.append(input_name)
+            has_named_slot = True
+        else:
+            slots.append(None)
+
+    if not has_named_slot:
+        return object_input_names
+
+    seen = {name for name in slots if name is not None}
+    slots.extend(name for name in object_input_names if name not in seen)
+    return slots
+
+
+def _input_spec(node_info: Any, input_name: str) -> Any:
+    required, optional = _input_groups(node_info)
+    if input_name in required:
+        return required[input_name]
+    return optional.get(input_name)
+
+
+def _is_required_input(node_info: Any, input_name: str) -> bool:
+    required, _ = _input_groups(node_info)
+    return input_name in required
+
+
+def _is_widget_compatible(node_info: Any, input_name: str) -> bool:
+    spec = _input_spec(node_info, input_name)
+    if isinstance(spec, str):
+        return spec.upper() in WIDGET_INPUT_TYPES
+    if not isinstance(spec, (list, tuple)) or not spec:
+        return False
+
+    first = spec[0]
+    if isinstance(first, list):
+        return True
+    if isinstance(first, str):
+        return first.upper() in WIDGET_INPUT_TYPES
+    return False
+
+
+def _valid_slot(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+
+def _link_index(
+    ui_workflow: dict[str, Any],
+) -> tuple[dict[tuple[str, int], list[Any]], list[dict[str, Any]]]:
     links_by_target: dict[tuple[str, int], list[Any]] = {}
+    gaps: list[dict[str, Any]] = []
     links = ui_workflow.get("links", [])
     if not isinstance(links, list):
-        return links_by_target
+        return links_by_target, gaps
 
     for link in links:
         if not isinstance(link, list) or len(link) < 6:
+            gaps.append({"reason": "malformed_link", "link": link})
             continue
+        link_id = link[0]
         source_node_id = link[1]
         source_slot = link[2]
         target_node_id = link[3]
         target_slot = link[4]
-        if isinstance(target_slot, bool) or not isinstance(target_slot, int):
+        if not _valid_slot(source_slot) or not _valid_slot(target_slot):
+            gaps.append(
+                {
+                    "link_id": link_id,
+                    "source_node_id": str(source_node_id),
+                    "source_slot": source_slot,
+                    "target_node_id": str(target_node_id),
+                    "target_slot": target_slot,
+                    "reason": "malformed_link",
+                }
+            )
             continue
         links_by_target[(str(target_node_id), target_slot)] = [
             str(source_node_id),
             source_slot,
         ]
-    return links_by_target
+    return links_by_target, gaps
 
 
 def _conversion_report_filename(source_name: str) -> str:
@@ -74,8 +158,12 @@ def convert_ui_to_api(
         nodes = []
         gaps.append({"reason": "ui_nodes_not_list"})
 
-    links_by_target = _link_index(ui_workflow if isinstance(ui_workflow, dict) else {})
+    links_by_target, link_gaps = _link_index(
+        ui_workflow if isinstance(ui_workflow, dict) else {}
+    )
+    gaps.extend(link_gaps)
     nodes_failed = 0
+    input_slots_by_node: dict[str, list[str | None]] = {}
 
     for raw_node in nodes:
         if not isinstance(raw_node, dict):
@@ -112,21 +200,41 @@ def convert_ui_to_api(
             )
             continue
 
-        input_names = _input_names(node_info)
+        input_slots = _ui_input_slots(raw_node, node_info)
+        input_slots_by_node[node_id] = input_slots
         widgets = raw_node.get("widgets_values", [])
         if not isinstance(widgets, list):
             widgets = []
 
         inputs: dict[str, Any] = {}
         widget_index = 0
-        for input_slot, input_name in enumerate(input_names):
+        missing_required_links: set[str] = set()
+        for input_slot, input_name in enumerate(input_slots):
+            if input_name is None:
+                continue
             link_value = links_by_target.get((node_id, input_slot))
             if link_value is not None:
                 inputs[input_name] = link_value
                 continue
-            if widget_index < len(widgets):
+            widget_compatible = _is_widget_compatible(node_info, input_name)
+            if widget_compatible and widget_index < len(widgets):
                 inputs[input_name] = widgets[widget_index]
                 widget_index += 1
+                continue
+            if (
+                _is_required_input(node_info, input_name)
+                and not widget_compatible
+                and input_name not in missing_required_links
+            ):
+                gaps.append(
+                    {
+                        "node_id": node_id,
+                        "node_type": node_type,
+                        "input": input_name,
+                        "reason": "missing_required_link",
+                    }
+                )
+                missing_required_links.add(input_name)
 
         draft_workflow[node_id] = {
             "class_type": node_type,
@@ -138,8 +246,8 @@ def convert_ui_to_api(
         if draft_node is None:
             continue
         node_type = draft_node["class_type"]
-        input_names = _input_names(object_info.get(node_type))
-        if target_slot >= len(input_names):
+        input_slots = input_slots_by_node.get(target_node_id, [])
+        if target_slot >= len(input_slots) or input_slots[target_slot] is None:
             gaps.append(
                 {
                     "node_id": target_node_id,

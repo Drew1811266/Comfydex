@@ -97,6 +97,87 @@ def test_convert_ui_to_api_validation_failure_has_draft_without_workflow():
     )
 
 
+def test_convert_ui_to_api_does_not_fill_required_link_input_from_widget():
+    ui = {
+        "nodes": [
+            {"id": 1, "type": "SaveImage", "widgets_values": ["ComfyUI"]},
+        ],
+        "links": [],
+    }
+
+    result = convert_ui_to_api(ui, OBJECT_INFO, "unsafe.ui.json", "unsafe.api.json")
+
+    assert result["workflow"] is None
+    assert result["report"]["status"] == "partial"
+    assert any(
+        gap["reason"] == "missing_required_link" and gap["input"] == "images"
+        for gap in result["report"]["gaps"]
+    )
+
+
+def test_convert_ui_to_api_uses_ui_input_names_for_link_slots():
+    object_info = {
+        "ModelSource": {"input": {"required": {}}},
+        "ConditioningSource": {"input": {"required": {}}},
+        "KSampler": {
+            "input": {
+                "required": {
+                    "model": ("MODEL",),
+                    "seed": ("INT",),
+                    "positive": ("CONDITIONING",),
+                }
+            }
+        },
+    }
+    ui = {
+        "nodes": [
+            {"id": 1, "type": "ModelSource"},
+            {"id": 2, "type": "ConditioningSource"},
+            {
+                "id": 3,
+                "type": "KSampler",
+                "inputs": [
+                    {"name": "model"},
+                    {"name": "positive"},
+                    {"name": "seed"},
+                ],
+                "widgets_values": [123],
+            },
+        ],
+        "links": [
+            [10, 1, 0, 3, 0, "MODEL"],
+            [11, 2, 0, 3, 1, "CONDITIONING"],
+        ],
+    }
+
+    result = convert_ui_to_api(ui, object_info, "ksampler.ui.json", "ksampler.api.json")
+
+    assert result["report"]["status"] == "converted"
+    assert result["workflow"]["3"]["inputs"]["model"] == ["1", 0]
+    assert result["workflow"]["3"]["inputs"]["positive"] == ["2", 0]
+    assert result["workflow"]["3"]["inputs"]["seed"] == 123
+
+
+def test_convert_ui_to_api_rejects_malformed_source_slot():
+    ui = {
+        "nodes": [
+            {
+                "id": 1,
+                "type": "CheckpointLoaderSimple",
+                "widgets_values": ["model.safetensors"],
+            },
+            {"id": 2, "type": "SaveImage", "widgets_values": []},
+        ],
+        "links": [[7, 1, "bad", 2, 0, "IMAGE"]],
+    }
+
+    result = convert_ui_to_api(ui, OBJECT_INFO, "bad-link.ui.json", "bad-link.api.json")
+
+    assert result["workflow"] is None
+    assert result["report"]["status"] == "partial"
+    assert any(gap["reason"] == "malformed_link" for gap in result["report"]["gaps"])
+
+
 def test_save_conversion_report_rejects_traversal_source_names(tmp_path: Path):
     report = {"status": "failed", "gaps": []}
 
