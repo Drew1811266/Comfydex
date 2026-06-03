@@ -1,6 +1,6 @@
 {
   "name": "comfydex",
-  "version": "0.1.0+codex.20260602185245",
+  "version": "0.1.0",
   "description": "Connect Codex to ComfyUI workflows, queues, runs, and outputs.",
   "author": {
     "name": "Local developer"
