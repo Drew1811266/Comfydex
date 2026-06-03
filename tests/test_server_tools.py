@@ -237,6 +237,77 @@ async def test_comfy_convert_ui_to_api_rejects_same_name_before_remote_call(
 
 
 @pytest.mark.asyncio
+async def test_comfy_convert_ui_to_api_rejects_case_variant_target_before_remote_call(
+    monkeypatch,
+    tmp_path: Path,
+):
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+    original_workflow = {
+        "nodes": [{"id": 1, "type": "SaveImage", "widgets_values": []}],
+        "links": [],
+    }
+    save_workflow(tmp_path / "workflows", "same.ui.json", original_workflow)
+    if not (tmp_path / "workflows" / "SAME.UI.json").exists():
+        pytest.skip("filesystem treats case-variant workflow names as distinct")
+
+    class RemoteShouldNotBeCalled:
+        def __init__(self, *args, **kwargs):
+            raise RuntimeError("remote called before same-path validation")
+
+    monkeypatch.setattr(server, "ComfyClient", RemoteShouldNotBeCalled)
+
+    with pytest.raises(
+        ValueError,
+        match="target workflow name must differ from source workflow name",
+    ):
+        await server.comfy_convert_ui_to_api("same.ui.json", "SAME.UI.json")
+
+    loaded = server.read_workflow(tmp_path / "workflows", "same.ui.json")
+    assert loaded["kind"] == "ui"
+    assert loaded["json"] == original_workflow
+
+
+@pytest.mark.asyncio
+async def test_comfy_convert_ui_to_api_rejects_generated_draft_collision_before_remote_call(
+    monkeypatch,
+    tmp_path: Path,
+):
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+    original_workflow = {
+        "nodes": [{"id": 1, "type": "SaveImage", "widgets_values": []}],
+        "links": [],
+    }
+    save_workflow(
+        tmp_path / "workflows",
+        "partial.api.converted-draft.json",
+        original_workflow,
+    )
+
+    class RemoteShouldNotBeCalled:
+        def __init__(self, *args, **kwargs):
+            raise RuntimeError("remote called before draft-name validation")
+
+    monkeypatch.setattr(server, "ComfyClient", RemoteShouldNotBeCalled)
+
+    with pytest.raises(
+        ValueError,
+        match="draft workflow name must differ from source and target workflow names",
+    ):
+        await server.comfy_convert_ui_to_api(
+            "partial.api.converted-draft.json",
+            "partial.api.json",
+            allow_draft=True,
+        )
+
+    loaded = server.read_workflow(
+        tmp_path / "workflows",
+        "partial.api.converted-draft.json",
+    )
+    assert loaded["kind"] == "ui"
+    assert loaded["json"] == original_workflow
+
+
+@pytest.mark.asyncio
 async def test_comfy_convert_ui_to_api_failure_writes_report_not_api(
     monkeypatch,
     tmp_path: Path,

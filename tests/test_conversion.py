@@ -96,6 +96,82 @@ def test_convert_ui_to_api_reports_duplicate_target_link():
     )
 
 
+def test_convert_ui_to_api_reports_links_not_list():
+    object_info = {"NoOp": {"input": {"required": {}}}}
+    ui = {"nodes": [{"id": 1, "type": "NoOp"}], "links": {}}
+
+    result = convert_ui_to_api(ui, object_info, "bad-links.ui.json", "api.json")
+
+    assert result["workflow"] is None
+    assert result["report"]["status"] != "converted"
+    assert any(gap["reason"] == "links_not_list" for gap in result["report"]["gaps"])
+
+
+def test_convert_ui_to_api_reports_duplicate_link_id():
+    object_info = {
+        "ImageSource": {"input": {"required": {}}, "output": ["IMAGE"]},
+        "ImagePair": {
+            "input": {
+                "required": {
+                    "left": ("IMAGE",),
+                    "right": ("IMAGE",),
+                }
+            }
+        },
+    }
+    ui = {
+        "nodes": [
+            {"id": 1, "type": "ImageSource"},
+            {"id": 2, "type": "ImageSource"},
+            {
+                "id": 3,
+                "type": "ImagePair",
+                "inputs": [{"name": "left"}, {"name": "right"}],
+            },
+        ],
+        "links": [
+            [10, 1, 0, 3, 0, "IMAGE"],
+            [10, 2, 0, 3, 1, "IMAGE"],
+        ],
+    }
+
+    result = convert_ui_to_api(ui, object_info, "duplicate-link-id.ui.json", "api.json")
+
+    assert result["workflow"] is None
+    assert result["report"]["status"] != "converted"
+    assert any(
+        gap["reason"] == "duplicate_link_id" for gap in result["report"]["gaps"]
+    )
+
+
+def test_convert_ui_to_api_reports_unknown_ui_input_name():
+    object_info = {
+        "ImageSource": {"input": {"required": {}}, "output": ["IMAGE"]},
+        "NoInputNode": {"input": {"required": {}}},
+    }
+    ui = {
+        "nodes": [
+            {"id": 1, "type": "ImageSource"},
+            {
+                "id": 2,
+                "type": "NoInputNode",
+                "inputs": [{"name": "unknown_input"}],
+            },
+        ],
+        "links": [[7, 1, 0, 2, 0, "IMAGE"]],
+    }
+
+    result = convert_ui_to_api(ui, object_info, "unknown-input.ui.json", "api.json")
+
+    assert result["workflow"] is None
+    assert result["report"]["status"] != "converted"
+    assert any(
+        gap["reason"] == "unknown_input_name"
+        and gap["input"] == "unknown_input"
+        for gap in result["report"]["gaps"]
+    )
+
+
 def test_save_conversion_report_writes_reports_directory(tmp_path: Path):
     report = {
         "source_workflow": "a.ui.json",

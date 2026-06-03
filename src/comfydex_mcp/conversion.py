@@ -73,6 +73,11 @@ def _is_required_input(node_info: Any, input_name: str) -> bool:
     return input_name in required
 
 
+def _has_input_name(node_info: Any, input_name: str) -> bool:
+    required, optional = _input_groups(node_info)
+    return input_name in required or input_name in optional
+
+
 def _is_widget_compatible(node_info: Any, input_name: str) -> bool:
     spec = _input_spec(node_info, input_name)
     if isinstance(spec, str):
@@ -126,8 +131,11 @@ def _link_index(
     gaps: list[dict[str, Any]] = []
     links = ui_workflow.get("links", [])
     if not isinstance(links, list):
+        if "links" in ui_workflow:
+            gaps.append({"reason": "links_not_list"})
         return links_by_target, gaps
 
+    seen_link_ids: list[tuple[Any, tuple[str, int]]] = []
     for link in links:
         if not isinstance(link, list) or len(link) < 6:
             gaps.append({"reason": "malformed_link", "link": link})
@@ -150,6 +158,29 @@ def _link_index(
             )
             continue
         target_key = (str(target_node_id), target_slot)
+        existing_target = next(
+            (
+                existing_target
+                for seen_link_id, existing_target in seen_link_ids
+                if seen_link_id == link_id
+            ),
+            None,
+        )
+        if existing_target is not None:
+            existing_target_node_id, existing_target_slot = existing_target
+            gaps.append(
+                {
+                    "link_id": link_id,
+                    "target_node_id": str(target_node_id),
+                    "target_slot": target_slot,
+                    "existing_target_node_id": existing_target_node_id,
+                    "existing_target_slot": existing_target_slot,
+                    "reason": "duplicate_link_id",
+                }
+            )
+            continue
+        else:
+            seen_link_ids.append((link_id, target_key))
         link_value = [
             str(source_node_id),
             source_slot,
@@ -267,6 +298,16 @@ def convert_ui_to_api(
         missing_required_links: set[str] = set()
         for input_slot, input_name in enumerate(input_slots):
             if input_name is None:
+                continue
+            if not _has_input_name(node_info, input_name):
+                gaps.append(
+                    {
+                        "node_id": node_id,
+                        "node_type": node_type,
+                        "input": input_name,
+                        "reason": "unknown_input_name",
+                    }
+                )
                 continue
             link_value = links_by_target.get((node_id, input_slot))
             widget_compatible = _is_widget_compatible(node_info, input_name)

@@ -134,6 +134,10 @@ def _fallback_history_status(result: dict[str, Any], prompt_id: str) -> str | No
     return _history_status(result.get("fallback", {}).get("history", {}), prompt_id)
 
 
+def _same_workflow_path(left: Path, right: Path) -> bool:
+    return str(left.resolve()).casefold() == str(right.resolve()).casefold()
+
+
 async def _poll_history_until_terminal(
     *,
     client: ComfyClient,
@@ -271,9 +275,29 @@ async def comfy_convert_ui_to_api(
     loaded = read_workflow(ctx.config.workflows_dir, source_name)
     if loaded["kind"] != "ui":
         raise ValueError("comfy_convert_ui_to_api requires ComfyUI UI workflow JSON")
-    safe_json_path(ctx.config.workflows_dir, target_name)
-    if source_name == target_name:
+    source_path = safe_json_path(ctx.config.workflows_dir, source_name)
+    try:
+        target_path = safe_json_path(ctx.config.workflows_dir, target_name)
+    except ValueError:
+        candidate_path = ctx.config.workflows_dir / target_name
+        if (
+            target_name
+            and target_name == Path(target_name).name
+            and _same_workflow_path(source_path, candidate_path)
+        ):
+            raise ValueError(
+                "target workflow name must differ from source workflow name"
+            ) from None
+        raise
+    if _same_workflow_path(source_path, target_path):
         raise ValueError("target workflow name must differ from source workflow name")
+    draft_name = f"{Path(target_name).stem}.converted-draft.json"
+    if allow_draft:
+        draft_path = safe_json_path(ctx.config.workflows_dir, draft_name)
+        if _same_workflow_path(source_path, draft_path):
+            raise ValueError(
+                "draft workflow name must differ from source and target workflow names"
+            )
 
     async with ComfyClient(
         ctx.config.base_url,
@@ -307,7 +331,6 @@ async def comfy_convert_ui_to_api(
         )
         result["saved_workflow"] = target_name
     elif allow_draft and result["draft_workflow"] is not None:
-        draft_name = f"{Path(target_name).stem}.converted-draft.json"
         save_workflow(
             ctx.config.workflows_dir,
             draft_name,
