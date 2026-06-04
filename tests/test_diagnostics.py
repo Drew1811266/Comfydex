@@ -1,4 +1,4 @@
-from comfydex_mcp.diagnostics import diagnose_run
+from comfydex_mcp.diagnostics import compare_runs, diagnose_run
 
 
 def test_diagnose_run_explains_failed_submission_and_missing_node_type():
@@ -114,3 +114,123 @@ def test_diagnose_run_ignores_invalid_event_types_and_sorts_signals():
     result = diagnose_run(run)
 
     assert result["signals"] == ["execution_error", "websocket_error"]
+
+
+def test_compare_runs_reports_changed_seed_status_and_output_count():
+    left_run = {"run_id": "left", "status": "completed", "outputs": [{"filename": "left.png"}]}
+    right_run = {
+        "run_id": "right",
+        "status": "failed",
+        "outputs": [{"filename": "right-1.png"}, {"filename": "right-2.png"}],
+    }
+    left_workflow = {
+        "2": {"class_type": "KSampler", "inputs": {"steps": 20, "seed": 111}},
+    }
+    right_workflow = {
+        "2": {"class_type": "KSampler", "inputs": {"steps": 20, "seed": 222}},
+    }
+
+    result = compare_runs(left_run, right_run, left_workflow, right_workflow)
+
+    assert result["left_run_id"] == "left"
+    assert result["right_run_id"] == "right"
+    assert result["status_changed"] == {"left": "completed", "right": "failed"}
+    assert result["output_count_changed"] == {"left": 1, "right": 2}
+    assert result["input_changes"] == [{"node_id": "2", "input": "seed", "left": 111, "right": 222}]
+
+
+def test_compare_runs_reports_no_changes_as_empty_diff():
+    left_run = {"run_id": "left", "status": "completed", "outputs": [{"filename": "left.png"}]}
+    right_run = {"run_id": "right", "status": "completed", "outputs": [{"filename": "right.png"}]}
+    workflow = {
+        "1": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": "base.safetensors"}},
+        "2": {"class_type": "KSampler", "inputs": {"seed": 123, "steps": 20}},
+    }
+
+    result = compare_runs(left_run, right_run, workflow, workflow)
+
+    assert result["status_changed"] is None
+    assert result["output_count_changed"] is None
+    assert result["input_changes"] == []
+    assert result["node_changes"] == []
+    assert result["node_type_changes"] == []
+    assert result["model_reference_changes"] == []
+
+
+def test_compare_runs_reports_node_add_remove_and_type_changes():
+    left_workflow = {
+        "1": {"class_type": "SharedNode", "inputs": {}},
+        "2": {"class_type": "RemovedNode", "inputs": {}},
+        "3": {"class_type": "OldType", "inputs": {}},
+    }
+    right_workflow = {
+        "1": {"class_type": "SharedNode", "inputs": {}},
+        "3": {"class_type": "NewType", "inputs": {}},
+        "4": {"class_type": "AddedNode", "inputs": {}},
+    }
+
+    result = compare_runs({}, {}, left_workflow, right_workflow)
+
+    assert result["node_changes"] == [
+        {"node_id": "2", "change": "removed"},
+        {"node_id": "4", "change": "added"},
+    ]
+    assert result["node_type_changes"] == [{"node_id": "3", "left": "OldType", "right": "NewType"}]
+
+
+def test_compare_runs_reports_model_reference_input_changes_separately():
+    left_workflow = {
+        "1": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": "base.safetensors"}},
+        "2": {"class_type": "LoraLoader", "inputs": {"lora_name": "detail-v1.safetensors"}},
+    }
+    right_workflow = {
+        "1": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": "anime.safetensors"}},
+        "2": {"class_type": "LoraLoader", "inputs": {"lora_name": "detail-v1.safetensors"}},
+    }
+
+    result = compare_runs({}, {}, left_workflow, right_workflow)
+
+    expected_change = {
+        "node_id": "1",
+        "input": "ckpt_name",
+        "left": "base.safetensors",
+        "right": "anime.safetensors",
+    }
+    assert expected_change in result["input_changes"]
+    assert result["model_reference_changes"] == [expected_change]
+
+
+def test_compare_runs_handles_malformed_runs_and_workflows():
+    empty_result = compare_runs(None, [], "bad workflow", None)
+
+    assert empty_result["left_run_id"] is None
+    assert empty_result["right_run_id"] is None
+    assert empty_result["status_changed"] is None
+    assert empty_result["output_count_changed"] is None
+    assert empty_result["input_changes"] == []
+    assert empty_result["node_changes"] == []
+    assert empty_result["node_type_changes"] == []
+    assert empty_result["model_reference_changes"] == []
+
+    left_workflow = {
+        "1": {"class_type": "StableNode", "inputs": ["not", "a", "dict"]},
+        "2": "not a node",
+    }
+    right_workflow = {
+        "1": {"class_type": "StableNode", "inputs": None},
+        "2": "not a node",
+    }
+
+    malformed_inputs_result = compare_runs(
+        {"run_id": "left", "outputs": "not a list"},
+        {"run_id": "right", "outputs": {"not": "a list"}},
+        left_workflow,
+        right_workflow,
+    )
+
+    assert malformed_inputs_result["status_changed"] is None
+    assert malformed_inputs_result["output_count_changed"] is None
+    assert malformed_inputs_result["input_changes"] == []
+    assert malformed_inputs_result["node_changes"] == []
+    assert malformed_inputs_result["node_type_changes"] == []
+    assert malformed_inputs_result["model_reference_changes"] == []
