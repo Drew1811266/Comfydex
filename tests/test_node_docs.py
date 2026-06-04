@@ -61,3 +61,24 @@ def test_generate_node_docs_sorts_mapping_keys(tmp_path: Path):
     result = generate_node_docs(package)
 
     assert result["markdown"].index("## A Node") < result["markdown"].index("## B Node")
+
+
+def test_generate_node_docs_surfaces_mapping_validation_errors(tmp_path: Path):
+    package = tmp_path / "pkg"
+    package.mkdir()
+    (package / "nodes.py").write_text(
+        "class GoodNode: pass\n"
+        "def build_node():\n"
+        "    return GoodNode\n"
+        "NODE_CLASS_MAPPINGS = {'GoodNode': build_node()}\n",
+        encoding="utf-8",
+    )
+
+    result = generate_node_docs(package)
+
+    assert result["mapping_validation"]["status"] == "invalid"
+    assert result["mapping_validation"]["errors"] == [
+        {"mapping_key": "GoodNode", "reason": "unsupported_mapping_value"}
+    ]
+    assert "## Mapping Validation" in result["markdown"]
+    assert "- `GoodNode`: unsupported_mapping_value" in result["markdown"]
