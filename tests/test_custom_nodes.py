@@ -39,6 +39,40 @@ def test_inspect_custom_node_package_reports_classes_and_mappings(tmp_path: Path
     assert result["display_name_mappings"] == {"GoodNode": "Good Node"}
 
 
+def test_inspect_custom_node_package_does_not_execute_nodes_py(tmp_path: Path):
+    package = tmp_path / "pkg"
+    package.mkdir()
+    sentinel = package / "imported.txt"
+    (package / "nodes.py").write_text(
+        "from pathlib import Path\n"
+        "class GoodNode: pass\n"
+        "NODE_CLASS_MAPPINGS = {'GoodNode': GoodNode}\n"
+        "NODE_DISPLAY_NAME_MAPPINGS = {'GoodNode': 'Good Node'}\n"
+        f"Path({str(sentinel)!r}).write_text('executed', encoding='utf-8')\n",
+        encoding="utf-8",
+    )
+
+    result = inspect_custom_node_package(package)
+
+    assert result["class_mappings"] == {"GoodNode": "GoodNode"}
+    assert not sentinel.exists()
+
+
+def test_inspect_custom_node_package_reports_missing_nodes_py(tmp_path: Path):
+    package = tmp_path / "pkg"
+    package.mkdir()
+
+    result = inspect_custom_node_package(package)
+
+    assert result["status"] == "invalid"
+    assert result["node_classes"] == []
+    assert result["class_mappings"] == {}
+    assert result["display_name_mappings"] == {}
+    assert result["errors"] == [
+        {"reason": "missing_nodes_py", "path": str(package / "nodes.py")}
+    ]
+
+
 def test_validate_node_mappings_reports_missing_class(tmp_path: Path):
     package = tmp_path / "pkg"
     package.mkdir()
@@ -51,6 +85,43 @@ def test_validate_node_mappings_reports_missing_class(tmp_path: Path):
 
     assert result["status"] == "invalid"
     assert result["errors"][0]["reason"] == "missing_class"
+
+
+def test_validate_node_mappings_reports_unsupported_class_mapping_value(
+    tmp_path: Path,
+):
+    package = tmp_path / "pkg"
+    package.mkdir()
+    (package / "nodes.py").write_text(
+        "class GoodNode: pass\n"
+        "def build_node():\n"
+        "    return GoodNode\n"
+        "NODE_CLASS_MAPPINGS = {'GoodNode': build_node()}\n"
+        "NODE_DISPLAY_NAME_MAPPINGS = {'GoodNode': 'Good Node'}\n",
+        encoding="utf-8",
+    )
+
+    result = validate_node_mappings(package)
+
+    assert result["status"] == "invalid"
+    assert result["errors"] == [
+        {
+            "mapping_key": "GoodNode",
+            "reason": "unsupported_mapping_value",
+        }
+    ]
+
+
+def test_validate_node_mappings_reports_missing_nodes_py(tmp_path: Path):
+    package = tmp_path / "pkg"
+    package.mkdir()
+
+    result = validate_node_mappings(package)
+
+    assert result["status"] == "invalid"
+    assert result["errors"] == [
+        {"reason": "missing_nodes_py", "path": str(package / "nodes.py")}
+    ]
 
 
 def test_validate_node_mappings_reports_duplicate_mapping_keys(tmp_path: Path):
