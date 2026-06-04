@@ -8,10 +8,9 @@ from .paths import ensure_directory, safe_package_dir
 
 
 def scaffold_custom_node_package(workspace: Path, package_name: str) -> dict[str, Any]:
-    custom_nodes_dir = workspace / "custom_nodes"
-    _reject_redirected_custom_nodes_dir(custom_nodes_dir)
+    custom_nodes_dir = safe_custom_nodes_dir(workspace)
     ensure_directory(custom_nodes_dir)
-    _reject_redirected_custom_nodes_dir(custom_nodes_dir)
+    safe_custom_nodes_dir(workspace)
 
     package_dir = safe_package_dir(custom_nodes_dir, package_name)
     if package_dir.exists():
@@ -62,6 +61,12 @@ def scaffold_custom_node_package(workspace: Path, package_name: str) -> dict[str
         "mapping_key": mapping_key,
         "class_name": class_name,
     }
+
+
+def safe_custom_nodes_dir(workspace: Path) -> Path:
+    custom_nodes_dir = workspace / "custom_nodes"
+    _reject_redirected_custom_nodes_dir(custom_nodes_dir)
+    return custom_nodes_dir
 
 
 def _node_class_name(package_name: str) -> str:

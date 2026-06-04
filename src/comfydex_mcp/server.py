@@ -25,8 +25,16 @@ from .conversion import (
     explain_conversion_gaps,
     save_conversion_report,
 )
+from .custom_nodes import (
+    check_node_imports,
+    inspect_custom_node_package,
+    validate_node_class,
+    validate_node_mappings,
+)
+from .node_docs import generate_node_docs
+from .node_scaffold import scaffold_custom_node_package, safe_custom_nodes_dir
 from .patching import patch_workflow
-from .paths import safe_json_path, safe_output_path
+from .paths import safe_json_path, safe_output_path, safe_package_dir
 from .runs import append_event, create_run, list_runs, read_run, register_outputs, update_status
 from .templates import (
     explain_workflow_plan,
@@ -54,6 +62,11 @@ def resolve_workspace() -> Path:
 def tool_context(workspace: Path | None = None) -> ToolContext:
     resolved = (workspace or resolve_workspace()).resolve()
     return ToolContext(workspace=resolved, config=load_config(resolved))
+
+
+def _custom_node_package_path(workspace: Path, package_name: str) -> Path:
+    custom_nodes_dir = safe_custom_nodes_dir(workspace)
+    return safe_package_dir(custom_nodes_dir, package_name)
 
 
 def _resolve_config_dir(workspace: Path, value: str | None, current: Path) -> Path:
@@ -256,6 +269,58 @@ async def comfy_get_object_info() -> dict[str, Any]:
         ctx.config.request_timeout_seconds,
     ) as client:
         return await client.get_object_info()
+
+
+@mcp.tool()
+async def comfy_scaffold_custom_node_package(package_name: str) -> dict[str, Any]:
+    ctx = tool_context()
+    return scaffold_custom_node_package(ctx.workspace, package_name)
+
+
+@mcp.tool()
+async def comfy_inspect_custom_node_package(package_name: str) -> dict[str, Any]:
+    ctx = tool_context()
+    return inspect_custom_node_package(
+        _custom_node_package_path(ctx.workspace, package_name)
+    )
+
+
+@mcp.tool()
+async def comfy_validate_node_mappings(package_name: str) -> dict[str, Any]:
+    ctx = tool_context()
+    return validate_node_mappings(_custom_node_package_path(ctx.workspace, package_name))
+
+
+@mcp.tool()
+async def comfy_validate_node_class(
+    package_name: str,
+    class_name: str,
+) -> dict[str, Any]:
+    ctx = tool_context()
+    return validate_node_class(
+        _custom_node_package_path(ctx.workspace, package_name),
+        class_name,
+    )
+
+
+@mcp.tool()
+async def comfy_generate_node_docs(package_name: str) -> dict[str, Any]:
+    ctx = tool_context()
+    return generate_node_docs(_custom_node_package_path(ctx.workspace, package_name))
+
+
+@mcp.tool()
+async def comfy_check_node_imports(
+    package_name: str,
+    timeout_seconds: int = 5,
+    max_output_bytes: int = 20000,
+) -> dict[str, Any]:
+    ctx = tool_context()
+    return check_node_imports(
+        _custom_node_package_path(ctx.workspace, package_name),
+        timeout_seconds=timeout_seconds,
+        max_output_bytes=max_output_bytes,
+    )
 
 
 @mcp.tool()

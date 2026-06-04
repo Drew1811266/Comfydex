@@ -89,6 +89,95 @@ def object_info_client(object_info: dict):
     return ObjectInfoClient
 
 
+@pytest.mark.asyncio
+async def test_comfy_scaffold_custom_node_package_tool_creates_package(
+    monkeypatch,
+    tmp_path: Path,
+):
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+
+    result = await server.comfy_scaffold_custom_node_package("simple_math")
+
+    package_dir = tmp_path / "custom_nodes" / "simple_math"
+    assert result["package_dir"] == str(package_dir)
+    assert result["mapping_key"] == "SimpleMathNode"
+    assert result["class_name"] == "SimpleMathNode"
+    assert (package_dir / "__init__.py").exists()
+    assert (package_dir / "nodes.py").exists()
+
+
+@pytest.mark.asyncio
+async def test_comfy_custom_node_tools_use_package_name(
+    monkeypatch,
+    tmp_path: Path,
+):
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+    scaffolded = await server.comfy_scaffold_custom_node_package("simple_math")
+
+    inspected = await server.comfy_inspect_custom_node_package("simple_math")
+    mappings = await server.comfy_validate_node_mappings("simple_math")
+    node_class = await server.comfy_validate_node_class(
+        "simple_math",
+        scaffolded["class_name"],
+    )
+    docs = await server.comfy_generate_node_docs("simple_math")
+    imports = await server.comfy_check_node_imports("simple_math")
+
+    assert inspected["package_dir"] == scaffolded["package_dir"]
+    assert inspected["class_mappings"] == {
+        scaffolded["mapping_key"]: scaffolded["class_name"]
+    }
+    assert mappings["status"] == "valid"
+    assert node_class["status"] == "valid"
+    assert docs["path"] == str(Path(scaffolded["package_dir"]) / "NODE_DOCS.md")
+    assert imports["status"] == "passed"
+
+
+@pytest.mark.asyncio
+async def test_comfy_custom_node_tool_rejects_unsafe_package_name(
+    monkeypatch,
+    tmp_path: Path,
+):
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+
+    with pytest.raises(ValueError, match="package name"):
+        await server.comfy_inspect_custom_node_package("../escape")
+
+
+@pytest.mark.asyncio
+async def test_comfy_custom_node_tool_rejects_redirected_custom_nodes_dir(
+    monkeypatch,
+    tmp_path: Path,
+):
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+    custom_nodes = tmp_path / "custom_nodes"
+    custom_nodes.mkdir()
+
+    def fake_is_symlink(path: Path):
+        return path == custom_nodes
+
+    monkeypatch.setattr(Path, "is_symlink", fake_is_symlink)
+
+    with pytest.raises(ValueError, match="custom_nodes directory must be workspace-local"):
+        await server.comfy_inspect_custom_node_package("simple_math")
+
+
+@pytest.mark.asyncio
+async def test_comfy_custom_node_tool_is_registered_with_mcp(
+    monkeypatch,
+    tmp_path: Path,
+):
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+    await server.comfy_scaffold_custom_node_package("simple_math")
+
+    _content, structured = await server.mcp.call_tool(
+        "comfy_validate_node_mappings",
+        {"package_name": "simple_math"},
+    )
+
+    assert structured["status"] == "valid"
+
+
 def test_resolve_workspace_uses_environment(monkeypatch, tmp_path: Path):
     monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
     assert resolve_workspace() == tmp_path.resolve()
