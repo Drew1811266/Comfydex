@@ -1121,7 +1121,11 @@ async def test_wait_for_run_marks_fallback_error_failed(monkeypatch, tmp_path: P
     result = await server.comfy_wait_for_run(run["run_id"])
 
     assert result["status"] == "failed"
-    assert read_run(tmp_path / "runs", run["run_id"])["status"] == "failed"
+    stored = read_run(tmp_path / "runs", run["run_id"])
+    assert stored["status"] == "failed"
+    assert stored["events"][-1]["type"] == "wait_result"
+    assert stored["events"][-1]["fallback_used"] is True
+    assert stored["events"][-1]["history_status"] == "failed"
 
 
 @pytest.mark.asyncio
@@ -1436,6 +1440,25 @@ async def test_comfy_diagnose_run_tool_allows_missing_workflow_snapshot(
 
 
 @pytest.mark.asyncio
+async def test_comfy_diagnose_run_tool_rejects_alias_traversal_run_id(
+    monkeypatch,
+    tmp_path: Path,
+):
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+    run = create_run(
+        tmp_path / "runs",
+        "wf.json",
+        API_WORKFLOW,
+        "http://127.0.0.1:8188",
+        "p1",
+        "client-1",
+    )
+
+    with pytest.raises(ValueError, match="run_id"):
+        await server.comfy_diagnose_run(f"placeholder/../{run['run_id']}", use_object_info=False)
+
+
+@pytest.mark.asyncio
 async def test_comfy_diagnose_run_uses_object_info_when_requested(
     monkeypatch,
     tmp_path: Path,
@@ -1556,7 +1579,7 @@ async def test_comfy_export_run_report_tool_rejects_traversal_run_id(
 ):
     monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
 
-    with pytest.raises(ValueError, match="inside runs_dir"):
+    with pytest.raises(ValueError, match="run_id"):
         await server.comfy_export_run_report("../escape")
 
 
@@ -1623,6 +1646,10 @@ async def test_comfy_list_outputs_tool(monkeypatch, tmp_path: Path):
     output = tmp_path / "runs" / "run-a" / "outputs" / "output" / "image.png"
     output.parent.mkdir(parents=True)
     output.write_text("abc", encoding="utf-8")
+    (tmp_path / "runs" / "run-a" / "run.json").write_text(
+        '{"run_id": "run-a"}\n',
+        encoding="utf-8",
+    )
 
     result = await server.comfy_list_outputs()
 
@@ -1642,6 +1669,10 @@ async def test_comfy_cleanup_outputs_tool_defaults_to_dry_run_and_requires_confi
     output = tmp_path / "runs" / "run-a" / "outputs" / "output" / "image.png"
     output.parent.mkdir(parents=True)
     output.write_text("abc", encoding="utf-8")
+    (tmp_path / "runs" / "run-a" / "run.json").write_text(
+        '{"run_id": "run-a"}\n',
+        encoding="utf-8",
+    )
 
     dry_run = await server.comfy_cleanup_outputs()
     confirmed = await server.comfy_cleanup_outputs(confirm=True)

@@ -2,11 +2,31 @@ from __future__ import annotations
 
 from typing import Any
 
+from .workflows import summarize_workflow
+
 SUMMARY_MAX_LENGTH = 360
 EVENT_TEXT_MAX_LENGTH = 180
-EVENT_TEXT_KEYS = ("error", "message", "status")
-NESTED_TEXT_KEYS = ("error", "message", "status", "status_str", "exception_message")
+EVENT_TEXT_KEYS = ("error", "message", "messages", "status", "history_status")
+NESTED_TEXT_KEYS = (
+    "error",
+    "message",
+    "messages",
+    "status",
+    "status_str",
+    "exception_message",
+)
 MODEL_REFERENCE_INPUT_MARKERS = ("model", "ckpt", "lora", "vae", "checkpoint", "clip", "unet", "control_net")
+MODEL_ERROR_MARKERS = (
+    "not found",
+    "missing",
+    "cannot find",
+    "could not find",
+    "failed to load",
+    "no such file",
+    "does not exist",
+)
+HISTORY_FAILURE_MARKERS = ("error", "exception", "failed", "failure")
+HISTORY_SUCCESS_MARKERS = ("success", "completed", "complete")
 
 
 def _shorten(text: str, max_length: int) -> str:
@@ -31,6 +51,32 @@ def _extract_texts(value: Any, depth: int = 0) -> list[str]:
             if key in value:
                 texts.extend(_extract_texts(value[key], depth + 1))
         return texts
+    if isinstance(value, (list, tuple)) and depth < 2:
+        texts = []
+        for item in value:
+            texts.extend(_extract_texts(item, depth + 1))
+        return texts
+    return []
+
+
+def _collect_texts(value: Any, depth: int = 0) -> list[str]:
+    if depth > 5:
+        return []
+    if isinstance(value, str):
+        text = _clean_text(value)
+        return [text] if text else []
+    if isinstance(value, (int, float, bool)):
+        return [str(value)]
+    if isinstance(value, dict):
+        texts: list[str] = []
+        for item in value.values():
+            texts.extend(_collect_texts(item, depth + 1))
+        return texts
+    if isinstance(value, (list, tuple)):
+        texts = []
+        for item in value:
+            texts.extend(_collect_texts(item, depth + 1))
+        return texts
     return []
 
 
@@ -53,6 +99,19 @@ def _event_texts(events: list[Any]) -> list[str]:
     return texts
 
 
+def _unique_texts(values: list[str], max_items: int = 5) -> list[str]:
+    texts: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        text = _shorten(_clean_text(value), EVENT_TEXT_MAX_LENGTH)
+        if text and text not in seen:
+            texts.append(text)
+            seen.add(text)
+        if len(texts) >= max_items:
+            break
+    return texts
+
+
 def _events_from(run_record: Any) -> list[Any]:
     if not isinstance(run_record, dict):
         return []
@@ -71,6 +130,73 @@ def _missing_node_types(workflow: Any, object_info: Any) -> list[str]:
         class_type = node.get("class_type")
         if isinstance(class_type, str) and class_type and class_type not in object_info:
             missing.add(class_type)
+    return sorted(missing)
+
+
+def _wait_payloads(run_record: dict[str, Any], events: list[Any]) -> list[dict[str, Any]]:
+    payloads: list[dict[str, Any]] = []
+    wait_result = run_record.get("wait_result")
+    if isinstance(wait_result, dict):
+        payloads.append(wait_result)
+    for event in events:
+        if isinstance(event, dict) and event.get("type") == "wait_result":
+            payloads.append(event)
+    return payloads
+
+
+def _history_status_from_texts(texts: list[str]) -> str | None:
+    lowered = [_clean_text(text).lower() for text in texts]
+    if any(any(marker in text for marker in HISTORY_FAILURE_MARKERS) for text in lowered):
+        return "failed"
+    if any(any(marker in text for marker in HISTORY_SUCCESS_MARKERS) for text in lowered):
+        return "completed"
+    return None
+
+
+def _history_status_from_payload(payload: dict[str, Any]) -> str | None:
+    for key in ("history_status", "terminal_status"):
+        value = payload.get(key)
+        if isinstance(value, str):
+            status = _history_status_from_texts([value])
+            if status is not None:
+                return status
+    if payload.get("completed") is True:
+        return "completed"
+    return _history_status_from_texts(_collect_texts(payload))
+
+
+def _workflow_model_references(
+    workflow: Any,
+    workflow_analysis: dict[str, Any] | None,
+) -> list[str]:
+    references: set[str] = set()
+    if isinstance(workflow_analysis, dict):
+        for container in (workflow_analysis, workflow_analysis.get("summary")):
+            if not isinstance(container, dict):
+                continue
+            values = container.get("model_references")
+            if isinstance(values, list):
+                references.update(value for value in values if isinstance(value, str) and value)
+    if isinstance(workflow, dict):
+        try:
+            summary = summarize_workflow(workflow)
+        except Exception:
+            summary = {}
+        values = summary.get("model_references") if isinstance(summary, dict) else None
+        if isinstance(values, list):
+            references.update(value for value in values if isinstance(value, str) and value)
+    return sorted(references)
+
+
+def _missing_model_references(model_references: list[str], texts: list[str]) -> list[str]:
+    lowered_texts = [text.lower() for text in texts]
+    missing: set[str] = set()
+    for reference in model_references:
+        lowered_reference = reference.lower()
+        for text in lowered_texts:
+            if lowered_reference in text and any(marker in text for marker in MODEL_ERROR_MARKERS):
+                missing.add(reference)
+                break
     return sorted(missing)
 
 
@@ -114,13 +240,25 @@ def _format_missing_node_types(node_types: list[str]) -> str:
     return f"Missing node types: {', '.join(visible)}{suffix}."
 
 
-def _build_summary(run_id: Any, status: str, signals: list[str], missing_node_types: list[str], events: list[Any]) -> str:
+def _build_summary(
+    run_id: Any,
+    status: str,
+    signals: list[str],
+    missing_node_types: list[str],
+    events: list[Any],
+    diagnostic_texts: list[str],
+    missing_model_references: list[str],
+) -> str:
     parts = [f"Run {run_id} status is {status}."]
     event_texts = _event_texts(events)
     if event_texts:
         parts.append("Events: " + "; ".join(event_texts[:3]) + ".")
+    if diagnostic_texts:
+        parts.append("Diagnostics: " + "; ".join(diagnostic_texts[:3]) + ".")
     if missing_node_types:
         parts.append(_format_missing_node_types(missing_node_types))
+    if missing_model_references:
+        parts.append(f"Missing model references: {', '.join(missing_model_references[:5])}.")
     if "missing_outputs" in signals:
         parts.append("Completed run has no registered outputs.")
     return _shorten(" ".join(parts), SUMMARY_MAX_LENGTH)
@@ -130,6 +268,7 @@ def diagnose_run(
     run_record: dict[str, Any],
     workflow: dict[str, Any] | None = None,
     object_info: dict[str, Any] | None = None,
+    workflow_analysis: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     normalized_run_record = run_record if isinstance(run_record, dict) else {}
     events = _events_from(normalized_run_record)
@@ -146,6 +285,23 @@ def diagnose_run(
         signals.add("missing_outputs")
 
     missing_node_types = _missing_node_types(workflow, object_info)
+    wait_payloads = _wait_payloads(normalized_run_record, events)
+    diagnostic_texts = _unique_texts(
+        [text for payload in wait_payloads for text in _collect_texts(payload)]
+    )
+    history_status = None
+    for payload in wait_payloads:
+        if payload.get("fallback_used"):
+            signals.add("fallback_used")
+        payload_history_status = _history_status_from_payload(payload)
+        if payload_history_status is not None:
+            history_status = payload_history_status
+            signals.add(f"history_{payload_history_status}")
+
+    model_references = _workflow_model_references(workflow, workflow_analysis)
+    missing_model_references = _missing_model_references(model_references, diagnostic_texts)
+    if missing_model_references:
+        signals.add("missing_model_reference")
     sorted_signals = sorted(signals)
 
     return {
@@ -153,8 +309,17 @@ def diagnose_run(
         "status": status,
         "signals": sorted_signals,
         "missing_node_types": missing_node_types,
+        "history_status": history_status,
+        "model_references": model_references,
+        "missing_model_references": missing_model_references,
         "summary": _build_summary(
-            normalized_run_record.get("run_id"), status, sorted_signals, missing_node_types, events
+            normalized_run_record.get("run_id"),
+            status,
+            sorted_signals,
+            missing_node_types,
+            events,
+            diagnostic_texts,
+            missing_model_references,
         ),
     }
 

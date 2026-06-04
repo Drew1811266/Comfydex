@@ -116,6 +116,65 @@ def test_diagnose_run_ignores_invalid_event_types_and_sorts_signals():
     assert result["signals"] == ["execution_error", "websocket_error"]
 
 
+def test_diagnose_run_reports_fallback_history_status_from_wait_result_event():
+    run = {
+        "run_id": "r7",
+        "status": "failed",
+        "events": [
+            {
+                "type": "wait_result",
+                "fallback_used": True,
+                "history_status": "failed",
+                "messages": ["KSampler failed while loading checkpoint"],
+            }
+        ],
+        "outputs": [],
+    }
+
+    result = diagnose_run(run)
+
+    assert "fallback_used" in result["signals"]
+    assert "history_failed" in result["signals"]
+    assert "KSampler failed" in result["summary"]
+
+
+def test_diagnose_run_detects_missing_model_references_from_history_text():
+    run = {
+        "run_id": "r8",
+        "status": "failed",
+        "events": [],
+        "outputs": [],
+        "wait_result": {
+            "fallback_used": True,
+            "fallback": {
+                "history": {
+                    "p1": {
+                        "status": {
+                            "status_str": "error",
+                            "exception_message": "model not found: base.safetensors",
+                        },
+                    },
+                },
+            },
+        },
+    }
+    workflow = {
+        "1": {
+            "class_type": "CheckpointLoaderSimple",
+            "inputs": {"ckpt_name": "base.safetensors"},
+        }
+    }
+
+    result = diagnose_run(run, workflow)
+
+    assert "fallback_used" in result["signals"]
+    assert "history_failed" in result["signals"]
+    assert "missing_model_reference" in result["signals"]
+    assert result["model_references"] == ["base.safetensors"]
+    assert result["missing_model_references"] == ["base.safetensors"]
+    assert "base.safetensors" in result["summary"]
+
+
 def test_compare_runs_reports_changed_seed_status_and_output_count():
     left_run = {"run_id": "left", "status": "completed", "outputs": [{"filename": "left.png"}]}
     right_run = {

@@ -44,7 +44,15 @@ from .node_scaffold import scaffold_custom_node_package, safe_custom_nodes_dir
 from .patching import patch_workflow
 from .paths import is_redirected_path, safe_json_path, safe_output_path, safe_package_dir
 from .reports import export_run_report
-from .runs import append_event, create_run, list_runs, read_run, register_outputs, update_status
+from .runs import (
+    append_event,
+    create_run,
+    list_runs,
+    read_run,
+    register_outputs,
+    run_dir_path,
+    update_status,
+)
 from .templates import (
     explain_workflow_plan,
     list_workflow_templates,
@@ -176,6 +184,64 @@ def _fallback_history_status(result: dict[str, Any], prompt_id: str) -> str | No
     return _history_status(result.get("fallback", {}).get("history", {}), prompt_id)
 
 
+def _short_wait_message(value: str) -> str:
+    text = " ".join(value.split())
+    return text[:177].rstrip() + "..." if len(text) > 180 else text
+
+
+def _wait_texts(value: Any, depth: int = 0) -> list[str]:
+    if depth > 5:
+        return []
+    if isinstance(value, str):
+        text = _short_wait_message(value)
+        return [text] if text else []
+    if isinstance(value, (int, float, bool)):
+        return [str(value)]
+    if isinstance(value, dict):
+        texts: list[str] = []
+        for item in value.values():
+            texts.extend(_wait_texts(item, depth + 1))
+        return texts
+    if isinstance(value, (list, tuple)):
+        texts = []
+        for item in value:
+            texts.extend(_wait_texts(item, depth + 1))
+        return texts
+    return []
+
+
+def _wait_result_event(result: dict[str, Any], prompt_id: str) -> dict[str, Any]:
+    history_status = _fallback_history_status(result, prompt_id)
+    if history_status is None and isinstance(result.get("terminal_status"), str):
+        terminal_status = result["terminal_status"]
+        if terminal_status in {"completed", "failed"}:
+            history_status = terminal_status
+    event: dict[str, Any] = {
+        "type": "wait_result",
+        "fallback_used": bool(result.get("fallback_used")),
+        "completed": bool(result.get("completed")),
+    }
+    if history_status is not None:
+        event["history_status"] = history_status
+    if result.get("timeout") is True:
+        event["timeout"] = True
+    if isinstance(result.get("polls"), int):
+        event["polls"] = result["polls"]
+    history = result.get("fallback", {}).get("history", {})
+    prompt_history = _prompt_history(history, prompt_id)
+    messages = _wait_texts(prompt_history if prompt_history is not None else history)
+    if messages:
+        seen: set[str] = set()
+        event["messages"] = []
+        for message in messages:
+            if message and message not in seen:
+                event["messages"].append(message)
+                seen.add(message)
+            if len(event["messages"]) >= 5:
+                break
+    return event
+
+
 def _same_workflow_path(left: Path, right: Path) -> bool:
     left_resolved = left.resolve()
     right_resolved = right.resolve()
@@ -239,13 +305,7 @@ def _batch_child_workflow_name(workflow_name: str, batch_id: str, index: int) ->
 
 
 def _run_dir_after_read(runs_dir: Path, run_id: str) -> Path:
-    base = runs_dir.resolve()
-    run_dir = (base / run_id).resolve()
-    try:
-        run_dir.relative_to(base)
-    except ValueError:
-        raise ValueError("run_id must stay inside runs_dir")
-    return run_dir
+    return run_dir_path(runs_dir, run_id)
 
 
 def _run_file_after_read(runs_dir: Path, run_id: str, filename: str) -> Path:
@@ -929,6 +989,7 @@ async def comfy_wait_for_run(run_id: str) -> dict[str, Any]:
         raise
 
     fallback_status = _fallback_history_status(result, prompt_id)
+    append_event(ctx.config.runs_dir, run_id, _wait_result_event(result, prompt_id))
     if result.get("completed") or fallback_status == "completed":
         update_status(ctx.config.runs_dir, run_id, "completed")
     elif fallback_status == "failed":
@@ -986,7 +1047,8 @@ async def comfy_diagnose_run(
             ctx.config.request_timeout_seconds,
         ) as client:
             object_info = await client.get_object_info()
-    return diagnose_run(record, workflow, object_info)
+    workflow_analysis = analyze_workflow(workflow, object_info) if isinstance(workflow, dict) else None
+    return diagnose_run(record, workflow, object_info, workflow_analysis=workflow_analysis)
 
 
 @mcp.tool()
@@ -994,8 +1056,8 @@ async def comfy_export_run_report(run_id: str) -> dict[str, Any]:
     ctx = tool_context()
     record = read_run(ctx.config.runs_dir, run_id)
     workflow = _read_workflow_snapshot(ctx.config.runs_dir, run_id, required=True)
-    diagnosis = diagnose_run(record, workflow)
     analysis = analyze_workflow(workflow)
+    diagnosis = diagnose_run(record, workflow, workflow_analysis=analysis)
     workflow_summary = (
         analysis.get("summary", {"node_count": 0})
         if isinstance(analysis, dict)

@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from .paths import is_redirected_path
+from .runs import has_safe_run_record, validate_run_id
 
 
 def _inside(path: Path, base: Path) -> bool:
@@ -69,6 +70,8 @@ def list_outputs(runs_dir: Path) -> list[dict[str, Any]]:
         run_stat = _safe_lstat(run_dir, base)
         if run_stat is None or not stat.S_ISDIR(run_stat.st_mode):
             continue
+        if not has_safe_run_record(runs_dir, run_dir.name):
+            continue
 
         outputs_dir = run_dir / "outputs"
         for output, output_stat in _iter_real_files(outputs_dir, base):
@@ -112,10 +115,16 @@ def cleanup_outputs(
     failed_run_ids: list[str] | None = None,
     older_than_seconds: int | None = None,
 ) -> dict[str, Any]:
+    if older_than_seconds is not None:
+        if isinstance(older_than_seconds, bool) or not isinstance(older_than_seconds, int):
+            raise ValueError("older_than_seconds must be a non-negative integer")
+        if older_than_seconds < 0:
+            raise ValueError("older_than_seconds must be a non-negative integer")
+
     candidates = list_outputs(runs_dir)
 
     if failed_run_ids is not None:
-        failed_ids = set(failed_run_ids)
+        failed_ids = {validate_run_id(run_id) for run_id in failed_run_ids}
         candidates = [row for row in candidates if row["run_id"] in failed_ids]
 
     if older_than_seconds is not None:

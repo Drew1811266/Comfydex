@@ -2,6 +2,9 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
+import pytest
+
+from comfydex_mcp import runs
 from comfydex_mcp.runs import (
     append_event,
     create_run,
@@ -54,6 +57,27 @@ def test_create_run_avoids_same_second_label_collisions(tmp_path: Path):
     assert read_run(tmp_path, second["run_id"])["prompt_id"] == "p2"
     assert json.loads((tmp_path / first["run_id"] / "workflow.json").read_text(encoding="utf-8")) == {"first": True}
     assert json.loads((tmp_path / second["run_id"] / "workflow.json").read_text(encoding="utf-8")) == {"second": True}
+
+
+def test_read_run_rejects_alias_traversal_run_id(tmp_path: Path):
+    run = create_run(tmp_path, "wf.json", {}, "http://127.0.0.1:8188", "p1", now=datetime(2026, 6, 2, tzinfo=timezone.utc))
+
+    with pytest.raises(ValueError, match="run_id"):
+        read_run(tmp_path, f"placeholder/../{run['run_id']}")
+
+
+def test_read_run_rejects_redirected_run_json(monkeypatch, tmp_path: Path):
+    run_dir = tmp_path / "run-a"
+    run_dir.mkdir()
+    (run_dir / "run.json").write_text("{}", encoding="utf-8")
+
+    def redirected(path: Path) -> bool:
+        return path.name == "run.json"
+
+    monkeypatch.setattr(runs, "is_redirected_path", redirected, raising=False)
+
+    with pytest.raises(ValueError, match="run.json"):
+        read_run(tmp_path, "run-a")
 
 
 def test_register_outputs_updates_run(tmp_path: Path):

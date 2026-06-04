@@ -4,6 +4,8 @@ import os
 import time
 from pathlib import Path
 
+import pytest
+
 from comfydex_mcp import outputs
 from comfydex_mcp.outputs import cleanup_outputs, list_outputs
 
@@ -17,6 +19,8 @@ def _write_output(
     output = runs_dir / run_id / "outputs" / Path(relative_output)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(content, encoding="utf-8")
+    run_record = runs_dir / run_id / "run.json"
+    run_record.write_text('{"run_id": "' + run_id + '"}\n', encoding="utf-8")
     return output
 
 
@@ -116,6 +120,32 @@ def test_cleanup_outputs_failed_run_ids_only_selects_specified_run_outputs(tmp_p
     assert _paths(result["candidates"]) == [failed_output.resolve()]
     assert failed_output.exists()
     assert other_output.exists()
+
+
+def test_list_outputs_ignores_directories_without_safe_run_record(tmp_path: Path):
+    runs_dir = tmp_path / "runs"
+    valid_output = _write_output(runs_dir, "run-a", "output/image.png")
+    stray_output = runs_dir / "not-a-run" / "outputs" / "output" / "stray.png"
+    stray_output.parent.mkdir(parents=True)
+    stray_output.write_text("stray", encoding="utf-8")
+    batch_output = runs_dir / ".batches" / "batch-a" / "outputs" / "output" / "batch.png"
+    batch_output.parent.mkdir(parents=True)
+    batch_output.write_text("batch", encoding="utf-8")
+
+    result = list_outputs(runs_dir)
+
+    assert _paths(result) == [valid_output.resolve()]
+    assert stray_output.exists()
+    assert batch_output.exists()
+
+
+def test_cleanup_outputs_rejects_negative_or_bool_age_threshold(tmp_path: Path):
+    runs_dir = tmp_path / "runs"
+    _write_output(runs_dir, "run-a", "output/image.png")
+
+    for value in (-1, True, False):
+        with pytest.raises(ValueError, match="older_than_seconds"):
+            cleanup_outputs(runs_dir, confirm=True, older_than_seconds=value)
 
 
 def test_redirected_output_file_or_directory_is_not_listed_or_deleted(
