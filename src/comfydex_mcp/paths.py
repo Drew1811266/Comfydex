@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import stat
 from pathlib import Path, PurePosixPath
 
 
@@ -36,6 +37,39 @@ def safe_package_dir(base_dir: Path, package_name: str) -> Path:
     target = (base / package_name).resolve()
     if not _is_relative_to(target, base):
         raise ValueError("package path must stay inside base directory")
+    return target
+
+
+def is_redirected_path(path: Path) -> bool:
+    if path.is_symlink():
+        return True
+
+    try:
+        file_attributes = path.stat(follow_symlinks=False).st_file_attributes
+    except (AttributeError, FileNotFoundError, OSError):
+        return False
+    reparse_point = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+    return bool(file_attributes & reparse_point)
+
+
+def safe_package_file_path(package_dir: Path, filename: str) -> Path:
+    if not filename or filename != Path(filename).name:
+        raise ValueError("package file name must be simple")
+
+    base = package_dir.resolve()
+    target = package_dir / filename
+    if is_redirected_path(target):
+        raise ValueError(f"{filename} must be package-local")
+
+    resolved_parent = target.parent.resolve()
+    if not _is_relative_to(resolved_parent, base):
+        raise ValueError(f"{filename} path must stay inside package directory")
+
+    if target.exists():
+        resolved_target = target.resolve()
+        if not _is_relative_to(resolved_target, base):
+            raise ValueError(f"{filename} path must stay inside package directory")
+
     return target
 
 

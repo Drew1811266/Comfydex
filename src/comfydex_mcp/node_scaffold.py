@@ -4,7 +4,7 @@ import stat
 from pathlib import Path
 from typing import Any
 
-from .paths import ensure_directory, safe_package_dir
+from .paths import ensure_directory, safe_package_dir, safe_package_file_path
 
 
 def scaffold_custom_node_package(workspace: Path, package_name: str) -> dict[str, Any]:
@@ -21,12 +21,12 @@ def scaffold_custom_node_package(workspace: Path, package_name: str) -> dict[str
     class_name = _node_class_name(package_name)
     mapping_key = class_name
 
-    (package_dir / "__init__.py").write_text(
+    safe_package_file_path(package_dir, "__init__.py").write_text(
         "from .nodes import NODE_CLASS_MAPPINGS, NODE_DISPLAY_NAME_MAPPINGS\n"
         "__all__ = ['NODE_CLASS_MAPPINGS', 'NODE_DISPLAY_NAME_MAPPINGS']\n",
         encoding="utf-8",
     )
-    (package_dir / "nodes.py").write_text(
+    safe_package_file_path(package_dir, "nodes.py").write_text(
         f"class {class_name}:\n"
         "    CATEGORY = 'Comfydex'\n"
         "    FUNCTION = 'run'\n"
@@ -40,11 +40,11 @@ def scaffold_custom_node_package(workspace: Path, package_name: str) -> dict[str
         f"NODE_DISPLAY_NAME_MAPPINGS = {{{mapping_key!r}: '{class_name}'}}\n",
         encoding="utf-8",
     )
-    (package_dir / "README.md").write_text(
+    safe_package_file_path(package_dir, "README.md").write_text(
         f"# {package_name}\n\nGenerated ComfyUI custom node package.\n",
         encoding="utf-8",
     )
-    (package_dir / "pyproject.toml").write_text(
+    safe_package_file_path(package_dir, "pyproject.toml").write_text(
         f'[project]\nname = "{package_name}"\nversion = "0.1.0"\n',
         encoding="utf-8",
     )

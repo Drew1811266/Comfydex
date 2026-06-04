@@ -1,3 +1,9 @@
+import ctypes
+import os
+import signal
+import subprocess
+import sys
+import time
 from pathlib import Path
 
 from comfydex_mcp.custom_nodes import (
@@ -112,6 +118,78 @@ def test_validate_node_mappings_reports_unsupported_class_mapping_value(
             "reason": "unsupported_mapping_value",
         }
     ]
+
+
+def test_validate_node_mappings_rejects_string_class_mapping_value(
+    tmp_path: Path,
+):
+    package = tmp_path / "pkg"
+    package.mkdir()
+    (package / "nodes.py").write_text(
+        "class GoodNode: pass\n"
+        "NODE_CLASS_MAPPINGS = {'GoodNode': 'GoodNode'}\n"
+        "NODE_DISPLAY_NAME_MAPPINGS = {'GoodNode': 'Good Node'}\n",
+        encoding="utf-8",
+    )
+
+    result = validate_node_mappings(package)
+
+    assert result["status"] == "invalid"
+    assert result["errors"] == [
+        {
+            "mapping_key": "GoodNode",
+            "reason": "unsupported_mapping_value",
+        }
+    ]
+
+
+def test_validate_node_mappings_reports_missing_class_mappings(tmp_path: Path):
+    package = tmp_path / "pkg"
+    package.mkdir()
+    (package / "nodes.py").write_text(
+        "class GoodNode: pass\n"
+        "NODE_DISPLAY_NAME_MAPPINGS = {'GoodNode': 'Good Node'}\n",
+        encoding="utf-8",
+    )
+
+    result = validate_node_mappings(package)
+
+    assert result["status"] == "invalid"
+    assert result["errors"] == [{"reason": "missing_class_mappings"}]
+
+
+def test_validate_node_mappings_reports_call_class_mappings(tmp_path: Path):
+    package = tmp_path / "pkg"
+    package.mkdir()
+    (package / "nodes.py").write_text(
+        "class GoodNode: pass\n"
+        "def build():\n"
+        "    return {'GoodNode': GoodNode}\n"
+        "NODE_CLASS_MAPPINGS = build()\n"
+        "NODE_DISPLAY_NAME_MAPPINGS = {'GoodNode': 'Good Node'}\n",
+        encoding="utf-8",
+    )
+
+    result = validate_node_mappings(package)
+
+    assert result["status"] == "invalid"
+    assert result["errors"] == [{"reason": "invalid_class_mappings"}]
+
+
+def test_validate_node_mappings_reports_list_class_mappings(tmp_path: Path):
+    package = tmp_path / "pkg"
+    package.mkdir()
+    (package / "nodes.py").write_text(
+        "class GoodNode: pass\n"
+        "NODE_CLASS_MAPPINGS = []\n"
+        "NODE_DISPLAY_NAME_MAPPINGS = {'GoodNode': 'Good Node'}\n",
+        encoding="utf-8",
+    )
+
+    result = validate_node_mappings(package)
+
+    assert result["status"] == "invalid"
+    assert result["errors"] == [{"reason": "invalid_class_mappings"}]
 
 
 def test_validate_node_mappings_reports_missing_nodes_py(tmp_path: Path):
@@ -316,6 +394,78 @@ def test_validate_node_class_reports_non_string_function(tmp_path: Path):
     assert any(error["reason"] == "invalid_function" for error in result["errors"])
 
 
+def test_validate_node_class_reports_invalid_return_types(tmp_path: Path):
+    package = tmp_path / "pkg"
+    package.mkdir()
+    (package / "nodes.py").write_text(
+        "class BadNode:\n"
+        "    CATEGORY = 'Comfydex'\n"
+        "    FUNCTION = 'run'\n"
+        "    RETURN_TYPES = 'INT'\n"
+        "    @classmethod\n"
+        "    def INPUT_TYPES(cls):\n"
+        "        return {'required': {}}\n"
+        "    def run(self):\n"
+        "        return (1,)\n"
+        "NODE_CLASS_MAPPINGS = {'BadNode': BadNode}\n"
+        "NODE_DISPLAY_NAME_MAPPINGS = {'BadNode': 'Bad Node'}\n",
+        encoding="utf-8",
+    )
+
+    result = validate_node_class(package, "BadNode")
+
+    assert result["status"] == "invalid"
+    assert any(error["reason"] == "invalid_return_types" for error in result["errors"])
+
+
+def test_validate_node_class_reports_invalid_category(tmp_path: Path):
+    package = tmp_path / "pkg"
+    package.mkdir()
+    (package / "nodes.py").write_text(
+        "class BadNode:\n"
+        "    CATEGORY = 123\n"
+        "    FUNCTION = 'run'\n"
+        "    RETURN_TYPES = ('INT',)\n"
+        "    @classmethod\n"
+        "    def INPUT_TYPES(cls):\n"
+        "        return {'required': {}}\n"
+        "    def run(self):\n"
+        "        return (1,)\n"
+        "NODE_CLASS_MAPPINGS = {'BadNode': BadNode}\n"
+        "NODE_DISPLAY_NAME_MAPPINGS = {'BadNode': 'Bad Node'}\n",
+        encoding="utf-8",
+    )
+
+    result = validate_node_class(package, "BadNode")
+
+    assert result["status"] == "invalid"
+    assert any(error["reason"] == "invalid_category" for error in result["errors"])
+
+
+def test_validate_node_class_reports_list_input_types_return(tmp_path: Path):
+    package = tmp_path / "pkg"
+    package.mkdir()
+    (package / "nodes.py").write_text(
+        "class BadNode:\n"
+        "    CATEGORY = 'Comfydex'\n"
+        "    FUNCTION = 'run'\n"
+        "    RETURN_TYPES = ('INT',)\n"
+        "    @classmethod\n"
+        "    def INPUT_TYPES(cls):\n"
+        "        return []\n"
+        "    def run(self):\n"
+        "        return (1,)\n"
+        "NODE_CLASS_MAPPINGS = {'BadNode': BadNode}\n"
+        "NODE_DISPLAY_NAME_MAPPINGS = {'BadNode': 'Bad Node'}\n",
+        encoding="utf-8",
+    )
+
+    result = validate_node_class(package, "BadNode")
+
+    assert result["status"] == "invalid"
+    assert any(error["reason"] == "invalid_input_types" for error in result["errors"])
+
+
 def test_validate_node_class_reports_instance_input_types_method(tmp_path: Path):
     package = tmp_path / "pkg"
     package.mkdir()
@@ -455,3 +605,167 @@ def test_check_node_imports_returns_missing_package_failure(tmp_path: Path):
 
     assert result["status"] == "failed"
     assert result["reason"] == "missing_package_dir"
+
+
+def test_inspect_custom_node_package_reports_syntax_error_without_raising(
+    tmp_path: Path,
+):
+    package = tmp_path / "pkg"
+    package.mkdir()
+    (package / "nodes.py").write_text(
+        "class BadNode(:\n"
+        "    pass\n",
+        encoding="utf-8",
+    )
+
+    result = inspect_custom_node_package(package)
+
+    assert result["status"] == "invalid"
+    assert result["node_classes"] == []
+    assert result["class_mappings"] == {}
+    assert result["display_name_mappings"] == {}
+    assert result["errors"][0]["reason"] == "invalid_nodes_py_syntax"
+
+
+def test_validate_node_mappings_reports_syntax_error_without_raising(
+    tmp_path: Path,
+):
+    package = tmp_path / "pkg"
+    package.mkdir()
+    (package / "nodes.py").write_text(
+        "class BadNode(:\n"
+        "    pass\n",
+        encoding="utf-8",
+    )
+
+    result = validate_node_mappings(package)
+
+    assert result["status"] == "invalid"
+    assert result["errors"][0]["reason"] == "invalid_nodes_py_syntax"
+
+
+def test_inspect_custom_node_package_rejects_redirected_nodes_py(
+    monkeypatch,
+    tmp_path: Path,
+):
+    package = tmp_path / "pkg"
+    package.mkdir()
+    nodes_py = package / "nodes.py"
+    nodes_py.write_text(
+        "class GoodNode: pass\n"
+        "NODE_CLASS_MAPPINGS = {'GoodNode': GoodNode}\n",
+        encoding="utf-8",
+    )
+
+    original_is_symlink = Path.is_symlink
+
+    def fake_is_symlink(path: Path):
+        if path == nodes_py:
+            return True
+        return original_is_symlink(path)
+
+    monkeypatch.setattr(Path, "is_symlink", fake_is_symlink)
+
+    result = inspect_custom_node_package(package)
+
+    assert result["status"] == "invalid"
+    assert result["node_classes"] == []
+    assert result["class_mappings"] == {}
+    assert result["errors"] == [
+        {"reason": "redirected_package_file", "path": str(nodes_py)}
+    ]
+
+
+def test_check_node_imports_rejects_invalid_direct_options(tmp_path: Path):
+    package = tmp_path / "pkg"
+    package.mkdir()
+
+    timeout_result = check_node_imports(package, timeout_seconds=0)
+    output_result = check_node_imports(package, max_output_bytes=-1)
+
+    assert timeout_result["status"] == "failed"
+    assert timeout_result["reason"] == "invalid_timeout"
+    assert output_result["status"] == "failed"
+    assert output_result["reason"] == "invalid_max_output"
+
+
+def test_check_node_imports_kills_descendants_after_successful_import(
+    tmp_path: Path,
+):
+    package = tmp_path / "pkg"
+    package.mkdir()
+    marker = package / "child.pid"
+    child_code = (
+        "import pathlib, sys, time, os\n"
+        "pathlib.Path(sys.argv[1]).write_text(str(os.getpid()), encoding='utf-8')\n"
+        "time.sleep(30)\n"
+    )
+    (package / "__init__.py").write_text(
+        "from .nodes import NODE_CLASS_MAPPINGS\n",
+        encoding="utf-8",
+    )
+    (package / "nodes.py").write_text(
+        "import subprocess, sys, time\n"
+        f"marker = {str(marker)!r}\n"
+        f"child_code = {child_code!r}\n"
+        "subprocess.Popen([sys.executable, '-c', child_code, marker])\n"
+        "deadline = time.time() + 5\n"
+        "while not __import__('pathlib').Path(marker).exists() and time.time() < deadline:\n"
+        "    time.sleep(0.05)\n"
+        "NODE_CLASS_MAPPINGS = {}\n",
+        encoding="utf-8",
+    )
+
+    result = check_node_imports(package, timeout_seconds=5)
+
+    assert result["status"] == "passed"
+    child_pid = int(marker.read_text(encoding="utf-8"))
+    try:
+        deadline = time.monotonic() + 5
+        while _pid_is_running(child_pid) and time.monotonic() < deadline:
+            time.sleep(0.05)
+        if _pid_is_running(child_pid):
+            pytest_message = f"descendant process {child_pid} survived import check"
+            raise AssertionError(pytest_message)
+    finally:
+        if _pid_is_running(child_pid):
+            _kill_pid(child_pid)
+
+
+def _pid_is_running(pid: int) -> bool:
+    if sys.platform == "win32":
+        process_query_limited_information = 0x1000
+        still_active = 259
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        handle = kernel32.OpenProcess(process_query_limited_information, False, pid)
+        if not handle:
+            return False
+        try:
+            exit_code = ctypes.c_ulong()
+            if not kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code)):
+                return False
+            return exit_code.value == still_active
+        finally:
+            kernel32.CloseHandle(handle)
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def _kill_pid(pid: int) -> None:
+    if sys.platform == "win32":
+        subprocess.run(
+            ["taskkill", "/PID", str(pid), "/T", "/F"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+        return
+    try:
+        os.kill(pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
