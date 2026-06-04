@@ -79,3 +79,38 @@ def test_readme_mentions_0_2_capabilities():
     assert "UI workflow" in text
     assert "custom node" in text
     assert "batch" in text
+
+
+def test_readme_does_not_describe_0_2_features_as_future_scope():
+    text = (ROOT / "README.md").read_text(encoding="utf-8")
+
+    assert "first release" not in text
+    assert "Not included yet" not in text
+    assert "UI workflow JSON to API prompt JSON conversion" not in text
+    assert "custom node package scaffolding" not in text
+    assert "old output cleanup" not in text
+
+
+def test_workflow_skill_uses_current_version_language():
+    text = (ROOT / "skills" / "comfyui-workflows" / "SKILL.md").read_text(
+        encoding="utf-8"
+    )
+
+    assert "First-version Comfydex" not in text
+    assert "validated API prompt JSON" in text
+
+
+def test_run_diagnostics_doc_lists_required_inputs():
+    text = (ROOT / "docs" / "usage" / "run-diagnostics.md").read_text(
+        encoding="utf-8"
+    )
+
+    for marker in ("run_id", "confirm=True", "failed_run_ids", "variations"):
+        assert marker in text
+
+
+def test_readme_uses_local_plugin_validator():
+    text = (ROOT / "README.md").read_text(encoding="utf-8")
+
+    assert "python scripts/validate_plugin.py" in text
+    assert "plugin-creator/scripts/validate_plugin.py" not in text

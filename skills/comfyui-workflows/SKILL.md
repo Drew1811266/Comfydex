@@ -14,7 +14,7 @@ ComfyUI has two common workflow JSON shapes:
 - UI workflow JSON: exported for the ComfyUI visual editor. It usually has `nodes` and `links`.
 - API prompt JSON: submit-ready JSON for `/prompt`. It is usually a JSON object whose values contain `class_type` and `inputs`.
 
-First-version Comfydex can analyze both shapes, but `comfy_submit_workflow` requires API prompt JSON.
+Comfydex can classify, import, and convert UI workflow JSON, but `comfy_submit_workflow` requires validated API prompt JSON.
 
 ## Standard Tool Order
 

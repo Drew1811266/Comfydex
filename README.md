@@ -299,7 +299,7 @@ Run records store:
 
 ## Safety Boundaries
 
-Comfydex intentionally keeps the first release narrow:
+Comfydex intentionally keeps the implementation bounded:
 
 - default ComfyUI target is local: `http://127.0.0.1:8188`
 - remote URLs are opt-in through config
@@ -365,7 +365,7 @@ python -m pytest -v
 Validate the Codex plugin manifest:
 
 ```powershell
-python "C:/Users/Drew/.codex/skills/.system/plugin-creator/scripts/validate_plugin.py" "C:/Users/Drew/plugins/comfydex"
+python scripts/validate_plugin.py
 ```
 
 ## Release Notes
@@ -411,33 +411,10 @@ Before publishing changes, run:
 
 ```powershell
 python -m pytest -q
-python "C:/Users/Drew/.codex/skills/.system/plugin-creator/scripts/validate_plugin.py" "C:/Users/Drew/plugins/comfydex"
+python scripts/validate_plugin.py
+python -m json.tool .codex-plugin/plugin.json > $null
+python -m json.tool .mcp.json > $null
 ```
-
-## Version 0.1.0 Scope
-
-Included:
-
-- Codex plugin scaffold
-- Python MCP server
-- ComfyUI HTTP client
-- ComfyUI WebSocket wait handling
-- HTTP polling fallback
-- workflow storage and analysis
-- run record persistence
-- output fetching
-- ComfyUI workflow Skill
-- smoke check script
-- automated tests
-
-Not included yet:
-
-- natural-language workflow generation
-- UI workflow JSON to API prompt JSON conversion
-- custom node package scaffolding
-- visual output preview inside Codex
-- old output cleanup
-- semantic workflow version diffing
 
 ## License
 
