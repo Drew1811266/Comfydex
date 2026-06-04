@@ -1479,6 +1479,47 @@ async def test_comfy_batch_submit_records_submit_statuses_without_forcing_comple
 
 
 @pytest.mark.asyncio
+async def test_comfy_batch_submit_preserves_failed_run_id_from_real_submit_error(
+    monkeypatch,
+    tmp_path: Path,
+):
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+    source = {"1": {"class_type": "SaveImage", "inputs": {"seed": 0}}}
+    save_workflow(tmp_path / "workflows", "source.json", source, require_api=True)
+
+    class FailingSubmitClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            pass
+
+        async def submit_prompt(self, workflow, client_id):
+            raise RuntimeError("submit exploded")
+
+    monkeypatch.setattr(server, "ComfyClient", FailingSubmitClient)
+
+    result = await server.comfy_batch_submit(
+        "source.json",
+        [{"node_id": "1", "inputs": {"seed": 222}}],
+        batch_label="Submit Error",
+    )
+
+    run_paths = list((tmp_path / "runs").glob("*/run.json"))
+    assert len(run_paths) == 1
+    failed_record = json.loads(run_paths[0].read_text(encoding="utf-8"))
+    assert failed_record["status"] == "failed"
+    assert any("submit exploded" in json.dumps(event) for event in failed_record["events"])
+    assert result["status"] == "failed"
+    assert result["runs"][0]["status"] == "failed"
+    assert result["runs"][0]["run_id"] == failed_record["run_id"]
+    assert "submit exploded" in result["runs"][0]["error"]
+
+
+@pytest.mark.asyncio
 async def test_comfy_batch_submit_continues_after_patch_and_submit_failures(
     monkeypatch,
     tmp_path: Path,

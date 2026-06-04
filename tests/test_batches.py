@@ -209,6 +209,30 @@ def test_read_and_write_reject_redirected_batch_json(monkeypatch, tmp_path: Path
     assert json.loads(original_text)["runs"][0]["run_id"] is None
 
 
+def test_create_batch_record_rejects_dangling_redirected_batch_json(
+    monkeypatch,
+    tmp_path: Path,
+):
+    now = datetime(2026, 6, 4, tzinfo=timezone.utc)
+    batch_json = tmp_path / ".batches" / "2026-06-04T00-00-00_dangling" / "batch.json"
+
+    def fake_is_symlink(path: Path):
+        return path == batch_json
+
+    monkeypatch.setattr(Path, "is_symlink", fake_is_symlink)
+
+    with pytest.raises(ValueError, match="batch.json"):
+        create_batch_record(
+            tmp_path,
+            "dangling",
+            "source.json",
+            [{"node_id": "1", "inputs": {"seed": 1}}],
+            now=now,
+        )
+
+    assert not batch_json.exists()
+
+
 def test_variation_to_operations_sorts_node_inputs():
     operations = variation_to_operations(
         {"node_id": "1", "inputs": {"steps": 20, "cfg": 7, "seed": 42}}

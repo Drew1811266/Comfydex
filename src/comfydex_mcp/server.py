@@ -722,6 +722,10 @@ async def comfy_submit_workflow(
                 },
             )
             update_status(ctx.config.runs_dir, failed_run["run_id"], "failed")
+            try:
+                setattr(exc, "run_id", failed_run["run_id"])
+            except Exception:
+                pass
             raise
 
     prompt_id = _require_prompt_id(submitted)

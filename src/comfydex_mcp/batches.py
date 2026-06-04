@@ -78,9 +78,9 @@ def _batch_dir(runs_dir: Path, batch_id: str) -> Path:
 def _record_path(runs_dir: Path, batch_id: str) -> Path:
     directory = _batch_dir(runs_dir, batch_id)
     target = directory / "batch.json"
+    if is_redirected_path(target):
+        raise ValueError("batch.json must stay inside batch directory")
     if target.exists():
-        if is_redirected_path(target):
-            raise ValueError("batch.json must stay inside batch directory")
         resolved = target.resolve()
         if not _is_relative_to(resolved, directory):
             raise ValueError("batch.json must stay inside batch directory")
