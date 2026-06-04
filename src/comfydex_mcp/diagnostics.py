@@ -52,7 +52,9 @@ def _event_texts(events: list[Any]) -> list[str]:
     return texts
 
 
-def _events_from(run_record: dict[str, Any]) -> list[Any]:
+def _events_from(run_record: Any) -> list[Any]:
+    if not isinstance(run_record, dict):
+        return []
     events = run_record.get("events", [])
     return events if isinstance(events, list) else []
 
@@ -94,8 +96,9 @@ def diagnose_run(
     workflow: dict[str, Any] | None = None,
     object_info: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    events = _events_from(run_record)
-    status_value = run_record.get("status", "unknown")
+    normalized_run_record = run_record if isinstance(run_record, dict) else {}
+    events = _events_from(normalized_run_record)
+    status_value = normalized_run_record.get("status", "unknown")
     status = status_value if isinstance(status_value, str) and status_value else "unknown"
     signals = {
         event["type"]
@@ -103,7 +106,7 @@ def diagnose_run(
         if isinstance(event, dict) and isinstance(event.get("type"), str) and event["type"]
     }
 
-    outputs = run_record.get("outputs")
+    outputs = normalized_run_record.get("outputs")
     if status == "completed" and not outputs:
         signals.add("missing_outputs")
 
@@ -111,9 +114,11 @@ def diagnose_run(
     sorted_signals = sorted(signals)
 
     return {
-        "run_id": run_record.get("run_id"),
+        "run_id": normalized_run_record.get("run_id"),
         "status": status,
         "signals": sorted_signals,
         "missing_node_types": missing_node_types,
-        "summary": _build_summary(run_record.get("run_id"), status, sorted_signals, missing_node_types, events),
+        "summary": _build_summary(
+            normalized_run_record.get("run_id"), status, sorted_signals, missing_node_types, events
+        ),
     }

@@ -85,3 +85,32 @@ def test_diagnose_run_truncates_event_text_without_dumping_full_event():
     assert "node crashed while sampling" in result["summary"]
     assert "full event dump" not in result["summary"]
     assert len(result["summary"]) <= 360
+
+
+def test_diagnose_run_handles_malformed_run_records():
+    for malformed_run in (None, [], "bad"):
+        result = diagnose_run(malformed_run)
+
+        assert result["status"] == "unknown"
+        assert result["signals"] == []
+        assert result["missing_node_types"] == []
+        assert result["summary"] == "Run None status is unknown."
+
+
+def test_diagnose_run_ignores_invalid_event_types_and_sorts_signals():
+    run = {
+        "run_id": "r6",
+        "status": "failed",
+        "events": [
+            {"type": "websocket_error", "message": "socket closed"},
+            {"type": None, "message": "ignored"},
+            {"type": "", "message": "ignored"},
+            {"type": 3, "message": "ignored"},
+            {"type": "execution_error", "message": "node failed"},
+        ],
+        "outputs": [],
+    }
+
+    result = diagnose_run(run)
+
+    assert result["signals"] == ["execution_error", "websocket_error"]
