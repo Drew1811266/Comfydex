@@ -11,6 +11,9 @@ from .paths import ensure_directory, is_redirected_path
 
 BATCH_RUN_STATUSES = {"queued", "running", "completed", "failed"}
 _BATCH_ID_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]*")
+_NODE_VARIATION_KEYS = {"node_id", "inputs"}
+_CHANGE_VARIATION_KEYS = {"changes"}
+_SET_INPUT_CHANGE_KEYS = {"op", "node_id", "input", "value"}
 
 
 def _now() -> datetime:
@@ -73,7 +76,15 @@ def _batch_dir(runs_dir: Path, batch_id: str) -> Path:
 
 
 def _record_path(runs_dir: Path, batch_id: str) -> Path:
-    return _batch_dir(runs_dir, batch_id) / "batch.json"
+    directory = _batch_dir(runs_dir, batch_id)
+    target = directory / "batch.json"
+    if target.exists():
+        if is_redirected_path(target):
+            raise ValueError("batch.json must stay inside batch directory")
+        resolved = target.resolve()
+        if not _is_relative_to(resolved, directory):
+            raise ValueError("batch.json must stay inside batch directory")
+    return target
 
 
 def _write_batch_record(runs_dir: Path, record: dict[str, Any]) -> None:
@@ -95,6 +106,8 @@ def _create_unique_batch_dir(runs_dir: Path, base_batch_id: str) -> tuple[str, P
 
 def _summarize_status(runs: list[dict[str, Any]]) -> str:
     statuses = [str(run.get("status", "queued")) for run in runs]
+    if not statuses:
+        return "queued"
     if statuses and all(status == "completed" for status in statuses):
         return "completed"
     if statuses and all(status == "failed" for status in statuses):
@@ -102,6 +115,12 @@ def _summarize_status(runs: list[dict[str, Any]]) -> str:
     if any(status == "failed" for status in statuses):
         return "partial"
     if any(status == "running" for status in statuses):
+        return "running"
+    if all(status == "queued" for status in statuses):
+        if any(run.get("run_id") for run in runs):
+            return "running"
+        return "queued"
+    if any(status == "completed" for status in statuses):
         return "running"
     return "queued"
 
@@ -138,7 +157,7 @@ def create_batch_record(
             for index, variation in enumerate(variations)
         ],
     }
-    (directory / "batch.json").write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+    _write_batch_record(runs_dir, record)
     return record
 
 
@@ -152,6 +171,8 @@ def update_batch_run(
     index: int,
     run_id: str | None,
     status: str,
+    *,
+    error: str | None = None,
 ) -> dict[str, Any]:
     if status not in BATCH_RUN_STATUSES:
         raise ValueError(f"unsupported batch run status: {status}")
@@ -159,6 +180,8 @@ def update_batch_run(
         raise ValueError("batch run index must be an integer")
     if run_id is not None and not isinstance(run_id, str):
         raise ValueError("run_id must be a string or None")
+    if error is not None and not isinstance(error, str):
+        raise ValueError("error must be a string or None")
 
     record = read_batch_record(runs_dir, batch_id)
     runs = record.get("runs")
@@ -171,6 +194,10 @@ def update_batch_run(
 
     runs[index]["run_id"] = run_id
     runs[index]["status"] = status
+    if error is not None:
+        runs[index]["error"] = error
+    else:
+        runs[index].pop("error", None)
     record["status"] = _summarize_status(runs)
     record["updated_at"] = _format_time(_now())
     _write_batch_record(runs_dir, record)
@@ -181,13 +208,18 @@ def variation_to_operations(variation: dict[str, Any]) -> list[dict[str, Any]]:
     if not isinstance(variation, dict):
         raise ValueError("variation must be an object")
 
+    keys = set(variation)
     has_node_inputs = "node_id" in variation or "inputs" in variation
     has_changes = "changes" in variation
     if has_node_inputs and has_changes:
         raise ValueError("variation must use either node inputs or changes")
     if has_node_inputs:
+        if not keys <= _NODE_VARIATION_KEYS:
+            raise ValueError("variation has unknown fields")
         return _node_input_operations(variation)
     if has_changes:
+        if keys != _CHANGE_VARIATION_KEYS:
+            raise ValueError("variation has unknown fields")
         return _change_operations(variation)
     raise ValueError("variation must include node_id and inputs or changes")
 
@@ -236,11 +268,11 @@ def _change_operations(variation: dict[str, Any]) -> list[dict[str, Any]]:
     for change in changes:
         if not isinstance(change, dict):
             raise ValueError("variation change must be an object")
+        if set(change) != _SET_INPUT_CHANGE_KEYS:
+            raise ValueError("variation change must include only op, node_id, input, and value")
         op = change.get("op")
         if op != "set_input":
             raise ValueError(f"unsupported variation change op: {op}")
-        if "value" not in change:
-            raise ValueError("set_input variation change must include value")
         operations.append(
             {
                 "op": "set_input",

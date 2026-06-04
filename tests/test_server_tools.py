@@ -1420,7 +1420,7 @@ async def test_comfy_read_batch_tool_reads_batch_record(monkeypatch, tmp_path: P
 
 
 @pytest.mark.asyncio
-async def test_comfy_batch_submit_saves_children_submits_and_records_completed(
+async def test_comfy_batch_submit_records_submit_statuses_without_forcing_completed(
     monkeypatch,
     tmp_path: Path,
 ):
@@ -1436,7 +1436,9 @@ async def test_comfy_batch_submit_saves_children_submits_and_records_completed(
 
     async def fake_submit_workflow(name, run_label=None, client_id=None):
         submissions.append((name, run_label, client_id))
-        return {"run_id": f"run-{len(submissions) - 1}", "workflow_name": name}
+        if len(submissions) == 1:
+            return {"run_id": "run-0", "workflow_name": name, "status": "queued"}
+        return {"run_id": "run-1", "workflow_name": name}
 
     monkeypatch.setattr(server, "comfy_submit_workflow", fake_submit_workflow)
 
@@ -1458,8 +1460,8 @@ async def test_comfy_batch_submit_saves_children_submits_and_records_completed(
         batch_label="Night Batch",
     )
 
-    assert result["status"] == "completed"
-    assert [run["status"] for run in result["runs"]] == ["completed", "completed"]
+    assert result["status"] == "running"
+    assert [run["status"] for run in result["runs"]] == ["queued", "queued"]
     assert [run["run_id"] for run in result["runs"]] == ["run-0", "run-1"]
     assert len(submissions) == 2
     batch_id = result["batch_id"]
@@ -1486,11 +1488,16 @@ async def test_comfy_batch_submit_continues_after_patch_and_submit_failures(
     save_workflow(tmp_path / "workflows", "source.json", source, require_api=True)
     submissions = []
 
+    class SubmitFailedAfterRun(RuntimeError):
+        def __init__(self, message, run_id):
+            super().__init__(message)
+            self.run_id = run_id
+
     async def fake_submit_workflow(name, run_label=None, client_id=None):
         submissions.append((name, run_label, client_id))
         if len(submissions) == 1:
-            raise RuntimeError("submit exploded")
-        return {"run_id": "run-ok", "workflow_name": name}
+            raise SubmitFailedAfterRun("submit exploded", "run-created")
+        return {"run_id": "run-ok", "workflow_name": name, "status": "completed"}
 
     monkeypatch.setattr(server, "comfy_submit_workflow", fake_submit_workflow)
 
@@ -1510,6 +1517,9 @@ async def test_comfy_batch_submit_continues_after_patch_and_submit_failures(
         "failed",
         "completed",
     ]
-    assert [run["run_id"] for run in result["runs"]] == [None, None, "run-ok"]
+    assert [run["run_id"] for run in result["runs"]] == [None, "run-created", "run-ok"]
+    assert "workflow patch failed" in result["runs"][0]["error"]
+    assert "submit exploded" in result["runs"][1]["error"]
+    assert result["runs"][1]["run_id"] == "run-created"
     assert len(submissions) == 2
     assert server.read_workflow(tmp_path / "workflows", submissions[1][0])["json"]["1"]["inputs"]["seed"] == 3

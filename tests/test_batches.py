@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+import json
 from pathlib import Path
 
 import pytest
@@ -99,11 +100,32 @@ def test_update_batch_run_summarizes_terminal_statuses(tmp_path: Path):
         ],
         now=now,
     )
-    update_batch_run(tmp_path, record["batch_id"], 0, "run-a", "completed")
+    started = update_batch_run(tmp_path, record["batch_id"], 0, "run-a", "completed")
+    assert started["status"] == "running"
+
     completed = update_batch_run(tmp_path, record["batch_id"], 1, "run-b", "completed")
 
     assert completed["status"] == "completed"
     assert [run["run_id"] for run in completed["runs"]] == ["run-a", "run-b"]
+
+
+def test_update_batch_run_reports_running_for_submitted_queued_runs(tmp_path: Path):
+    record = create_batch_record(
+        tmp_path,
+        "Queued",
+        "source.json",
+        [
+            {"node_id": "1", "inputs": {"seed": 1}},
+            {"node_id": "1", "inputs": {"seed": 2}},
+        ],
+        now=datetime(2026, 6, 4, tzinfo=timezone.utc),
+    )
+
+    updated = update_batch_run(tmp_path, record["batch_id"], 0, "run-a", "queued")
+
+    assert updated["status"] == "running"
+    assert updated["runs"][0]["status"] == "queued"
+    assert updated["runs"][0]["run_id"] == "run-a"
 
 
 def test_update_batch_run_reports_running_when_any_run_is_running(tmp_path: Path):
@@ -124,6 +146,29 @@ def test_update_batch_run_reports_running_when_any_run_is_running(tmp_path: Path
     assert updated["runs"][0]["run_id"] == "run-a"
 
 
+def test_update_batch_run_records_error_text(tmp_path: Path):
+    record = create_batch_record(
+        tmp_path,
+        "Error",
+        "source.json",
+        [{"node_id": "1", "inputs": {"seed": 1}}],
+        now=datetime(2026, 6, 4, tzinfo=timezone.utc),
+    )
+
+    updated = update_batch_run(
+        tmp_path,
+        record["batch_id"],
+        0,
+        "run-a",
+        "failed",
+        error="submit exploded",
+    )
+
+    assert updated["runs"][0]["status"] == "failed"
+    assert updated["runs"][0]["run_id"] == "run-a"
+    assert updated["runs"][0]["error"] == "submit exploded"
+
+
 def test_update_batch_run_rejects_out_of_range_index_and_unsupported_status(tmp_path: Path):
     record = create_batch_record(
         tmp_path,
@@ -137,6 +182,31 @@ def test_update_batch_run_rejects_out_of_range_index_and_unsupported_status(tmp_
         update_batch_run(tmp_path, record["batch_id"], 2, None, "failed")
     with pytest.raises(ValueError, match="unsupported"):
         update_batch_run(tmp_path, record["batch_id"], 0, None, "cancelled")
+
+
+def test_read_and_write_reject_redirected_batch_json(monkeypatch, tmp_path: Path):
+    record = create_batch_record(
+        tmp_path,
+        "Safe",
+        "source.json",
+        [{"node_id": "1", "inputs": {"seed": 1}}],
+        now=datetime(2026, 6, 4, tzinfo=timezone.utc),
+    )
+    batch_json = tmp_path / ".batches" / record["batch_id"] / "batch.json"
+    original_text = batch_json.read_text(encoding="utf-8")
+
+    def fake_is_symlink(path: Path):
+        return path == batch_json
+
+    monkeypatch.setattr(Path, "is_symlink", fake_is_symlink)
+
+    with pytest.raises(ValueError, match="batch.json"):
+        read_batch_record(tmp_path, record["batch_id"])
+    with pytest.raises(ValueError, match="batch.json"):
+        update_batch_run(tmp_path, record["batch_id"], 0, "run-a", "failed")
+
+    assert batch_json.read_text(encoding="utf-8") == original_text
+    assert json.loads(original_text)["runs"][0]["run_id"] is None
 
 
 def test_variation_to_operations_sorts_node_inputs():
@@ -174,9 +244,21 @@ def test_variation_to_operations_normalizes_changes():
         {"node_id": "1", "inputs": {}},
         {"node_id": "", "inputs": {"seed": 1}},
         {"node_id": "1", "inputs": {1: "bad"}},
+        {"node_id": "1", "inputs": {"seed": 1}, "extra": True},
         {"changes": []},
         {"changes": [{"op": "remove_input", "node_id": "1", "input": "seed"}]},
         {"changes": [{"op": "set_input", "node_id": "1", "input": "seed"}]},
+        {
+            "changes": [
+                {
+                    "op": "set_input",
+                    "node_id": "1",
+                    "input": "seed",
+                    "value": 1,
+                    "extra": True,
+                }
+            ]
+        },
     ],
 )
 def test_variation_to_operations_rejects_malformed_variations(variation: dict):

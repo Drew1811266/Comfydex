@@ -787,20 +787,31 @@ async def comfy_batch_submit(
             if not isinstance(submitted_run_id, str) or not submitted_run_id:
                 raise ValueError("comfy_submit_workflow returned no run_id")
             run_id = submitted_run_id
+            submitted_status = (
+                submitted.get("status") if isinstance(submitted, dict) else None
+            )
+            if submitted_status is None:
+                submitted_status = "queued"
+            if not isinstance(submitted_status, str):
+                raise ValueError("comfy_submit_workflow returned invalid status")
             batch = update_batch_run(
                 ctx.config.runs_dir,
                 batch_id,
                 index,
                 run_id,
-                "completed",
+                submitted_status,
             )
-        except Exception:
+        except Exception as exc:
+            exc_run_id = getattr(exc, "run_id", None)
+            if isinstance(exc_run_id, str) and exc_run_id:
+                run_id = exc_run_id
             batch = update_batch_run(
                 ctx.config.runs_dir,
                 batch_id,
                 index,
                 run_id,
                 "failed",
+                error=str(exc),
             )
             continue
 
