@@ -107,6 +107,8 @@ def validate_node_class(package_dir: Path, class_name: str) -> dict[str, Any]:
 
     if "INPUT_TYPES" not in method_names:
         errors.append({"class_name": class_name, "reason": "missing_input_types"})
+    elif not _has_valid_input_types_method(class_node):
+        errors.append({"class_name": class_name, "reason": "invalid_input_types"})
     if "RETURN_TYPES" not in assigned_values:
         errors.append({"class_name": class_name, "reason": "missing_return_types"})
     if "FUNCTION" not in assigned_values:
@@ -115,7 +117,12 @@ def validate_node_class(package_dir: Path, class_name: str) -> dict[str, Any]:
         errors.append({"class_name": class_name, "reason": "missing_category"})
 
     function_value = assigned_values.get("FUNCTION")
-    if isinstance(function_value, ast.Constant) and isinstance(function_value.value, str):
+    if function_value is not None and not (
+        isinstance(function_value, ast.Constant)
+        and isinstance(function_value.value, str)
+    ):
+        errors.append({"class_name": class_name, "reason": "invalid_function"})
+    elif isinstance(function_value, ast.Constant) and isinstance(function_value.value, str):
         function_name = function_value.value
         if function_name not in method_names:
             errors.append(
@@ -135,6 +142,15 @@ def validate_node_class(package_dir: Path, class_name: str) -> dict[str, Any]:
 
 def check_node_imports(package_dir: Path, timeout_seconds: int = 5) -> dict[str, Any]:
     package_dir = package_dir.resolve()
+    if not package_dir.is_dir():
+        return {
+            "status": "failed",
+            "reason": "missing_package_dir",
+            "returncode": None,
+            "stdout": "",
+            "stderr": f"package directory not found: {package_dir}",
+        }
+
     script = (
         "import pathlib, sys\n"
         f"package_dir = pathlib.Path({str(package_dir)!r})\n"
@@ -142,13 +158,30 @@ def check_node_imports(package_dir: Path, timeout_seconds: int = 5) -> dict[str,
         "module = __import__(package_dir.name)\n"
         "print(sorted(getattr(module, 'NODE_CLASS_MAPPINGS', {}).keys()))\n"
     )
-    completed = subprocess.run(
-        [sys.executable, "-I", "-c", script],
-        cwd=str(package_dir.parent),
-        text=True,
-        capture_output=True,
-        timeout=timeout_seconds,
-    )
+    try:
+        completed = subprocess.run(
+            [sys.executable, "-I", "-c", script],
+            cwd=str(package_dir.parent),
+            text=True,
+            capture_output=True,
+            timeout=timeout_seconds,
+        )
+    except subprocess.TimeoutExpired as exc:
+        return {
+            "status": "failed",
+            "reason": "timeout",
+            "returncode": None,
+            "stdout": exc.stdout or "",
+            "stderr": exc.stderr or "",
+        }
+    except OSError as exc:
+        return {
+            "status": "failed",
+            "reason": "import_check_error",
+            "returncode": None,
+            "stdout": "",
+            "stderr": str(exc),
+        }
     return {
         "status": "passed" if completed.returncode == 0 else "failed",
         "returncode": completed.returncode,
@@ -242,6 +275,19 @@ def _class_assigned_values(class_node: ast.ClassDef) -> dict[str, ast.expr]:
             if isinstance(target, ast.Name):
                 values[target.id] = statement.value
     return values
+
+
+def _has_valid_input_types_method(class_node: ast.ClassDef) -> bool:
+    for statement in class_node.body:
+        if not isinstance(statement, ast.FunctionDef) or statement.name != "INPUT_TYPES":
+            continue
+        decorator_names = {
+            decorator.id
+            for decorator in statement.decorator_list
+            if isinstance(decorator, ast.Name)
+        }
+        return bool(decorator_names & {"classmethod", "staticmethod"})
+    return False
 
 
 def _unsupported_mapping_value_errors(
