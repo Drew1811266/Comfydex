@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import ast
+import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -77,6 +79,84 @@ def validate_node_mappings(package_dir: Path) -> dict[str, Any]:
     }
 
 
+def validate_node_class(package_dir: Path, class_name: str) -> dict[str, Any]:
+    inspected = inspect_custom_node_package(package_dir)
+    if inspected["status"] == "invalid":
+        return {
+            "status": "invalid",
+            "errors": inspected["errors"],
+            "class_name": class_name,
+        }
+
+    tree = _parse_nodes(package_dir)
+    class_node = _class_node(tree, class_name)
+    if class_node is None:
+        return {
+            "status": "invalid",
+            "errors": [{"class_name": class_name, "reason": "missing_class"}],
+            "class_name": class_name,
+        }
+
+    errors: list[dict[str, Any]] = []
+    assigned_values = _class_assigned_values(class_node)
+    method_names = {
+        statement.name
+        for statement in class_node.body
+        if isinstance(statement, ast.FunctionDef)
+    }
+
+    if "INPUT_TYPES" not in method_names:
+        errors.append({"class_name": class_name, "reason": "missing_input_types"})
+    if "RETURN_TYPES" not in assigned_values:
+        errors.append({"class_name": class_name, "reason": "missing_return_types"})
+    if "FUNCTION" not in assigned_values:
+        errors.append({"class_name": class_name, "reason": "missing_function"})
+    if "CATEGORY" not in assigned_values:
+        errors.append({"class_name": class_name, "reason": "missing_category"})
+
+    function_value = assigned_values.get("FUNCTION")
+    if isinstance(function_value, ast.Constant) and isinstance(function_value.value, str):
+        function_name = function_value.value
+        if function_name not in method_names:
+            errors.append(
+                {
+                    "class_name": class_name,
+                    "function": function_name,
+                    "reason": "missing_callable_function",
+                }
+            )
+
+    return {
+        "status": "invalid" if errors else "valid",
+        "errors": errors,
+        "class_name": class_name,
+    }
+
+
+def check_node_imports(package_dir: Path, timeout_seconds: int = 5) -> dict[str, Any]:
+    package_dir = package_dir.resolve()
+    script = (
+        "import pathlib, sys\n"
+        f"package_dir = pathlib.Path({str(package_dir)!r})\n"
+        "sys.path.insert(0, str(package_dir.parent))\n"
+        "module = __import__(package_dir.name)\n"
+        "print(sorted(getattr(module, 'NODE_CLASS_MAPPINGS', {}).keys()))\n"
+    )
+    completed = subprocess.run(
+        [sys.executable, "-I", "-c", script],
+        cwd=str(package_dir.parent),
+        text=True,
+        capture_output=True,
+        timeout=timeout_seconds,
+    )
+    return {
+        "status": "passed" if completed.returncode == 0 else "failed",
+        "returncode": completed.returncode,
+        "stdout": completed.stdout,
+        "stderr": completed.stderr,
+    }
+
+
 def _inspection_result(
     package_dir: Path,
     *,
@@ -144,6 +224,24 @@ def _duplicate_dict_keys(tree: ast.Module, variable_name: str) -> list[str]:
                 duplicates.append(key.value)
             seen.add(key.value)
     return duplicates
+
+
+def _class_node(tree: ast.Module, class_name: str) -> ast.ClassDef | None:
+    for node in tree.body:
+        if isinstance(node, ast.ClassDef) and node.name == class_name:
+            return node
+    return None
+
+
+def _class_assigned_values(class_node: ast.ClassDef) -> dict[str, ast.expr]:
+    values: dict[str, ast.expr] = {}
+    for statement in class_node.body:
+        if not isinstance(statement, ast.Assign):
+            continue
+        for target in statement.targets:
+            if isinstance(target, ast.Name):
+                values[target.id] = statement.value
+    return values
 
 
 def _unsupported_mapping_value_errors(

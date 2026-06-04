@@ -1,7 +1,9 @@
 from pathlib import Path
 
 from comfydex_mcp.custom_nodes import (
+    check_node_imports,
     inspect_custom_node_package,
+    validate_node_class,
     validate_node_mappings,
 )
 
@@ -154,3 +156,67 @@ def test_validate_node_mappings_reports_missing_display_name(tmp_path: Path):
 
     assert result["status"] == "invalid"
     assert any(error["reason"] == "missing_display_name" for error in result["errors"])
+
+
+def test_validate_node_class_reports_missing_input_types(tmp_path: Path):
+    package = tmp_path / "pkg"
+    package.mkdir()
+    (package / "nodes.py").write_text(
+        "class BadNode:\n"
+        "    CATEGORY = 'Comfydex'\n"
+        "    FUNCTION = 'run'\n"
+        "    RETURN_TYPES = ('INT',)\n"
+        "    def run(self):\n"
+        "        return (1,)\n"
+        "NODE_CLASS_MAPPINGS = {'BadNode': BadNode}\n"
+        "NODE_DISPLAY_NAME_MAPPINGS = {'BadNode': 'Bad Node'}\n",
+        encoding="utf-8",
+    )
+
+    result = validate_node_class(package, "BadNode")
+
+    assert result["status"] == "invalid"
+    assert any(error["reason"] == "missing_input_types" for error in result["errors"])
+
+
+def test_validate_node_class_reports_missing_callable_function(tmp_path: Path):
+    package = tmp_path / "pkg"
+    package.mkdir()
+    (package / "nodes.py").write_text(
+        "class BadNode:\n"
+        "    CATEGORY = 'Comfydex'\n"
+        "    FUNCTION = 'missing_run'\n"
+        "    RETURN_TYPES = ('INT',)\n"
+        "    @classmethod\n"
+        "    def INPUT_TYPES(cls):\n"
+        "        return {'required': {}}\n"
+        "NODE_CLASS_MAPPINGS = {'BadNode': BadNode}\n"
+        "NODE_DISPLAY_NAME_MAPPINGS = {'BadNode': 'Bad Node'}\n",
+        encoding="utf-8",
+    )
+
+    result = validate_node_class(package, "BadNode")
+
+    assert result["status"] == "invalid"
+    assert any(
+        error["reason"] == "missing_callable_function"
+        for error in result["errors"]
+    )
+
+
+def test_check_node_imports_returns_import_error(tmp_path: Path):
+    package = tmp_path / "pkg"
+    package.mkdir()
+    (package / "__init__.py").write_text(
+        "from .nodes import NODE_CLASS_MAPPINGS\n",
+        encoding="utf-8",
+    )
+    (package / "nodes.py").write_text(
+        "import does_not_exist_here\n",
+        encoding="utf-8",
+    )
+
+    result = check_node_imports(package)
+
+    assert result["status"] == "failed"
+    assert "does_not_exist_here" in result["stderr"]
