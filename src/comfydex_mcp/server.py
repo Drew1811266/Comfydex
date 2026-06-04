@@ -17,6 +17,12 @@ from .builder import (
     build_workflow_from_plan,
     build_workflow_plan as create_workflow_plan,
 )
+from .batches import (
+    create_batch_record,
+    read_batch_record,
+    update_batch_run,
+    variation_to_operations,
+)
 from .comfy_client import ComfyClient, extract_output_refs
 from .config import ComfydexConfig, load_config, redact_config, save_config
 from .conversion import (
@@ -222,6 +228,11 @@ async def _poll_history_until_terminal(
 def _safe_output_type(value: Any) -> str:
     cleaned = re.sub(r"[^A-Za-z0-9_.-]+", "-", str(value or "output")).strip(".-")
     return cleaned or "output"
+
+
+def _batch_child_workflow_name(workflow_name: str, batch_id: str, index: int) -> str:
+    stem = re.sub(r"[^A-Za-z0-9_.-]+", "-", Path(workflow_name).stem).strip(".-")
+    return f"{stem or 'workflow'}.{batch_id}-{index}.json"
 
 
 @mcp.tool()
@@ -723,6 +734,82 @@ async def comfy_submit_workflow(
         actual_client_id,
         run_label or Path(name).stem,
     )
+
+
+@mcp.tool()
+async def comfy_batch_submit(
+    workflow_name: str,
+    variations: list[dict[str, Any]],
+    batch_label: str = "batch",
+) -> dict[str, Any]:
+    ctx = tool_context()
+    batch = create_batch_record(
+        ctx.config.runs_dir,
+        batch_label,
+        workflow_name,
+        variations,
+    )
+    batch_id = batch["batch_id"]
+
+    for index, variation in enumerate(variations):
+        run_id: str | None = None
+        try:
+            loaded = read_workflow(ctx.config.workflows_dir, workflow_name)
+            if loaded["kind"] != "api":
+                raise ValueError("comfy_batch_submit requires ComfyUI API prompt JSON")
+
+            operations = variation_to_operations(variation)
+            patched = patch_workflow(
+                loaded["json"],
+                operations,
+                object_info=None,
+                raise_on_error=False,
+            )
+            if patched["status"] != "patched":
+                raise ValueError(f"workflow patch failed: {patched['report']!r}")
+
+            child_name = _batch_child_workflow_name(workflow_name, batch_id, index)
+            save_workflow(
+                ctx.config.workflows_dir,
+                child_name,
+                patched["workflow"],
+                require_api=True,
+                source="patched",
+                validation_status="unknown",
+            )
+            submitted = await comfy_submit_workflow(
+                child_name,
+                run_label=f"{batch_id}-{index}",
+            )
+            submitted_run_id = (
+                submitted.get("run_id") if isinstance(submitted, dict) else None
+            )
+            if not isinstance(submitted_run_id, str) or not submitted_run_id:
+                raise ValueError("comfy_submit_workflow returned no run_id")
+            run_id = submitted_run_id
+            batch = update_batch_run(
+                ctx.config.runs_dir,
+                batch_id,
+                index,
+                run_id,
+                "completed",
+            )
+        except Exception:
+            batch = update_batch_run(
+                ctx.config.runs_dir,
+                batch_id,
+                index,
+                run_id,
+                "failed",
+            )
+            continue
+
+    return batch
+
+
+@mcp.tool()
+async def comfy_read_batch(batch_id: str) -> dict[str, Any]:
+    return read_batch_record(tool_context().config.runs_dir, batch_id)
 
 
 @mcp.tool()

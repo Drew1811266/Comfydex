@@ -1383,3 +1383,133 @@ async def test_fetch_outputs_uses_type_directory_to_avoid_collisions(
         "output",
         "temp",
     }
+
+
+@pytest.mark.asyncio
+async def test_comfy_read_batch_tool_reads_batch_record(monkeypatch, tmp_path: Path):
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+    batch_id = "2026-06-04T01-02-03_batch"
+    batch_dir = tmp_path / "runs" / ".batches" / batch_id
+    batch_dir.mkdir(parents=True)
+    record = {
+        "batch_id": batch_id,
+        "label": "batch",
+        "workflow_name": "source.json",
+        "status": "queued",
+        "created_at": "2026-06-04T01:02:03+00:00",
+        "updated_at": "2026-06-04T01:02:03+00:00",
+        "runs": [
+            {
+                "index": 0,
+                "parameters": {"node_id": "1", "inputs": {"seed": 42}},
+                "status": "queued",
+                "run_id": None,
+            }
+        ],
+    }
+    (batch_dir / "batch.json").write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+
+    direct = await server.comfy_read_batch(batch_id)
+    _content, structured = await server.mcp.call_tool(
+        "comfy_read_batch",
+        {"batch_id": batch_id},
+    )
+
+    assert direct == record
+    assert structured == record
+
+
+@pytest.mark.asyncio
+async def test_comfy_batch_submit_saves_children_submits_and_records_completed(
+    monkeypatch,
+    tmp_path: Path,
+):
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+    source = {
+        "1": {
+            "class_type": "SaveImage",
+            "inputs": {"seed": 0, "filename_prefix": "old"},
+        }
+    }
+    save_workflow(tmp_path / "workflows", "source.json", source, require_api=True)
+    submissions = []
+
+    async def fake_submit_workflow(name, run_label=None, client_id=None):
+        submissions.append((name, run_label, client_id))
+        return {"run_id": f"run-{len(submissions) - 1}", "workflow_name": name}
+
+    monkeypatch.setattr(server, "comfy_submit_workflow", fake_submit_workflow)
+
+    result = await server.comfy_batch_submit(
+        "source.json",
+        [
+            {"node_id": "1", "inputs": {"seed": 111}},
+            {
+                "changes": [
+                    {
+                        "op": "set_input",
+                        "node_id": "1",
+                        "input": "filename_prefix",
+                        "value": "new",
+                    }
+                ]
+            },
+        ],
+        batch_label="Night Batch",
+    )
+
+    assert result["status"] == "completed"
+    assert [run["status"] for run in result["runs"]] == ["completed", "completed"]
+    assert [run["run_id"] for run in result["runs"]] == ["run-0", "run-1"]
+    assert len(submissions) == 2
+    batch_id = result["batch_id"]
+    for index, (child_name, run_label, client_id) in enumerate(submissions):
+        assert child_name == Path(child_name).name
+        assert child_name.endswith(".json")
+        assert run_label == f"{batch_id}-{index}"
+        assert client_id is None
+
+    first_child = server.read_workflow(tmp_path / "workflows", submissions[0][0])
+    second_child = server.read_workflow(tmp_path / "workflows", submissions[1][0])
+    assert first_child["json"]["1"]["inputs"]["seed"] == 111
+    assert second_child["json"]["1"]["inputs"]["filename_prefix"] == "new"
+    assert await server.comfy_read_batch(batch_id) == result
+
+
+@pytest.mark.asyncio
+async def test_comfy_batch_submit_continues_after_patch_and_submit_failures(
+    monkeypatch,
+    tmp_path: Path,
+):
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+    source = {"1": {"class_type": "SaveImage", "inputs": {"seed": 0}}}
+    save_workflow(tmp_path / "workflows", "source.json", source, require_api=True)
+    submissions = []
+
+    async def fake_submit_workflow(name, run_label=None, client_id=None):
+        submissions.append((name, run_label, client_id))
+        if len(submissions) == 1:
+            raise RuntimeError("submit exploded")
+        return {"run_id": "run-ok", "workflow_name": name}
+
+    monkeypatch.setattr(server, "comfy_submit_workflow", fake_submit_workflow)
+
+    result = await server.comfy_batch_submit(
+        "source.json",
+        [
+            {"node_id": "missing", "inputs": {"seed": 1}},
+            {"node_id": "1", "inputs": {"seed": 2}},
+            {"node_id": "1", "inputs": {"seed": 3}},
+        ],
+        batch_label="Mixed",
+    )
+
+    assert result["status"] == "partial"
+    assert [run["status"] for run in result["runs"]] == [
+        "failed",
+        "failed",
+        "completed",
+    ]
+    assert [run["run_id"] for run in result["runs"]] == [None, None, "run-ok"]
+    assert len(submissions) == 2
+    assert server.read_workflow(tmp_path / "workflows", submissions[1][0])["json"]["1"]["inputs"]["seed"] == 3
