@@ -58,3 +58,24 @@ def test_example_report_is_markdown():
     )
 
     assert text.startswith("# Comfydex Run Report")
+
+
+def test_usage_docs_cover_new_capabilities():
+    required = {
+        "workflow-import.md": "comfy_convert_ui_to_api",
+        "workflow-builder.md": "comfy_build_workflow_plan",
+        "custom-node-development.md": "comfy_validate_node_class",
+        "run-diagnostics.md": "comfy_diagnose_run",
+    }
+    for filename, marker in required.items():
+        text = (ROOT / "docs" / "usage" / filename).read_text(encoding="utf-8")
+        assert marker in text
+
+
+def test_readme_mentions_0_2_capabilities():
+    text = (ROOT / "README.md").read_text(encoding="utf-8")
+
+    assert "0.2.0" in text
+    assert "UI workflow" in text
+    assert "custom node" in text
+    assert "batch" in text
