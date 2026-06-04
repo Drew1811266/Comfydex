@@ -1386,6 +1386,253 @@ async def test_fetch_outputs_uses_type_directory_to_avoid_collisions(
 
 
 @pytest.mark.asyncio
+async def test_comfy_diagnose_run_tool(monkeypatch, tmp_path: Path):
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+    run = create_run(
+        tmp_path / "runs",
+        "wf.json",
+        API_WORKFLOW,
+        "http://127.0.0.1:8188",
+        "p1",
+        "client-1",
+    )
+
+    class RemoteShouldNotBeCalled:
+        def __init__(self, *args, **kwargs):
+            raise RuntimeError("diagnose should not call object_info when disabled")
+
+    monkeypatch.setattr(server, "ComfyClient", RemoteShouldNotBeCalled)
+
+    direct = await server.comfy_diagnose_run(run["run_id"], use_object_info=False)
+    _content, structured = await server.mcp.call_tool(
+        "comfy_diagnose_run",
+        {"run_id": run["run_id"], "use_object_info": False},
+    )
+
+    assert direct["run_id"] == run["run_id"]
+    assert structured["run_id"] == run["run_id"]
+
+
+@pytest.mark.asyncio
+async def test_comfy_diagnose_run_tool_allows_missing_workflow_snapshot(
+    monkeypatch,
+    tmp_path: Path,
+):
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+    run = create_run(
+        tmp_path / "runs",
+        "wf.json",
+        API_WORKFLOW,
+        "http://127.0.0.1:8188",
+        "p1",
+        "client-1",
+    )
+    (tmp_path / "runs" / run["run_id"] / "workflow.json").unlink()
+
+    result = await server.comfy_diagnose_run(run["run_id"], use_object_info=False)
+
+    assert result["run_id"] == run["run_id"]
+    assert result["missing_node_types"] == []
+
+
+@pytest.mark.asyncio
+async def test_comfy_diagnose_run_uses_object_info_when_requested(
+    monkeypatch,
+    tmp_path: Path,
+):
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+    workflow = {
+        "1": {"class_type": "KnownNode", "inputs": {}},
+        "2": {"class_type": "MissingNode", "inputs": {}},
+    }
+    run = create_run(
+        tmp_path / "runs",
+        "wf.json",
+        workflow,
+        "http://127.0.0.1:8188",
+        "p1",
+        "client-1",
+    )
+    calls = []
+
+    class ObjectInfoClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            pass
+
+        async def get_object_info(self):
+            calls.append("get_object_info")
+            return {"KnownNode": {}}
+
+    monkeypatch.setattr(server, "ComfyClient", ObjectInfoClient)
+
+    result = await server.comfy_diagnose_run(run["run_id"], use_object_info=True)
+
+    assert calls == ["get_object_info"]
+    assert result["run_id"] == run["run_id"]
+    assert result["missing_node_types"] == ["MissingNode"]
+    assert "MissingNode" in result["summary"]
+
+
+@pytest.mark.asyncio
+async def test_comfy_export_run_report_tool(monkeypatch, tmp_path: Path):
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+    workflow = {
+        "1": {"class_type": "LoadImage", "inputs": {}},
+        "2": {"class_type": "SaveImage", "inputs": {"images": ["1", 0]}},
+    }
+    run = create_run(
+        tmp_path / "runs",
+        "wf.json",
+        workflow,
+        "http://127.0.0.1:8188",
+        "p1",
+        "client-1",
+    )
+    server.update_status(tmp_path / "runs", run["run_id"], "completed")
+
+    result = await server.comfy_export_run_report(run["run_id"])
+
+    report_path = tmp_path / "runs" / run["run_id"] / "report.md"
+    assert result["path"] == str(report_path)
+    assert report_path.exists()
+    assert "- Node count: 2" in result["markdown"]
+    assert "Completed run has no registered outputs." in result["markdown"]
+
+
+@pytest.mark.asyncio
+async def test_comfy_export_run_report_tool_requires_workflow_snapshot(
+    monkeypatch,
+    tmp_path: Path,
+):
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+    run = create_run(
+        tmp_path / "runs",
+        "wf.json",
+        API_WORKFLOW,
+        "http://127.0.0.1:8188",
+        "p1",
+        "client-1",
+    )
+    (tmp_path / "runs" / run["run_id"] / "workflow.json").unlink()
+
+    with pytest.raises(ValueError, match="workflow snapshot"):
+        await server.comfy_export_run_report(run["run_id"])
+
+
+@pytest.mark.asyncio
+async def test_comfy_export_run_report_tool_rejects_traversal_run_id(
+    monkeypatch,
+    tmp_path: Path,
+):
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+
+    with pytest.raises(ValueError, match="inside runs_dir"):
+        await server.comfy_export_run_report("../escape")
+
+
+@pytest.mark.asyncio
+async def test_comfy_compare_runs_tool(monkeypatch, tmp_path: Path):
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+    left = create_run(
+        tmp_path / "runs",
+        "left.json",
+        {"1": {"class_type": "KSampler", "inputs": {"seed": 1}}},
+        "http://127.0.0.1:8188",
+        "p-left",
+        "client-1",
+    )
+    right = create_run(
+        tmp_path / "runs",
+        "right.json",
+        {"1": {"class_type": "KSampler", "inputs": {"seed": 2}}},
+        "http://127.0.0.1:8188",
+        "p-right",
+        "client-1",
+    )
+
+    result = await server.comfy_compare_runs(left["run_id"], right["run_id"])
+
+    assert result["left_run_id"] == left["run_id"]
+    assert result["right_run_id"] == right["run_id"]
+    assert result["input_changes"] == [
+        {"node_id": "1", "input": "seed", "left": 1, "right": 2}
+    ]
+
+
+@pytest.mark.asyncio
+async def test_comfy_compare_runs_tool_requires_workflow_snapshots(
+    monkeypatch,
+    tmp_path: Path,
+):
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+    left = create_run(
+        tmp_path / "runs",
+        "left.json",
+        API_WORKFLOW,
+        "http://127.0.0.1:8188",
+        "p-left",
+        "client-1",
+    )
+    right = create_run(
+        tmp_path / "runs",
+        "right.json",
+        API_WORKFLOW,
+        "http://127.0.0.1:8188",
+        "p-right",
+        "client-1",
+    )
+    (tmp_path / "runs" / right["run_id"] / "workflow.json").unlink()
+
+    with pytest.raises(ValueError, match="workflow snapshot"):
+        await server.comfy_compare_runs(left["run_id"], right["run_id"])
+
+
+@pytest.mark.asyncio
+async def test_comfy_list_outputs_tool(monkeypatch, tmp_path: Path):
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+    output = tmp_path / "runs" / "run-a" / "outputs" / "output" / "image.png"
+    output.parent.mkdir(parents=True)
+    output.write_text("abc", encoding="utf-8")
+
+    result = await server.comfy_list_outputs()
+
+    assert len(result) == 1
+    assert result[0]["run_id"] == "run-a"
+    assert result[0]["filename"] == "image.png"
+    assert result[0]["size"] == 3
+    assert Path(result[0]["path"]).resolve() == output.resolve()
+
+
+@pytest.mark.asyncio
+async def test_comfy_cleanup_outputs_tool_defaults_to_dry_run_and_requires_confirm(
+    monkeypatch,
+    tmp_path: Path,
+):
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+    output = tmp_path / "runs" / "run-a" / "outputs" / "output" / "image.png"
+    output.parent.mkdir(parents=True)
+    output.write_text("abc", encoding="utf-8")
+
+    dry_run = await server.comfy_cleanup_outputs()
+    confirmed = await server.comfy_cleanup_outputs(confirm=True)
+
+    assert dry_run["dry_run"] is True
+    assert [Path(row["path"]).resolve() for row in dry_run["candidates"]] == [
+        output.resolve()
+    ]
+    assert dry_run["deleted"] == []
+    assert confirmed["dry_run"] is False
+    assert [Path(path).resolve() for path in confirmed["deleted"]] == [output.resolve()]
+    assert not output.exists()
+
+
+@pytest.mark.asyncio
 async def test_comfy_read_batch_tool_reads_batch_record(monkeypatch, tmp_path: Path):
     monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
     batch_id = "2026-06-04T01-02-03_batch"

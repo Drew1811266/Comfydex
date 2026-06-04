@@ -37,10 +37,13 @@ from .custom_nodes import (
     validate_node_class,
     validate_node_mappings,
 )
+from .diagnostics import compare_runs, diagnose_run
 from .node_docs import generate_node_docs
+from .outputs import cleanup_outputs, list_outputs as list_run_outputs
 from .node_scaffold import scaffold_custom_node_package, safe_custom_nodes_dir
 from .patching import patch_workflow
 from .paths import safe_json_path, safe_output_path, safe_package_dir
+from .reports import export_run_report
 from .runs import append_event, create_run, list_runs, read_run, register_outputs, update_status
 from .templates import (
     explain_workflow_plan,
@@ -233,6 +236,30 @@ def _safe_output_type(value: Any) -> str:
 def _batch_child_workflow_name(workflow_name: str, batch_id: str, index: int) -> str:
     stem = re.sub(r"[^A-Za-z0-9_.-]+", "-", Path(workflow_name).stem).strip(".-")
     return f"{stem or 'workflow'}.{batch_id}-{index}.json"
+
+
+def _run_dir_after_read(runs_dir: Path, run_id: str) -> Path:
+    base = runs_dir.resolve()
+    run_dir = (base / run_id).resolve()
+    try:
+        run_dir.relative_to(base)
+    except ValueError:
+        raise ValueError("run_id must stay inside runs_dir")
+    return run_dir
+
+
+def _read_workflow_snapshot(
+    runs_dir: Path,
+    run_id: str,
+    *,
+    required: bool,
+) -> Any:
+    path = _run_dir_after_read(runs_dir, run_id) / "workflow.json"
+    if not path.exists():
+        if required:
+            raise ValueError(f"workflow snapshot missing for run_id: {run_id}")
+        return None
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 @mcp.tool()
@@ -923,6 +950,78 @@ async def comfy_list_runs() -> list[dict[str, Any]]:
 @mcp.tool()
 async def comfy_read_run(run_id: str) -> dict[str, Any]:
     return read_run(tool_context().config.runs_dir, run_id)
+
+
+@mcp.tool()
+async def comfy_diagnose_run(
+    run_id: str,
+    use_object_info: bool = True,
+) -> dict[str, Any]:
+    ctx = tool_context()
+    record = read_run(ctx.config.runs_dir, run_id)
+    workflow = _read_workflow_snapshot(ctx.config.runs_dir, run_id, required=False)
+    object_info = None
+    if use_object_info:
+        async with ComfyClient(
+            ctx.config.base_url,
+            ctx.config.headers,
+            ctx.config.request_timeout_seconds,
+        ) as client:
+            object_info = await client.get_object_info()
+    return diagnose_run(record, workflow, object_info)
+
+
+@mcp.tool()
+async def comfy_export_run_report(run_id: str) -> dict[str, Any]:
+    ctx = tool_context()
+    record = read_run(ctx.config.runs_dir, run_id)
+    workflow = _read_workflow_snapshot(ctx.config.runs_dir, run_id, required=True)
+    diagnosis = diagnose_run(record, workflow)
+    analysis = analyze_workflow(workflow)
+    workflow_summary = (
+        analysis.get("summary", {"node_count": 0})
+        if isinstance(analysis, dict)
+        else {"node_count": 0}
+    )
+    run_dir = _run_dir_after_read(ctx.config.runs_dir, run_id)
+    return export_run_report(run_dir, record, workflow_summary, diagnosis)
+
+
+@mcp.tool()
+async def comfy_compare_runs(left_run_id: str, right_run_id: str) -> dict[str, Any]:
+    ctx = tool_context()
+    left_run = read_run(ctx.config.runs_dir, left_run_id)
+    right_run = read_run(ctx.config.runs_dir, right_run_id)
+    left_workflow = _read_workflow_snapshot(
+        ctx.config.runs_dir,
+        left_run_id,
+        required=True,
+    )
+    right_workflow = _read_workflow_snapshot(
+        ctx.config.runs_dir,
+        right_run_id,
+        required=True,
+    )
+    return compare_runs(left_run, right_run, left_workflow, right_workflow)
+
+
+@mcp.tool()
+async def comfy_list_outputs() -> list[dict[str, Any]]:
+    return list_run_outputs(tool_context().config.runs_dir)
+
+
+@mcp.tool()
+async def comfy_cleanup_outputs(
+    confirm: bool = False,
+    failed_run_ids: list[str] | None = None,
+    older_than_seconds: int | None = None,
+) -> dict[str, Any]:
+    return cleanup_outputs(
+        tool_context().config.runs_dir,
+        confirm=confirm,
+        failed_run_ids=failed_run_ids,
+        older_than_seconds=older_than_seconds,
+    )
 
 
 @mcp.tool()
