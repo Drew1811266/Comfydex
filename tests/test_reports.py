@@ -1,5 +1,8 @@
 from pathlib import Path
 
+import pytest
+
+from comfydex_mcp import reports
 from comfydex_mcp.reports import export_run_report
 
 
@@ -86,3 +89,21 @@ def test_export_run_report_handles_malformed_outputs_signals_and_summary(tmp_pat
     assert "run-4" in result["markdown"]
     assert "valid.png" in result["markdown"]
     assert "alpha" in result["markdown"]
+
+
+def test_export_run_report_rejects_redirected_report_path(
+    monkeypatch,
+    tmp_path: Path,
+):
+    def redirected(path: Path) -> bool:
+        return path.name == "report.md"
+
+    monkeypatch.setattr(reports, "is_redirected_path", redirected, raising=False)
+
+    with pytest.raises(ValueError, match="report.md"):
+        export_run_report(
+            tmp_path,
+            {"run_id": "run-5", "workflow_name": "wf.json", "status": "completed"},
+            {"node_count": 1},
+            {"summary": "ok", "signals": []},
+        )

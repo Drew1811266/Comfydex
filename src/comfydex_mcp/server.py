@@ -42,7 +42,7 @@ from .node_docs import generate_node_docs
 from .outputs import cleanup_outputs, list_outputs as list_run_outputs
 from .node_scaffold import scaffold_custom_node_package, safe_custom_nodes_dir
 from .patching import patch_workflow
-from .paths import safe_json_path, safe_output_path, safe_package_dir
+from .paths import is_redirected_path, safe_json_path, safe_output_path, safe_package_dir
 from .reports import export_run_report
 from .runs import append_event, create_run, list_runs, read_run, register_outputs, update_status
 from .templates import (
@@ -248,13 +248,31 @@ def _run_dir_after_read(runs_dir: Path, run_id: str) -> Path:
     return run_dir
 
 
+def _run_file_after_read(runs_dir: Path, run_id: str, filename: str) -> Path:
+    base = runs_dir.resolve()
+    path = _run_dir_after_read(runs_dir, run_id) / filename
+    label = "workflow snapshot" if filename == "workflow.json" else f"{filename} snapshot"
+    if is_redirected_path(path):
+        raise ValueError(f"{label} must stay inside runs_dir")
+    try:
+        exists = path.exists()
+    except OSError as exc:
+        raise ValueError(f"{label} could not be inspected") from exc
+    if exists:
+        try:
+            path.resolve().relative_to(base)
+        except (OSError, RuntimeError, ValueError) as exc:
+            raise ValueError(f"{label} must stay inside runs_dir") from exc
+    return path
+
+
 def _read_workflow_snapshot(
     runs_dir: Path,
     run_id: str,
     *,
     required: bool,
 ) -> Any:
-    path = _run_dir_after_read(runs_dir, run_id) / "workflow.json"
+    path = _run_file_after_read(runs_dir, run_id, "workflow.json")
     if not path.exists():
         if required:
             raise ValueError(f"workflow snapshot missing for run_id: {run_id}")

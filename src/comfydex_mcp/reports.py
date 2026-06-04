@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import tempfile
 from pathlib import Path
 from typing import Any
 
-from .paths import ensure_directory
+from .paths import ensure_directory, is_redirected_path
 
 TEXT_MAX_LENGTH = 200
 OUTPUT_FIELDS = ("filename", "downloaded_path", "type", "subfolder")
@@ -94,13 +95,60 @@ def _format_outputs(outputs: list[dict[str, str]]) -> list[str]:
     return lines
 
 
+def _is_relative_to(child: Path, parent: Path) -> bool:
+    try:
+        child.relative_to(parent)
+        return True
+    except ValueError:
+        return False
+
+
+def _report_path(run_dir: Path) -> Path:
+    directory = ensure_directory(run_dir)
+    if is_redirected_path(directory):
+        raise ValueError("run directory must not be redirected")
+    base = directory.resolve()
+    path = directory / "report.md"
+    if is_redirected_path(path):
+        raise ValueError("report.md must stay inside run directory")
+    if path.exists() and not _is_relative_to(path.resolve(), base):
+        raise ValueError("report.md must stay inside run directory")
+    return path
+
+
+def _write_report(path: Path, markdown: str) -> None:
+    tmp_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            "w",
+            delete=False,
+            dir=path.parent,
+            encoding="utf-8",
+            prefix=".report.",
+            suffix=".tmp",
+        ) as tmp:
+            tmp.write(markdown)
+            tmp_path = Path(tmp.name)
+        if is_redirected_path(path):
+            raise ValueError("report.md must stay inside run directory")
+        if path.exists() and not _is_relative_to(path.resolve(), path.parent.resolve()):
+            raise ValueError("report.md must stay inside run directory")
+        tmp_path.replace(path)
+    finally:
+        if tmp_path is not None:
+            try:
+                tmp_path.unlink()
+            except FileNotFoundError:
+                pass
+
+
 def export_run_report(
     run_dir: Path,
     run_record: dict[str, Any],
     workflow_summary: dict[str, Any],
     diagnosis: dict[str, Any],
 ) -> dict[str, str]:
-    path = ensure_directory(run_dir) / "report.md"
+    path = _report_path(run_dir)
     signals = _signals(diagnosis)
     outputs = _outputs(run_record)
 
@@ -129,5 +177,5 @@ def export_run_report(
         "",
     ]
     markdown = "\n".join(lines)
-    path.write_text(markdown, encoding="utf-8")
+    _write_report(path, markdown)
     return {"path": str(path), "markdown": markdown}

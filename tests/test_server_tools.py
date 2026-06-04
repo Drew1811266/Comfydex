@@ -1526,6 +1526,30 @@ async def test_comfy_export_run_report_tool_requires_workflow_snapshot(
 
 
 @pytest.mark.asyncio
+async def test_comfy_export_run_report_tool_rejects_redirected_workflow_snapshot(
+    monkeypatch,
+    tmp_path: Path,
+):
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+    run = create_run(
+        tmp_path / "runs",
+        "wf.json",
+        API_WORKFLOW,
+        "http://127.0.0.1:8188",
+        "p1",
+        "client-1",
+    )
+
+    def redirected(path: Path) -> bool:
+        return path.name == "workflow.json"
+
+    monkeypatch.setattr(server, "is_redirected_path", redirected, raising=False)
+
+    with pytest.raises(ValueError, match="workflow snapshot"):
+        await server.comfy_export_run_report(run["run_id"])
+
+
+@pytest.mark.asyncio
 async def test_comfy_export_run_report_tool_rejects_traversal_run_id(
     monkeypatch,
     tmp_path: Path,
