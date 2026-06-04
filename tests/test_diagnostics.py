@@ -200,6 +200,104 @@ def test_compare_runs_reports_model_reference_input_changes_separately():
     assert result["model_reference_changes"] == [expected_change]
 
 
+def test_compare_runs_does_not_share_change_objects_between_change_lists():
+    left_workflow = {
+        "1": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": "base.safetensors"}},
+    }
+    right_workflow = {
+        "1": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": "anime.safetensors"}},
+    }
+
+    result = compare_runs({}, {}, left_workflow, right_workflow)
+
+    assert result["model_reference_changes"][0] is not result["input_changes"][0]
+    result["input_changes"][0]["left"] = "mutated.safetensors"
+    assert result["model_reference_changes"][0]["left"] == "base.safetensors"
+
+
+def test_compare_runs_treats_common_loader_names_as_model_references():
+    left_workflow = {
+        "1": {"class_type": "CLIPLoader", "inputs": {"clip_name": "clip-a.safetensors"}},
+        "2": {"class_type": "UNETLoader", "inputs": {"unet_name": "unet-a.safetensors"}},
+        "3": {"class_type": "ControlNetLoader", "inputs": {"control_net_name": "control-a.safetensors"}},
+    }
+    right_workflow = {
+        "1": {"class_type": "CLIPLoader", "inputs": {"clip_name": "clip-b.safetensors"}},
+        "2": {"class_type": "UNETLoader", "inputs": {"unet_name": "unet-b.safetensors"}},
+        "3": {"class_type": "ControlNetLoader", "inputs": {"control_net_name": "control-b.safetensors"}},
+    }
+
+    result = compare_runs({}, {}, left_workflow, right_workflow)
+
+    assert result["model_reference_changes"] == [
+        {
+            "node_id": "1",
+            "input": "clip_name",
+            "left": "clip-a.safetensors",
+            "right": "clip-b.safetensors",
+        },
+        {
+            "node_id": "2",
+            "input": "unet_name",
+            "left": "unet-a.safetensors",
+            "right": "unet-b.safetensors",
+        },
+        {
+            "node_id": "3",
+            "input": "control_net_name",
+            "left": "control-a.safetensors",
+            "right": "control-b.safetensors",
+        },
+    ]
+
+
+def test_compare_runs_distinguishes_missing_inputs_from_present_none_values():
+    left_workflow = {
+        "1": {"class_type": "OptionalInputNode", "inputs": {}},
+        "2": {"class_type": "OptionalInputNode", "inputs": {"optional": None}},
+    }
+    right_workflow = {
+        "1": {"class_type": "OptionalInputNode", "inputs": {"optional": None}},
+        "2": {"class_type": "OptionalInputNode", "inputs": {}},
+    }
+
+    result = compare_runs({}, {}, left_workflow, right_workflow)
+
+    assert result["input_changes"] == [
+        {
+            "node_id": "1",
+            "input": "optional",
+            "left": None,
+            "right": None,
+            "left_present": False,
+            "right_present": True,
+        },
+        {
+            "node_id": "2",
+            "input": "optional",
+            "left": None,
+            "right": None,
+            "left_present": True,
+            "right_present": False,
+        },
+    ]
+
+
+def test_compare_runs_sorts_numeric_string_node_ids_numerically():
+    left_workflow = {
+        "10": {"class_type": "KSampler", "inputs": {"seed": 10}},
+        "2": {"class_type": "KSampler", "inputs": {"seed": 2}},
+    }
+    right_workflow = {
+        "10": {"class_type": "KSampler", "inputs": {"seed": 100}},
+        "2": {"class_type": "KSampler", "inputs": {"seed": 20}},
+    }
+
+    result = compare_runs({}, {}, left_workflow, right_workflow)
+
+    assert [change["node_id"] for change in result["input_changes"]] == ["2", "10"]
+
+
 def test_compare_runs_handles_malformed_runs_and_workflows():
     empty_result = compare_runs(None, [], "bad workflow", None)
 

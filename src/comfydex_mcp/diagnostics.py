@@ -6,7 +6,7 @@ SUMMARY_MAX_LENGTH = 360
 EVENT_TEXT_MAX_LENGTH = 180
 EVENT_TEXT_KEYS = ("error", "message", "status")
 NESTED_TEXT_KEYS = ("error", "message", "status", "status_str", "exception_message")
-MODEL_REFERENCE_INPUT_MARKERS = ("model", "ckpt", "lora", "vae", "checkpoint")
+MODEL_REFERENCE_INPUT_MARKERS = ("model", "ckpt", "lora", "vae", "checkpoint", "clip", "unet", "control_net")
 
 
 def _shorten(text: str, max_length: int) -> str:
@@ -204,14 +204,19 @@ def compare_runs(
         right_inputs = _node_inputs(right_node)
         input_names = sorted(set(left_inputs) | set(right_inputs))
         for input_name in input_names:
-            left_value = left_inputs.get(input_name)
-            right_value = right_inputs.get(input_name)
-            if left_value == right_value:
+            left_present = input_name in left_inputs
+            right_present = input_name in right_inputs
+            left_value = left_inputs[input_name] if left_present else None
+            right_value = right_inputs[input_name] if right_present else None
+            if left_present == right_present and left_value == right_value:
                 continue
             change = {"node_id": node_id, "input": input_name, "left": left_value, "right": right_value}
+            if left_present != right_present:
+                change["left_present"] = left_present
+                change["right_present"] = right_present
             input_changes.append(change)
             if _is_model_reference_input(input_name):
-                model_reference_changes.append(change)
+                model_reference_changes.append(dict(change))
 
     return {
         "left_run_id": left_record.get("run_id"),
