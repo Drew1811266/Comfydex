@@ -69,6 +69,16 @@ def _custom_node_package_path(workspace: Path, package_name: str) -> Path:
     return safe_package_dir(custom_nodes_dir, package_name)
 
 
+def _validate_node_import_options(
+    timeout_seconds: int,
+    max_output_bytes: int,
+) -> None:
+    if not 1 <= timeout_seconds <= 30:
+        raise ValueError("timeout_seconds must be between 1 and 30")
+    if not 0 <= max_output_bytes <= 200000:
+        raise ValueError("max_output_bytes must be between 0 and 200000")
+
+
 def _resolve_config_dir(workspace: Path, value: str | None, current: Path) -> Path:
     if not value:
         return current
@@ -316,8 +326,10 @@ async def comfy_check_node_imports(
     max_output_bytes: int = 20000,
 ) -> dict[str, Any]:
     ctx = tool_context()
+    package_dir = _custom_node_package_path(ctx.workspace, package_name)
+    _validate_node_import_options(timeout_seconds, max_output_bytes)
     return check_node_imports(
-        _custom_node_package_path(ctx.workspace, package_name),
+        package_dir,
         timeout_seconds=timeout_seconds,
         max_output_bytes=max_output_bytes,
     )

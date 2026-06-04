@@ -134,6 +134,58 @@ async def test_comfy_custom_node_tools_use_package_name(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("timeout_seconds", [0, -1, 31])
+async def test_comfy_check_node_imports_rejects_invalid_timeout_before_import_check(
+    monkeypatch,
+    tmp_path: Path,
+    timeout_seconds: int,
+):
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+    import_check_called = False
+
+    def fail_if_called(*args, **kwargs):
+        nonlocal import_check_called
+        import_check_called = True
+        raise AssertionError("import check should not run")
+
+    monkeypatch.setattr(server, "check_node_imports", fail_if_called)
+
+    with pytest.raises(ValueError, match="timeout_seconds must be between 1 and 30"):
+        await server.comfy_check_node_imports(
+            "simple_math",
+            timeout_seconds=timeout_seconds,
+        )
+
+    assert import_check_called is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("max_output_bytes", [-1, 200001])
+async def test_comfy_check_node_imports_rejects_invalid_output_limit_before_import_check(
+    monkeypatch,
+    tmp_path: Path,
+    max_output_bytes: int,
+):
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+    import_check_called = False
+
+    def fail_if_called(*args, **kwargs):
+        nonlocal import_check_called
+        import_check_called = True
+        raise AssertionError("import check should not run")
+
+    monkeypatch.setattr(server, "check_node_imports", fail_if_called)
+
+    with pytest.raises(ValueError, match="max_output_bytes must be between 0 and 200000"):
+        await server.comfy_check_node_imports(
+            "simple_math",
+            max_output_bytes=max_output_bytes,
+        )
+
+    assert import_check_called is False
+
+
+@pytest.mark.asyncio
 async def test_comfy_custom_node_tool_rejects_unsafe_package_name(
     monkeypatch,
     tmp_path: Path,
