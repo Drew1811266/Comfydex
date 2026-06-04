@@ -429,6 +429,27 @@ def test_check_node_imports_returns_timeout_failure(tmp_path: Path):
     assert result["reason"] == "timeout"
 
 
+def test_check_node_imports_truncates_output_on_timeout(tmp_path: Path):
+    package = tmp_path / "pkg"
+    package.mkdir()
+    (package / "__init__.py").write_text(
+        "from .nodes import NODE_CLASS_MAPPINGS\n",
+        encoding="utf-8",
+    )
+    (package / "nodes.py").write_text(
+        "while True:\n"
+        "    print('x' * 1000)\n",
+        encoding="utf-8",
+    )
+
+    result = check_node_imports(package, timeout_seconds=1, max_output_bytes=2048)
+
+    assert result["status"] == "failed"
+    assert result["reason"] == "timeout"
+    assert len(result["stdout"].encode("utf-8")) <= 2048
+    assert result["stdout_truncated"] is True
+
+
 def test_check_node_imports_returns_missing_package_failure(tmp_path: Path):
     result = check_node_imports(tmp_path / "missing")
 

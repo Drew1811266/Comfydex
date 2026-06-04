@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 import subprocess
 import sys
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -140,7 +141,11 @@ def validate_node_class(package_dir: Path, class_name: str) -> dict[str, Any]:
     }
 
 
-def check_node_imports(package_dir: Path, timeout_seconds: int = 5) -> dict[str, Any]:
+def check_node_imports(
+    package_dir: Path,
+    timeout_seconds: int = 5,
+    max_output_bytes: int = 20000,
+) -> dict[str, Any]:
     package_dir = package_dir.resolve()
     if not package_dir.is_dir():
         return {
@@ -149,6 +154,8 @@ def check_node_imports(package_dir: Path, timeout_seconds: int = 5) -> dict[str,
             "returncode": None,
             "stdout": "",
             "stderr": f"package directory not found: {package_dir}",
+            "stdout_truncated": False,
+            "stderr_truncated": False,
         }
 
     script = (
@@ -158,22 +165,37 @@ def check_node_imports(package_dir: Path, timeout_seconds: int = 5) -> dict[str,
         "module = __import__(package_dir.name)\n"
         "print(sorted(getattr(module, 'NODE_CLASS_MAPPINGS', {}).keys()))\n"
     )
+    process = None
+    stdout_capture = _BoundedStreamCapture(max_output_bytes)
+    stderr_capture = _BoundedStreamCapture(max_output_bytes)
     try:
-        completed = subprocess.run(
+        process = subprocess.Popen(
             [sys.executable, "-I", "-c", script],
             cwd=str(package_dir.parent),
-            text=True,
-            capture_output=True,
-            timeout=timeout_seconds,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
         )
-    except subprocess.TimeoutExpired as exc:
-        return {
-            "status": "failed",
-            "reason": "timeout",
-            "returncode": None,
-            "stdout": exc.stdout or "",
-            "stderr": exc.stderr or "",
-        }
+        stdout_thread = threading.Thread(
+            target=stdout_capture.read_from,
+            args=(process.stdout,),
+            daemon=True,
+        )
+        stderr_thread = threading.Thread(
+            target=stderr_capture.read_from,
+            args=(process.stderr,),
+            daemon=True,
+        )
+        stdout_thread.start()
+        stderr_thread.start()
+        try:
+            returncode = process.wait(timeout=timeout_seconds)
+            reason = None if returncode == 0 else "import_error"
+        except subprocess.TimeoutExpired:
+            process.kill()
+            returncode = process.wait()
+            reason = "timeout"
+        stdout_thread.join(timeout=1)
+        stderr_thread.join(timeout=1)
     except OSError as exc:
         return {
             "status": "failed",
@@ -181,13 +203,18 @@ def check_node_imports(package_dir: Path, timeout_seconds: int = 5) -> dict[str,
             "returncode": None,
             "stdout": "",
             "stderr": str(exc),
+            "stdout_truncated": False,
+            "stderr_truncated": False,
         }
+
     return {
-        "status": "passed" if completed.returncode == 0 else "failed",
-        "reason": None if completed.returncode == 0 else "import_error",
-        "returncode": completed.returncode,
-        "stdout": completed.stdout,
-        "stderr": completed.stderr,
+        "status": "passed" if returncode == 0 else "failed",
+        "reason": reason,
+        "returncode": returncode,
+        "stdout": stdout_capture.text(),
+        "stderr": stderr_capture.text(),
+        "stdout_truncated": stdout_capture.truncated,
+        "stderr_truncated": stderr_capture.truncated,
     }
 
 
@@ -302,6 +329,39 @@ def _has_decorator(function_node: ast.FunctionDef, decorator_name: str) -> bool:
         isinstance(decorator, ast.Name) and decorator.id == decorator_name
         for decorator in function_node.decorator_list
     )
+
+
+class _BoundedStreamCapture:
+    def __init__(self, max_bytes: int) -> None:
+        self._max_bytes = max(0, max_bytes)
+        self._chunks: list[bytes] = []
+        self._size = 0
+        self.truncated = False
+
+    def read_from(self, stream: Any) -> None:
+        if stream is None:
+            return
+        while True:
+            chunk = stream.read(4096)
+            if not chunk:
+                break
+            self._append(chunk)
+
+    def text(self) -> str:
+        return b"".join(self._chunks).decode("utf-8", errors="replace")
+
+    def _append(self, chunk: bytes) -> None:
+        remaining = self._max_bytes - self._size
+        if remaining <= 0:
+            self.truncated = True
+            return
+        if len(chunk) > remaining:
+            self._chunks.append(chunk[:remaining])
+            self._size += remaining
+            self.truncated = True
+            return
+        self._chunks.append(chunk)
+        self._size += len(chunk)
 
 
 def _unsupported_mapping_value_errors(
