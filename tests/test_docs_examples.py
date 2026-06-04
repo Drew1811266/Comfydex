@@ -107,6 +107,7 @@ def test_run_diagnostics_doc_lists_required_inputs():
 
     for marker in ("run_id", "confirm=True", "failed_run_ids", "variations"):
         assert marker in text
+    assert "concurrency" not in text
 
 
 def test_readme_uses_local_plugin_validator():

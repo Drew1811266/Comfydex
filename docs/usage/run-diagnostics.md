@@ -24,4 +24,4 @@ Required inputs: optional `failed_run_ids`, optional non-negative `older_than_se
 
 Use `comfy_batch_submit` for parameter sweeps and `comfy_read_batch` to inspect child run statuses. Batch records are stored under `runs/.batches/` and should preserve partial failures for review.
 
-Required inputs: a workflow name, a batch label, parameter `variations`, and an optional concurrency limit. Read results back with `batch_id`.
+Required inputs: `workflow_name`, parameter `variations`, and an optional `batch_label`. Read results back with `batch_id`.
