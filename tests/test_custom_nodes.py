@@ -204,6 +204,94 @@ def test_validate_node_class_reports_missing_callable_function(tmp_path: Path):
     )
 
 
+def test_validate_node_class_reports_missing_return_types_function_and_category(
+    tmp_path: Path,
+):
+    package = tmp_path / "pkg"
+    package.mkdir()
+    (package / "nodes.py").write_text(
+        "class BadNode:\n"
+        "    @classmethod\n"
+        "    def INPUT_TYPES(cls):\n"
+        "        return {'required': {}}\n"
+        "    def run(self):\n"
+        "        return (1,)\n"
+        "NODE_CLASS_MAPPINGS = {'BadNode': BadNode}\n"
+        "NODE_DISPLAY_NAME_MAPPINGS = {'BadNode': 'Bad Node'}\n",
+        encoding="utf-8",
+    )
+
+    result = validate_node_class(package, "BadNode")
+
+    reasons = {error["reason"] for error in result["errors"]}
+    assert result["status"] == "invalid"
+    assert {"missing_return_types", "missing_function", "missing_category"}.issubset(
+        reasons
+    )
+
+
+def test_validate_node_class_reports_missing_class(tmp_path: Path):
+    package = tmp_path / "pkg"
+    package.mkdir()
+    (package / "nodes.py").write_text(
+        "class GoodNode: pass\n",
+        encoding="utf-8",
+    )
+
+    result = validate_node_class(package, "MissingNode")
+
+    assert result["status"] == "invalid"
+    assert result["errors"] == [
+        {"class_name": "MissingNode", "reason": "missing_class"}
+    ]
+
+
+def test_validate_node_class_reports_missing_nodes_py(tmp_path: Path):
+    package = tmp_path / "pkg"
+    package.mkdir()
+
+    result = validate_node_class(package, "MissingNode")
+
+    assert result["status"] == "invalid"
+    assert result["errors"] == [
+        {"reason": "missing_nodes_py", "path": str(package / "nodes.py")}
+    ]
+
+
+def test_validate_node_class_accepts_classmethod_and_staticmethod_input_types(
+    tmp_path: Path,
+):
+    package = tmp_path / "pkg"
+    package.mkdir()
+    (package / "nodes.py").write_text(
+        "class ClassMethodNode:\n"
+        "    CATEGORY = 'Comfydex'\n"
+        "    FUNCTION = 'run'\n"
+        "    RETURN_TYPES = ('INT',)\n"
+        "    @classmethod\n"
+        "    def INPUT_TYPES(cls):\n"
+        "        return {'required': {}}\n"
+        "    def run(self):\n"
+        "        return (1,)\n"
+        "class StaticMethodNode:\n"
+        "    CATEGORY = 'Comfydex'\n"
+        "    FUNCTION = 'run'\n"
+        "    RETURN_TYPES = ('INT',)\n"
+        "    @staticmethod\n"
+        "    def INPUT_TYPES():\n"
+        "        return {'required': {}}\n"
+        "    def run(self):\n"
+        "        return (1,)\n",
+        encoding="utf-8",
+    )
+
+    classmethod_result = validate_node_class(package, "ClassMethodNode")
+    staticmethod_result = validate_node_class(package, "StaticMethodNode")
+
+    assert classmethod_result["status"] == "valid"
+    assert staticmethod_result["status"] == "valid"
+
+
 def test_validate_node_class_reports_non_string_function(tmp_path: Path):
     package = tmp_path / "pkg"
     package.mkdir()
@@ -275,6 +363,34 @@ def test_validate_node_class_reports_property_input_types(tmp_path: Path):
     assert any(error["reason"] == "invalid_input_types" for error in result["errors"])
 
 
+def test_validate_node_class_reports_property_function_target(tmp_path: Path):
+    package = tmp_path / "pkg"
+    package.mkdir()
+    (package / "nodes.py").write_text(
+        "class BadNode:\n"
+        "    CATEGORY = 'Comfydex'\n"
+        "    FUNCTION = 'run'\n"
+        "    RETURN_TYPES = ('INT',)\n"
+        "    @classmethod\n"
+        "    def INPUT_TYPES(cls):\n"
+        "        return {'required': {}}\n"
+        "    @property\n"
+        "    def run(self):\n"
+        "        return lambda: (1,)\n"
+        "NODE_CLASS_MAPPINGS = {'BadNode': BadNode}\n"
+        "NODE_DISPLAY_NAME_MAPPINGS = {'BadNode': 'Bad Node'}\n",
+        encoding="utf-8",
+    )
+
+    result = validate_node_class(package, "BadNode")
+
+    assert result["status"] == "invalid"
+    assert any(
+        error["reason"] == "missing_callable_function"
+        for error in result["errors"]
+    )
+
+
 def test_check_node_imports_returns_import_error(tmp_path: Path):
     package = tmp_path / "pkg"
     package.mkdir()
@@ -290,6 +406,7 @@ def test_check_node_imports_returns_import_error(tmp_path: Path):
     result = check_node_imports(package)
 
     assert result["status"] == "failed"
+    assert result["reason"] == "import_error"
     assert "does_not_exist_here" in result["stderr"]
 
 

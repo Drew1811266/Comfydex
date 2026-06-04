@@ -99,11 +99,8 @@ def validate_node_class(package_dir: Path, class_name: str) -> dict[str, Any]:
 
     errors: list[dict[str, Any]] = []
     assigned_values = _class_assigned_values(class_node)
-    method_names = {
-        statement.name
-        for statement in class_node.body
-        if isinstance(statement, ast.FunctionDef)
-    }
+    methods = _class_methods(class_node)
+    method_names = set(methods)
 
     if "INPUT_TYPES" not in method_names:
         errors.append({"class_name": class_name, "reason": "missing_input_types"})
@@ -124,7 +121,10 @@ def validate_node_class(package_dir: Path, class_name: str) -> dict[str, Any]:
         errors.append({"class_name": class_name, "reason": "invalid_function"})
     elif isinstance(function_value, ast.Constant) and isinstance(function_value.value, str):
         function_name = function_value.value
-        if function_name not in method_names:
+        if function_name not in method_names or _has_decorator(
+            methods[function_name],
+            "property",
+        ):
             errors.append(
                 {
                     "class_name": class_name,
@@ -184,6 +184,7 @@ def check_node_imports(package_dir: Path, timeout_seconds: int = 5) -> dict[str,
         }
     return {
         "status": "passed" if completed.returncode == 0 else "failed",
+        "reason": None if completed.returncode == 0 else "import_error",
         "returncode": completed.returncode,
         "stdout": completed.stdout,
         "stderr": completed.stderr,
@@ -277,17 +278,30 @@ def _class_assigned_values(class_node: ast.ClassDef) -> dict[str, ast.expr]:
     return values
 
 
+def _class_methods(class_node: ast.ClassDef) -> dict[str, ast.FunctionDef]:
+    return {
+        statement.name: statement
+        for statement in class_node.body
+        if isinstance(statement, ast.FunctionDef)
+    }
+
+
 def _has_valid_input_types_method(class_node: ast.ClassDef) -> bool:
     for statement in class_node.body:
         if not isinstance(statement, ast.FunctionDef) or statement.name != "INPUT_TYPES":
             continue
-        decorator_names = {
-            decorator.id
-            for decorator in statement.decorator_list
-            if isinstance(decorator, ast.Name)
-        }
-        return bool(decorator_names & {"classmethod", "staticmethod"})
+        return _has_decorator(statement, "classmethod") or _has_decorator(
+            statement,
+            "staticmethod",
+        )
     return False
+
+
+def _has_decorator(function_node: ast.FunctionDef, decorator_name: str) -> bool:
+    return any(
+        isinstance(decorator, ast.Name) and decorator.id == decorator_name
+        for decorator in function_node.decorator_list
+    )
 
 
 def _unsupported_mapping_value_errors(
