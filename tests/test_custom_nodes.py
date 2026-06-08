@@ -257,6 +257,34 @@ def test_validate_node_class_reports_missing_input_types(tmp_path: Path):
     assert any(error["reason"] == "missing_input_types" for error in result["errors"])
 
 
+def test_validate_node_class_reports_malformed_common_input_specs(tmp_path: Path):
+    package = tmp_path / "pkg"
+    package.mkdir()
+    (package / "nodes.py").write_text(
+        "class BadInputNode:\n"
+        "    CATEGORY = 'Comfydex'\n"
+        "    FUNCTION = 'run'\n"
+        "    RETURN_TYPES = ('INT',)\n"
+        "    @classmethod\n"
+        "    def INPUT_TYPES(cls):\n"
+        "        return {'required': {'value': ()}}\n"
+        "    def run(self, value):\n"
+        "        return (value,)\n"
+        "NODE_CLASS_MAPPINGS = {'BadInputNode': BadInputNode}\n"
+        "NODE_DISPLAY_NAME_MAPPINGS = {'BadInputNode': 'Bad Input Node'}\n",
+        encoding="utf-8",
+    )
+
+    result = validate_node_class(package, "BadInputNode")
+
+    assert result["status"] == "invalid"
+    assert any(
+        error["reason"] == "invalid_input_spec"
+        and error["input_name"] == "value"
+        for error in result["errors"]
+    )
+
+
 def test_validate_node_class_reports_missing_callable_function(tmp_path: Path):
     package = tmp_path / "pkg"
     package.mkdir()
