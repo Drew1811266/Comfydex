@@ -173,6 +173,141 @@ def plan_workflow_generation(
     }
 
 
+def repair_plan_parameters(
+    plan: dict[str, Any],
+) -> tuple[dict[str, Any], list[dict[str, Any]], list[str]]:
+    parameters = deepcopy(plan.get("parameters", {}))
+    constraints = normalize_constraints(plan.get("constraints", {}))
+    repairs: list[dict[str, Any]] = []
+    issues: list[str] = []
+
+    steps = parameters.get("steps")
+    max_steps = constraints["max_steps"]
+    if isinstance(steps, int) and isinstance(max_steps, int) and steps > max_steps:
+        parameters["steps"] = max_steps
+        repairs.append(
+            {
+                "kind": "clamped_steps",
+                "path": "parameters.steps",
+                "before": steps,
+                "after": max_steps,
+            }
+        )
+
+    width = parameters.get("width")
+    height = parameters.get("height")
+    max_pixels = constraints["max_pixels"]
+    if (
+        isinstance(width, int)
+        and isinstance(height, int)
+        and isinstance(max_pixels, int)
+        and width * height > max_pixels
+    ):
+        issues.append("pixel_count_exceeds_limit")
+
+    return parameters, repairs, issues
+
+
+def build_generated_workflow(
+    plan: dict[str, Any],
+    object_info: dict[str, Any],
+    *,
+    target_exists: bool = False,
+    allow_draft: bool = False,
+) -> dict[str, Any]:
+    from .builder import build_workflow_from_plan
+
+    constraints = normalize_constraints(plan.get("constraints", {}))
+    repaired_parameters, repairs, issues = repair_plan_parameters(plan)
+    repaired_plan = {
+        **deepcopy(plan),
+        "parameters": repaired_parameters,
+        "constraints": constraints,
+    }
+
+    if issues:
+        validation = _not_run_validation()
+        policy = evaluate_submit_policy(
+            validation=validation,
+            submit_ready=False,
+            constraints=constraints,
+            target_exists=target_exists,
+            issues=issues,
+        )
+        return {
+            "status": "blocked",
+            "submit_ready": False,
+            "workflow": None,
+            "validation": validation,
+            "plan": repaired_plan,
+            "gaps": [],
+            "missing_information": deepcopy(plan.get("missing_information", [])),
+            "repairs": repairs,
+            "policy": policy,
+        }
+
+    result = build_workflow_from_plan(repaired_plan, object_info)
+    policy = evaluate_submit_policy(
+        validation=result["validation"],
+        submit_ready=bool(result["submit_ready"]),
+        constraints=constraints,
+        target_exists=target_exists,
+    )
+    result["plan"] = repaired_plan
+    result["repairs"] = repairs
+    result["policy"] = policy
+    if allow_draft and result.get("draft_workflow") is not None:
+        result["draft_allowed"] = True
+    return result
+
+
+def evaluate_submit_policy(
+    *,
+    validation: dict[str, Any],
+    submit_ready: bool,
+    constraints: dict[str, Any],
+    target_exists: bool = False,
+    issues: list[str] | None = None,
+) -> dict[str, Any]:
+    normalized_constraints = normalize_constraints(constraints)
+    reasons = list(issues or [])
+    blocked = False
+    requires_confirmation = False
+
+    if any(reason in {"pixel_count_exceeds_limit"} for reason in reasons):
+        blocked = True
+
+    validation_status = validation.get("status")
+    if validation_status != "valid" or not submit_ready:
+        blocked = True
+        if "validation_not_submit_ready" not in reasons:
+            reasons.append("validation_not_submit_ready")
+
+    if target_exists and not normalized_constraints["allow_overwrite"]:
+        reasons.append("workflow_overwrite")
+        if not blocked:
+            requires_confirmation = True
+
+    if "batch_request" in reasons and not normalized_constraints["allow_batch"]:
+        if not blocked:
+            requires_confirmation = True
+
+    decision = (
+        "blocked"
+        if blocked
+        else "requires_confirmation"
+        if requires_confirmation
+        else "allowed"
+    )
+    return {
+        "decision": decision,
+        "requires_confirmation": requires_confirmation,
+        "blocked": blocked,
+        "reasons": reasons,
+        "risk_level": "high" if blocked else "medium" if requires_confirmation else "low",
+    }
+
+
 def _score_template(
     template: dict[str, Any],
     normalized_intent: str,
@@ -251,6 +386,15 @@ def _maybe_float(value: Any) -> Any:
         except ValueError:
             return value
     return value
+
+
+def _not_run_validation() -> dict[str, Any]:
+    return {
+        "status": "not_run",
+        "errors": [],
+        "warnings": [],
+        "nodes_checked": 0,
+    }
 
 
 def _has_parameter_value(parameters: dict[str, Any], name: str) -> bool:
