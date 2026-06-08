@@ -4,6 +4,9 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
+import httpx
+import respx
+
 from comfydex_mcp.config import ComfydexConfig, save_config
 from comfydex_mcp.core.indexer import reindex_project
 from comfydex_mcp.core.project import project_context_from_config
@@ -101,6 +104,23 @@ def test_bridge_lists_workflows_runs_and_assets(tmp_path: Path):
     assert workflows["data"][0]["name"] == "cat.json"
     assert runs["data"][0]["workflow_name"] == "cat.json"
     assert assets["data"]["total"] == 1
+
+
+@respx.mock
+def test_bridge_check_connection_returns_desktop_connection_shape(tmp_path: Path):
+    _write_workspace(tmp_path)
+    respx.get("http://127.0.0.1:8188/system_stats").mock(
+        return_value=httpx.Response(200, json={"system": {"os": "nt"}})
+    )
+
+    result = run_bridge_operation("check_connection", tmp_path)
+
+    assert result["ok"] is True
+    assert result["data"]["ok"] is True
+    assert result["data"]["base_url"] == "http://127.0.0.1:8188"
+    assert result["data"]["message"] == "Connected"
+    assert result["data"]["checked_at"]
+    assert result["data"]["details"]["reachable"] is True
 
 
 def test_bridge_unknown_operation_returns_error_envelope(tmp_path: Path):

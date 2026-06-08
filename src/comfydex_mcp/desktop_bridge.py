@@ -4,6 +4,7 @@ import argparse
 import asyncio
 import json
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -126,7 +127,23 @@ async def _check_connection(config: ComfydexConfig) -> dict[str, Any]:
         config.headers,
         config.request_timeout_seconds,
     ) as client:
-        return await client.check_connection()
+        result = await client.check_connection()
+
+    reachable = bool(result.get("reachable"))
+    message = "Connected" if reachable else _connection_error_message(result)
+    return {
+        "ok": reachable,
+        "base_url": result.get("base_url", config.base_url),
+        "message": message,
+        "checked_at": datetime.now(timezone.utc).isoformat(),
+        "details": result,
+    }
+
+
+def _connection_error_message(result: dict[str, Any]) -> str:
+    error_type = str(result.get("error_type") or "ConnectionError")
+    error = str(result.get("error") or error_type)
+    return f"{error_type}: {error}"
 
 
 def _workspace_path(value: str | Path) -> Path:
