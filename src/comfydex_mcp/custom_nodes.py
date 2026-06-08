@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 import ctypes
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -662,7 +663,56 @@ def _import_check_result(
         "stderr": stderr,
         "stdout_truncated": stdout_truncated,
         "stderr_truncated": stderr_truncated,
+        "diagnostics": parse_traceback_diagnostics(stderr),
     }
+
+
+def parse_traceback_diagnostics(stderr: str) -> dict[str, Any]:
+    lines = [line.rstrip() for line in stderr.splitlines() if line.strip()]
+    exception_type = None
+    message = ""
+    for line in reversed(lines):
+        if ":" not in line or line.lstrip().startswith("File "):
+            continue
+        candidate_type, candidate_message = line.split(":", 1)
+        candidate_type = candidate_type.strip()
+        if candidate_type.endswith(("Error", "Exception")):
+            exception_type = candidate_type
+            message = candidate_message.strip()
+            break
+
+    frame_file = None
+    frame_line = None
+    for line in reversed(lines):
+        if line.lstrip().startswith("File "):
+            frame_file, frame_line = _parse_frame_line(line)
+            if frame_file is not None:
+                break
+
+    return {
+        "exception_type": exception_type,
+        "message": message,
+        "file": frame_file,
+        "line": frame_line,
+        "summary": _diagnostic_summary(exception_type, message),
+    }
+
+
+def _parse_frame_line(line: str) -> tuple[str | None, int | None]:
+    match = re.search(r'File "([^"]+)", line (\d+)', line)
+    if match is None:
+        return None, None
+    return match.group(1), int(match.group(2))
+
+
+def _diagnostic_summary(exception_type: str | None, message: str) -> str | None:
+    if exception_type and message:
+        return f"{exception_type}: {message}"
+    if exception_type:
+        return exception_type
+    if message:
+        return message
+    return None
 
 
 def _cleanup_process_tree(process: subprocess.Popen[Any], job: Any) -> None:

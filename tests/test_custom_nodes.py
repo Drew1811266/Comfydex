@@ -588,6 +588,29 @@ def test_check_node_imports_returns_import_error(tmp_path: Path):
     assert "does_not_exist_here" in result["stderr"]
 
 
+def test_check_node_imports_returns_traceback_diagnostics(tmp_path: Path):
+    package = tmp_path / "pkg"
+    package.mkdir()
+    (package / "__init__.py").write_text(
+        "from .nodes import NODE_CLASS_MAPPINGS\n",
+        encoding="utf-8",
+    )
+    (package / "nodes.py").write_text(
+        "import module_that_does_not_exist_for_comfydex\n"
+        "NODE_CLASS_MAPPINGS = {}\n",
+        encoding="utf-8",
+    )
+
+    result = check_node_imports(package)
+
+    assert result["status"] == "failed"
+    assert result["diagnostics"]["exception_type"] == "ModuleNotFoundError"
+    assert (
+        "module_that_does_not_exist_for_comfydex"
+        in result["diagnostics"]["message"]
+    )
+
+
 def test_check_node_imports_returns_timeout_failure(tmp_path: Path):
     package = tmp_path / "pkg"
     package.mkdir()
