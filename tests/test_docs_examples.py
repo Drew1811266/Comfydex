@@ -18,6 +18,10 @@ def test_workflow_skill_mentions_new_tool_order():
     assert "comfy_plan_workflow_generation" in text
     assert "comfy_generate_workflow" in text
     assert "comfy_evaluate_submit_policy" in text
+    assert "comfy_reindex_assets" in text
+    assert "comfy_search_assets" in text
+    assert "comfy_update_asset_metadata" in text
+    assert "comfy_plan_asset_cleanup" in text
     assert "comfy_build_workflow_plan" in text
     assert "comfy_validate_api_workflow" in text
 
@@ -76,16 +80,17 @@ def test_usage_docs_cover_new_capabilities():
         "run-diagnostics.md": "comfy_diagnose_run",
         "project-index.md": "comfy_reindex_project",
         "workflow-generation.md": "comfy_generate_workflow",
+        "asset-library.md": "comfy_search_assets",
     }
     for filename, marker in required.items():
         text = (ROOT / "docs" / "usage" / filename).read_text(encoding="utf-8")
         assert marker in text
 
 
-def test_readme_mentions_0_5_capabilities():
+def test_readme_mentions_0_6_capabilities():
     text = (ROOT / "README.md").read_text(encoding="utf-8")
 
-    assert "0.5.0" in text
+    assert "0.6.0" in text
     assert "UI workflow" in text
     assert "custom node" in text
     assert "batch" in text
@@ -99,6 +104,13 @@ def test_readme_mentions_0_5_capabilities():
     assert "comfy_generate_node_examples" in text
     assert "comfy_run_node_contract_tests" in text
     assert "comfy_custom_node_repair_guidance" in text
+    assert "comfy_reindex_assets" in text
+    assert "comfy_search_assets" in text
+    assert "comfy_update_asset_metadata" in text
+    assert "comfy_write_asset_sidecars" in text
+    assert "comfy_plan_asset_cleanup" in text
+    assert "comfy_export_asset_library_report" in text
+    assert "comfy_compare_assets" in text
     assert ".comfydex/comfydex.db" in text
 
 
@@ -129,8 +141,33 @@ def test_project_index_doc_explains_reindex_safety():
     assert ".comfydex/comfydex.db" in text
     assert "comfy_project_status" in text
     assert "comfy_reindex_project" in text
+    assert "schema version `2`" in text
+    assert "assets" in text
     assert "does not delete" in text
     assert "compatibility records" in text
+
+
+def test_asset_library_docs_cover_asset_tools():
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    usage = (ROOT / "docs" / "usage" / "asset-library.md").read_text(
+        encoding="utf-8"
+    )
+    skill = (ROOT / "skills" / "comfyui-workflows" / "SKILL.md").read_text(
+        encoding="utf-8"
+    )
+
+    for marker in (
+        "comfy_reindex_assets",
+        "comfy_search_assets",
+        "comfy_update_asset_metadata",
+        "comfy_write_asset_sidecars",
+        "comfy_plan_asset_cleanup",
+        "comfy_export_asset_library_report",
+        "comfy_compare_assets",
+    ):
+        assert marker in readme
+        assert marker in usage
+        assert marker in skill
 
 
 def test_workflow_generation_doc_explains_submit_policy():

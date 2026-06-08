@@ -8,7 +8,7 @@ import comfydex_mcp
 ROOT = Path(__file__).parents[1]
 
 
-EXPECTED_VERSION = "0.5.0"
+EXPECTED_VERSION = "0.6.0"
 
 
 def test_versions_match_expected_version():

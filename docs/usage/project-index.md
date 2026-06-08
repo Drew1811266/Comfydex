@@ -1,7 +1,8 @@
 # Project Index Usage
 
-Comfydex `0.3.0` adds a workspace-local project index for workflows, runs,
-outputs, batches, and recoverable indexing errors.
+Comfydex `0.6.0` uses schema version `2` for a workspace-local project index
+covering workflows, runs, outputs, assets, batches, and recoverable indexing
+errors.
 
 The index database lives at:
 
@@ -16,8 +17,8 @@ compatibility records.
 ## Status
 
 Use `comfy_project_status` to inspect the active workspace, configured
-workflow/run directories, database path, schema version, record counts, error
-count, and last reindex timestamp.
+workflow/run directories, database path, schema version, record counts including
+assets, error count, and last reindex timestamp.
 
 `comfy_project_status` is local-only. It does not call ComfyUI.
 
@@ -32,7 +33,11 @@ Use `comfy_reindex_project` when:
 - corrupt JSON needs to be surfaced as index errors.
 
 `comfy_reindex_project` rebuilds the SQLite rows from the compatibility records.
-It does not delete workflow files, run records, batch records, or output files.
+It does not delete workflow files, run records, batch records, output files,
+asset annotations, sidecars, or reports.
+
+Use `comfy_reindex_assets` when output assets should be refreshed and optionally
+written to sidecar JSON metadata.
 
 ## Error Handling
 

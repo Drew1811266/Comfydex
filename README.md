@@ -6,13 +6,14 @@ The plugin is installed in Codex, not in ComfyUI. ComfyUI remains the runtime se
 
 ## Status
 
-Current version: `0.5.0`
+Current version: `0.6.0`
 
 This release focuses on a practical developer workflow:
 
 - connect to a local or remote ComfyUI server
 - manage workflow JSON files from a Codex workspace
 - maintain a workspace-local project index at `.comfydex/comfydex.db`
+- search, annotate, report, compare, and safely clean up generated assets
 - build generated workflows from deterministic generation plans
 - validate generated workflows and classify submit policy before running
 - analyze workflow nodes, links, model references, and missing node types
@@ -97,7 +98,7 @@ The Skill explains how Codex should work with ComfyUI workflows, including the d
 - UI workflow JSON, exported for the ComfyUI visual editor
 - API prompt JSON, submitted to ComfyUI `/prompt`
 
-Version `0.5.0` can import UI workflow files and help convert them, but submission still requires validated API prompt JSON. It also adds a shared project index, a workflow generation engine, and a complete custom node loop with example generation, isolated contract tests, import diagnostics, and repair guidance.
+Version `0.6.0` can import UI workflow files and help convert them, but submission still requires validated API prompt JSON. It also adds a shared project index, a workflow generation engine, a complete custom node loop, and a local asset library for generated outputs.
 
 ## Capability Groups
 
@@ -105,6 +106,7 @@ Version `0.5.0` can import UI workflow files and help convert them, but submissi
 | --- | --- | --- |
 | Workflow generation | Plan, generate, validate, repair, and classify submit policy for generated API workflows. | `comfy_plan_workflow_generation`, `comfy_generate_workflow`, `comfy_evaluate_submit_policy` |
 | Project index | Build and inspect a local SQLite index for workflows, runs, outputs, batches, and index errors. | `comfy_project_status`, `comfy_reindex_project` |
+| Asset library | Reindex, search, annotate, sidecar, clean up, report, and compare generated output assets. | `comfy_reindex_assets`, `comfy_search_assets`, `comfy_update_asset_metadata`, `comfy_plan_asset_cleanup` |
 | UI workflow import | Classify, import, convert, and explain UI workflow conversion gaps. | `comfy_classify_workflow`, `comfy_import_ui_workflow`, `comfy_convert_ui_to_api` |
 | Workflow builder | Plan and build template-based API workflows from user intent. | `comfy_build_workflow_plan`, `comfy_explain_workflow_plan`, `comfy_build_workflow` |
 | Validation | Validate API workflows and generated workflows against object metadata. | `comfy_validate_api_workflow`, `comfy_validate_workflow_against_object_info` |
@@ -157,6 +159,13 @@ Comfydex exposes these tools:
 | `comfy_set_config` | Update base URL, directories, headers, and timeout settings. |
 | `comfy_project_status` | Inspect workspace paths, database path, schema version, index counts, and index errors. |
 | `comfy_reindex_project` | Rebuild the project index from local compatibility records. |
+| `comfy_reindex_assets` | Reindex project assets and optionally write sidecar metadata. |
+| `comfy_search_assets` | Search assets by text, workflow, status, type, tags, favorite, rating, and pagination. |
+| `comfy_update_asset_metadata` | Update asset tags, rating, favorite state, and notes. |
+| `comfy_write_asset_sidecars` | Write deterministic sidecar JSON metadata for assets. |
+| `comfy_plan_asset_cleanup` | Dry-run or confirmed cleanup for selected or search-matched assets. |
+| `comfy_export_asset_library_report` | Write a deterministic markdown asset library report. |
+| `comfy_compare_assets` | Compare two assets by metadata, prompts, models, file size, and annotations. |
 | `comfy_get_object_info` | Read ComfyUI `/object_info` node metadata. |
 | `comfy_list_workflows` | List local workflow JSON files. |
 | `comfy_read_workflow` | Read and summarize one workflow. |
@@ -243,9 +252,16 @@ Generated workflows expose validation, repairs, and submit policy. Submit only w
 comfy_project_status
 comfy_reindex_project
 comfy_project_status
+comfy_reindex_assets
+comfy_search_assets
+comfy_update_asset_metadata
+comfy_write_asset_sidecars
+comfy_plan_asset_cleanup
+comfy_export_asset_library_report
+comfy_compare_assets
 ```
 
-The project index is stored at `.comfydex/comfydex.db`. Reindexing rebuilds SQLite rows from compatibility records and does not delete workflow files, run records, batch records, or output files.
+The project index is stored at `.comfydex/comfydex.db`. Reindexing rebuilds SQLite rows from compatibility records and does not delete workflow files, run records, batch records, output files, sidecars, or reports.
 
 ### UI workflow import
 
@@ -410,6 +426,13 @@ python scripts/validate_plugin.py
 ```
 
 ## Release Notes
+
+### 0.6.0
+
+- Added schema version `2` with indexed `asset_records`.
+- Added asset search, tags, ratings, favorites, notes, and annotation preservation across reindex.
+- Added sidecar metadata, asset cleanup planning, asset library reports, and asset comparison.
+- Added `comfy_reindex_assets`, `comfy_search_assets`, `comfy_update_asset_metadata`, `comfy_write_asset_sidecars`, `comfy_plan_asset_cleanup`, `comfy_export_asset_library_report`, and `comfy_compare_assets`.
 
 ### 0.5.0
 
