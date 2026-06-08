@@ -6,12 +6,12 @@ import sqlite3
 
 from comfydex_mcp.batches import create_batch_record, update_batch_run
 from comfydex_mcp.config import ComfydexConfig
-from comfydex_mcp.core.database import migrate_project
+from comfydex_mcp.core.database import migrate_project, open_database
 from comfydex_mcp.core.indexer import reindex_project
 from comfydex_mcp.core.project import project_status
 from comfydex_mcp.core.project import project_context_from_config
 from comfydex_mcp.core.schema import SCHEMA_VERSION
-from comfydex_mcp.runs import create_run, register_outputs
+from comfydex_mcp.runs import create_run, register_outputs, update_status
 from comfydex_mcp.workflows import save_workflow
 
 
@@ -21,6 +21,18 @@ API_WORKFLOW = {
         "inputs": {"ckpt_name": "model.safetensors"},
     },
     "4": {"class_type": "SaveImage", "inputs": {"images": ["3", 0]}},
+}
+
+ASSET_WORKFLOW = {
+    "3": {
+        "class_type": "CheckpointLoaderSimple",
+        "inputs": {"ckpt_name": "sdxl.safetensors"},
+    },
+    "4": {
+        "class_type": "CLIPTextEncode",
+        "inputs": {"text": "cinematic cat", "clip": ["3", 1]},
+    },
+    "5": {"class_type": "SaveImage", "inputs": {"images": ["4", 0]}},
 }
 
 
@@ -54,7 +66,8 @@ def test_migrate_project_creates_schema_and_is_idempotent(tmp_path: Path):
 
     assert first["schema_version"] == SCHEMA_VERSION
     assert first["applied_migrations"] == [
-        {"version": 1, "name": "initial_project_index"}
+        {"version": 1, "name": "initial_project_index"},
+        {"version": 2, "name": "asset_library_core"},
     ]
     assert second["schema_version"] == SCHEMA_VERSION
     assert second["applied_migrations"] == []
@@ -74,6 +87,7 @@ def test_migrate_project_creates_schema_and_is_idempotent(tmp_path: Path):
         "workflow_records",
         "run_records",
         "output_records",
+        "asset_records",
         "batch_records",
         "index_errors",
     } <= tables
@@ -99,6 +113,7 @@ def test_project_status_reports_zero_counts_before_reindex(tmp_path: Path):
         "workflows": 0,
         "runs": 0,
         "outputs": 0,
+        "assets": 0,
         "batches": 0,
         "errors": 0,
     }
@@ -153,6 +168,7 @@ def test_reindex_project_indexes_workflows_runs_outputs_and_batches(tmp_path: Pa
         "workflows": 1,
         "runs": 1,
         "outputs": 1,
+        "assets": 1,
         "batches": 1,
         "errors": 0,
     }
@@ -214,7 +230,68 @@ def test_reindex_project_can_skip_output_scan_without_clearing_existing_outputs(
     second = reindex_project(ctx, include_outputs=False)
 
     assert first["counts"]["outputs"] == 1
+    assert first["counts"]["assets"] == 1
     assert second["counts"]["outputs"] == 1
+    assert second["counts"]["assets"] == 1
+
+
+def test_reindex_project_migrates_asset_library_schema_and_indexes_assets(
+    tmp_path: Path,
+):
+    cfg = _config(tmp_path)
+    ctx = project_context_from_config(cfg)
+    _write_completed_run_with_output(cfg)
+
+    report = reindex_project(ctx)
+
+    assert report["schema_version"] == 2
+    assert report["counts"]["assets"] == 1
+    with open_database(ctx.database_path) as db:
+        row = db.execute("SELECT * FROM asset_records").fetchone()
+        assert row["asset_id"] == row["output_id"]
+        assert row["workflow_name"] == "basic.json"
+        assert row["status"] == "completed"
+        assert "cinematic cat" in row["prompt_text"]
+        assert "sdxl.safetensors" in row["model_references_json"]
+        assert row["tags_json"] == "[]"
+        assert row["favorite"] == 0
+        assert row["thumbnail_status"] == "pending"
+
+
+def test_reindex_project_preserves_asset_annotations(tmp_path: Path):
+    cfg = _config(tmp_path)
+    ctx = project_context_from_config(cfg)
+    _write_completed_run_with_output(cfg)
+    reindex_project(ctx)
+
+    with open_database(ctx.database_path) as db:
+        asset_id = db.execute("SELECT asset_id FROM asset_records").fetchone()[
+            "asset_id"
+        ]
+        db.execute(
+            """
+            UPDATE asset_records
+            SET tags_json = ?, rating = ?, favorite = ?, notes = ?
+            WHERE asset_id = ?
+            """,
+            ('["keeper"]', 5, 1, "best output", asset_id),
+        )
+
+    reindex_project(ctx)
+
+    with open_database(ctx.database_path) as db:
+        row = db.execute(
+            """
+            SELECT tags_json, rating, favorite, notes
+            FROM asset_records
+            WHERE asset_id = ?
+            """,
+            (asset_id,),
+        ).fetchone()
+        assert row["tags_json"] == '["keeper"]'
+        assert row["rating"] == 5
+        assert row["favorite"] == 1
+        assert row["notes"] == "best output"
 
 
 def test_reindex_project_records_malformed_batch_run_entries(tmp_path: Path):
@@ -251,3 +328,31 @@ def test_reindex_project_records_malformed_batch_run_entries(tmp_path: Path):
         ).fetchone()
 
     assert row == (1, 1, 0)
+
+
+def _write_completed_run_with_output(cfg: ComfydexConfig) -> dict:
+    run = create_run(
+        cfg.runs_dir,
+        "basic.json",
+        ASSET_WORKFLOW,
+        cfg.base_url,
+        "prompt-asset",
+        now=datetime(2026, 6, 8, tzinfo=timezone.utc),
+    )
+    update_status(cfg.runs_dir, run["run_id"], "completed")
+    output_path = cfg.runs_dir / run["run_id"] / "outputs" / "images" / "result.png"
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text("image", encoding="utf-8")
+    register_outputs(
+        cfg.runs_dir,
+        run["run_id"],
+        [
+            {
+                "filename": "result.png",
+                "type": "images",
+                "subfolder": "images",
+                "downloaded_path": str(output_path),
+            }
+        ],
+    )
+    return run
