@@ -134,6 +134,16 @@ def test_readme_mentions_0_9_automation():
     assert "validate_release_package.py" in text
 
 
+def test_readme_mentions_1_0_release():
+    text = (ROOT / "README.md").read_text(encoding="utf-8")
+
+    assert "1.0.0" in text
+    assert "Usable Developer Release" in text
+    assert "scripts/install_windows.ps1" in text
+    assert "comfy_generate_run_fetch" in text
+    assert "validate_release_package.py" in text
+
+
 def test_end_to_end_automation_docs_cover_confirmation_and_recovery():
     usage = (ROOT / "docs" / "usage" / "end-to-end-automation.md").read_text(
         encoding="utf-8"
@@ -152,6 +162,41 @@ def test_end_to_end_automation_docs_cover_confirmation_and_recovery():
     ):
         assert marker in usage
         assert marker in skill
+
+
+def test_release_docs_cover_1_0_install_and_review():
+    install_doc = (ROOT / "docs" / "release" / "windows-install.md").read_text(
+        encoding="utf-8"
+    )
+    checklist = (ROOT / "docs" / "release" / "1.0-release-checklist.md").read_text(
+        encoding="utf-8"
+    )
+    security = (ROOT / "docs" / "release" / "security-path-review.md").read_text(
+        encoding="utf-8"
+    )
+    script = (ROOT / "scripts" / "install_windows.ps1").read_text(
+        encoding="utf-8"
+    )
+
+    for marker in (
+        "python -m pip install -e",
+        "npm --prefix desktop install",
+        "comfy_check_connection",
+    ):
+        assert marker in install_doc
+        assert marker in script
+    for marker in (
+        "python -m pytest tests -q",
+        "git ls-remote origin refs/heads/main refs/tags/v1.0.0",
+    ):
+        assert marker in checklist
+    for marker in (
+        "path traversal",
+        "header redaction",
+        "cleanup confirmation",
+        "desktop bridge",
+    ):
+        assert marker in security
 
 
 def test_custom_node_docs_cover_complete_loop_tools():

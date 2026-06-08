@@ -6,9 +6,9 @@ The plugin is installed in Codex, not in ComfyUI. ComfyUI remains the runtime se
 
 ## Status
 
-Current version: `0.9.0`
+Current version: `1.0.0`
 
-This release focuses on a practical developer workflow:
+This Usable Developer Release focuses on a practical local ComfyUI workflow:
 
 - connect to a local or remote ComfyUI server
 - manage workflow JSON files from a Codex workspace
@@ -31,6 +31,7 @@ This release focuses on a practical developer workflow:
 - submit simple batch runs with parameter variations
 - fetch or register generated outputs
 - validate release package metadata before tagging
+- install and verify the local toolchain with `scripts/install_windows.ps1`
 - provide Codex Skills that teach Codex workflow and custom node procedures
 
 ## Why This Exists
@@ -53,6 +54,7 @@ Codex is strong at reading code, editing structured files, following tool workfl
 ├── .mcp.json                    # MCP server launch config
 ├── desktop/                     # Tauri v2 + Vite + React desktop app shell
 ├── docs/
+│   ├── release/                 # Install, release, and safety review docs
 │   └── usage/                   # Usage guides
 ├── examples/                    # Workflow, report, and custom node examples
 ├── skills/
@@ -61,6 +63,7 @@ Codex is strong at reading code, editing structured files, following tool workfl
 │   └── comfyui-workflows/
 │       └── SKILL.md             # Codex workflow guidance
 ├── scripts/
+│   ├── install_windows.ps1      # Windows local install helper
 │   ├── smoke_check.py           # Manual ComfyUI connection check
 │   └── validate_release_package.py # Release package consistency check
 ├── src/
@@ -109,7 +112,7 @@ The Skill explains how Codex should work with ComfyUI workflows, including the d
 - UI workflow JSON, exported for the ComfyUI visual editor
 - API prompt JSON, submitted to ComfyUI `/prompt`
 
-Version `0.9.0` can import UI workflow files and help convert them, but submission still requires validated API prompt JSON. It also adds a shared project index, a workflow generation engine, a complete custom node loop, a local asset library for generated outputs, a desktop app shell backed by a Python desktop bridge with Gallery And Batch UI surfaces, safe end-to-end automation, and release package validation.
+Version `1.0.0` can import UI workflow files and help convert them, but submission still requires validated API prompt JSON. It also provides the shared project index, workflow generation engine, complete custom node loop, local asset library for generated outputs, desktop app shell backed by a Python desktop bridge with Gallery And Batch UI surfaces, safe end-to-end automation, Windows install helper, release checklist, security/path review, and release package validation.
 
 ## Capability Groups
 
@@ -429,6 +432,14 @@ Set-Location "C:/Users/Drew/plugins/comfydex"
 python -m pip install -e ".[dev]"
 ```
 
+For the 1.0 local developer install path, run:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/install_windows.ps1
+```
+
+See `docs/release/windows-install.md` for prerequisites, Codex plugin discovery, and ComfyUI connection checks.
+
 The plugin is expected to be listed in the personal Codex marketplace:
 
 ```text
@@ -484,6 +495,13 @@ cargo check --manifest-path desktop\src-tauri\Cargo.toml
 ```
 
 ## Release Notes
+
+### 1.0.0 - Usable Developer Release
+
+- Added `scripts/install_windows.ps1` as a Windows local install and verification helper.
+- Added release docs for Windows install, final release checklist, and security/path review.
+- Extended `scripts/validate_release_package.py` to enforce 1.0 release assets.
+- Finalized README, Skill guidance, release metadata, and version consistency for the 1.0 local developer toolchain.
 
 ### 0.9.0 - End-To-End Automation And Hardening
 
