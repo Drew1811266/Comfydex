@@ -59,7 +59,7 @@ export type ConnectionResult = {
   ok: boolean;
   base_url: string;
   message: string;
-  checked_at: string;
+  checked_at: string | null;
 };
 
 export type AssetSearchFilters = {

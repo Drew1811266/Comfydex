@@ -16,7 +16,7 @@ type BridgeEnvelope<T> =
   | { ok: false; error: { type: string; message: string } };
 
 const fallbackStatus: ProjectStatus = {
-  workspace: "No workspace selected",
+  workspace: "C:/Users/Drew/Comfydex Demo Workspace",
   database_path: ".comfydex/comfydex.db",
   schema_version: 2,
   counts: {
