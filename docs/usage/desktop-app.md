@@ -1,6 +1,6 @@
 # Comfydex Desktop App
 
-Comfydex `0.7.0` adds a Windows-first Tauri desktop app shell under `desktop/`. The desktop app is a local project workbench for browsing Comfydex project state; it does not replace Codex or the Python MCP server.
+Comfydex `0.8.0` provides a Windows-first Tauri desktop app shell under `desktop/`. The desktop app is a local project workbench for browsing Comfydex project state, asset gallery records, reports, cleanup plans, comparisons, and batch records; it does not replace Codex or the Python MCP server.
 
 The app uses a Python desktop bridge:
 
@@ -84,7 +84,48 @@ It shows run id, workflow name, status, output count, updated time, and a select
 
 The Assets view calls `search_assets` through the Python desktop bridge. It provides a table-first asset browser with filename, workflow, status, rating, favorite state, tags, search input, and selected asset details.
 
-The full image gallery grid and batch-oriented asset review workflow are planned for later versions.
+`0.8.0` adds Gallery and Table modes. Gallery mode shows compact output tiles; Table mode keeps the dense sortable workbench shape from `0.7.0`.
+
+The selected asset panel includes:
+
+- Favorite toggle,
+- Rating input,
+- Tags input,
+- Notes input,
+- workflow, prompt, and path details.
+
+### Compare
+
+Use the Compare panel to select exactly two assets and call `compare_assets`. The desktop UI shows changed indexed fields while keeping the Python bridge responsible for comparison logic.
+
+### Cleanup
+
+Cleanup is dry-run by default. Use Dry run to call `plan_asset_cleanup` without deleting files. Use Confirm cleanup only after checking candidates and enabling the explicit confirmation checkbox.
+
+The UI never constructs delete paths itself. Confirmed cleanup still goes through the shared safe cleanup planner.
+
+### Generate report
+
+Use Generate report to call `export_asset_library_report` for the current filters. The report panel shows the generated markdown path and a preview of the report text.
+
+## Batches
+
+The Batches view lists batch task view records from `runs/.batches`.
+
+The batch list shows:
+
+- batch id or label,
+- workflow name,
+- status,
+- completed count,
+- failed count,
+- updated timestamp.
+
+The Batch detail panel shows the selected batch status, workflow, created time, and updated time.
+
+The Child runs table shows each child run index, status, run id, and error. The Variation parameters preview shows the per-run parameter payloads used by the batch record.
+
+Batch submission remains an MCP/Codex operation in `0.8.0`; the desktop UI reads and inspects existing batch records.
 
 ## Settings
 
@@ -113,6 +154,12 @@ check_connection
 list_workflows
 list_runs
 search_assets
+update_asset_metadata
+plan_asset_cleanup
+export_asset_library_report
+compare_assets
+list_batches
+read_batch
 ```
 
 Tauri commands return stable envelopes:
@@ -138,7 +185,7 @@ or:
 
 ## 0.7 non-goals
 
-The `0.7.0` desktop app shell intentionally does not include:
+The `0.8.0` desktop app shell intentionally does not include:
 
 - production installer,
 - auto-updater,

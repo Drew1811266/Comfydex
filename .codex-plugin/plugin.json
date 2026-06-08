@@ -1,7 +1,7 @@
 {
   "name": "comfydex",
-  "version": "0.7.0",
-  "description": "Connect Codex to ComfyUI workflow generation, queues, runs, outputs, project indexes, and a desktop shell.",
+  "version": "0.8.0",
+  "description": "Connect Codex to ComfyUI workflow generation, queues, runs, outputs, project indexes, desktop gallery, and batch UI.",
   "author": {
     "name": "Local developer"
   },
@@ -17,7 +17,7 @@
   "interface": {
     "displayName": "Comfydex",
     "shortDescription": "Control ComfyUI workflows from Codex.",
-    "longDescription": "Comfydex helps Codex generate and inspect ComfyUI workflows, submit prompts, follow queue execution, collect run outputs, maintain a local project index through a Python MCP server, and browse that project through a Windows-first desktop shell.",
+    "longDescription": "Comfydex helps Codex generate and inspect ComfyUI workflows, submit prompts, follow queue execution, collect run outputs, maintain a local project index through a Python MCP server, and browse project assets, reports, cleanup plans, comparisons, and batches through a Windows-first desktop shell.",
     "developerName": "Local developer",
     "category": "Productivity",
     "capabilities": [

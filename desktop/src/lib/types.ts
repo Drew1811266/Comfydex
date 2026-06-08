@@ -34,11 +34,17 @@ export type RunRow = {
 export type AssetRow = {
   asset_id: string;
   filename: string;
+  path?: string;
   workflow_name: string | null;
   status: string;
   rating: number | null;
   favorite: boolean;
   tags: string[];
+  notes?: string | null;
+  prompt_text?: string | null;
+  model_references?: string[];
+  size_bytes?: number | null;
+  modified_time?: number;
 };
 
 export type ConfigState = {
@@ -72,6 +78,55 @@ export type AssetSearchFilters = {
 export type AssetSearchResult = {
   total: number;
   assets: AssetRow[];
+};
+
+export type AssetMetadataPatch = {
+  favorite?: boolean;
+  rating?: number | null;
+  tags?: string[];
+  notes?: string;
+};
+
+export type CleanupPlan = {
+  dry_run: boolean;
+  candidates: AssetRow[];
+  deleted: string[];
+  skipped: Array<AssetRow & { reason?: string }>;
+};
+
+export type AssetReport = {
+  path: string;
+  markdown: string;
+};
+
+export type AssetComparison = {
+  left: AssetRow;
+  right: AssetRow;
+  differences: Record<string, { left: unknown; right: unknown; changed: boolean }>;
+};
+
+export type BatchSummary = {
+  batch_id: string;
+  label: string;
+  workflow_name: string;
+  status: string;
+  created_at: string | null;
+  updated_at: string | null;
+  run_count: number;
+  completed_count: number;
+  failed_count: number;
+};
+
+export type BatchRunRow = {
+  index: number;
+  parameters: Record<string, unknown>;
+  status: string;
+  run_id: string | null;
+  error?: string;
+};
+
+export type BatchRecord = BatchSummary & {
+  runs: BatchRunRow[];
 };
 
 export type LoadState = "loading" | "empty" | "error" | "loaded";
