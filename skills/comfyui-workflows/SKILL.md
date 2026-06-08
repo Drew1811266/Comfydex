@@ -23,18 +23,19 @@ For a normal run:
 1. Call `comfy_project_status`.
 2. Call `comfy_reindex_project` when project counts are stale or files were changed outside Comfydex.
 3. Call `comfy_reindex_assets` when output assets should be searchable or sidecars are needed.
-4. Call `comfy_plan_workflow_generation` before creating a new workflow.
-5. Call `comfy_generate_workflow` when required generation inputs are present.
-6. Call `comfy_evaluate_submit_policy` before submitting an existing or generated workflow.
-7. Call `comfy_check_connection`.
-8. Call `comfy_get_object_info` when node metadata is needed.
-9. Call `comfy_list_workflows`.
-10. Call `comfy_read_workflow` for the selected file.
-11. Call `comfy_analyze_workflow`.
-12. Call `comfy_submit_workflow` only when submit policy is `allowed`.
-13. Call `comfy_wait_for_run`.
-14. Call `comfy_fetch_outputs`.
-15. Call `comfy_read_run`.
+4. For low-risk one-call generation, call `comfy_generate_run_fetch`.
+5. Otherwise, call `comfy_plan_workflow_generation` before creating a new workflow.
+6. Call `comfy_generate_workflow` when required generation inputs are present.
+7. Call `comfy_evaluate_submit_policy` before submitting an existing or generated workflow.
+8. Call `comfy_check_connection`.
+9. Call `comfy_get_object_info` when node metadata is needed.
+10. Call `comfy_list_workflows`.
+11. Call `comfy_read_workflow` for the selected file.
+12. Call `comfy_analyze_workflow`.
+13. Call `comfy_submit_workflow` only when submit policy is `allowed`.
+14. Call `comfy_wait_for_run`.
+15. Call `comfy_fetch_outputs`.
+16. Call `comfy_read_run`.
 
 ## Project Index
 
@@ -75,6 +76,12 @@ Use `comfy_plan_workflow_generation` to turn intent and parameters into a scored
 Use `comfy_generate_workflow` to build, validate, repair, and save a workflow. Inspect `repairs`, `gaps`, and `policy` before submitting.
 
 Use `comfy_evaluate_submit_policy` for existing workflows. Submit only when policy is `allowed`; ask for confirmation when policy is `requires_confirmation`; do not submit when policy is `blocked`.
+
+Use `comfy_generate_run_fetch` only for low-risk single-run requests. It can generate, save, submit, wait, call `fetch_outputs`, and reindex in one tool call.
+
+If `comfy_generate_run_fetch` returns `requires_confirmation`, review `policy.reasons` before passing `confirm_risky_actions=True`. Common reasons include workflow overwrite and `object_info_unavailable`; unknown validation must not be silently auto-run.
+
+Use `wait_for_completion=False` to stop after submission. Use `fetch_outputs=False` to wait without output download. After a fetch or manual output change, use `comfy_reindex_project` or the automation result's reindex data to keep the project index current.
 
 ## Workflow Editing Rules
 

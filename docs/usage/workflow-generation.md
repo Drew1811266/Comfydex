@@ -37,3 +37,18 @@ Submit policy decisions are:
 
 Do not submit workflows with `blocked` policy. Ask for explicit user
 confirmation before submitting workflows with `requires_confirmation`.
+
+## End-To-End Automation
+
+Use `comfy_generate_run_fetch` for low-risk single-run requests that should move
+from intent to generated workflow, submitted run, wait, `fetch_outputs`, and
+project reindex in one call.
+
+The automation tool stops with `requires_confirmation` when policy reasons such
+as workflow overwrite or `object_info_unavailable` are present. Pass
+`confirm_risky_actions=True` only after reviewing `policy.reasons` and the
+generated validation report.
+
+Set `wait_for_completion=False` to stop after submission, or
+`fetch_outputs=False` to wait without output download. See
+`docs/usage/end-to-end-automation.md` for recovery behavior.

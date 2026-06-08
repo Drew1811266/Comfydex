@@ -6,7 +6,7 @@ The plugin is installed in Codex, not in ComfyUI. ComfyUI remains the runtime se
 
 ## Status
 
-Current version: `0.8.0`
+Current version: `0.9.0`
 
 This release focuses on a practical developer workflow:
 
@@ -16,6 +16,7 @@ This release focuses on a practical developer workflow:
 - search, annotate, report, compare, and safely clean up generated assets
 - browse project status, workflows, runs, assets, and settings in a Windows-first Tauri desktop app shell
 - use Gallery And Batch UI surfaces for asset gallery review, comparison, reports, safe cleanup UI, and batch task view inspection
+- run safe one-call generate-run-fetch automation for low-risk single-run requests
 - build generated workflows from deterministic generation plans
 - validate generated workflows and classify submit policy before running
 - analyze workflow nodes, links, model references, and missing node types
@@ -29,6 +30,7 @@ This release focuses on a practical developer workflow:
 - diagnose runs, export run reports, compare experiments, and manage outputs
 - submit simple batch runs with parameter variations
 - fetch or register generated outputs
+- validate release package metadata before tagging
 - provide Codex Skills that teach Codex workflow and custom node procedures
 
 ## Why This Exists
@@ -59,7 +61,8 @@ Codex is strong at reading code, editing structured files, following tool workfl
 │   └── comfyui-workflows/
 │       └── SKILL.md             # Codex workflow guidance
 ├── scripts/
-│   └── smoke_check.py           # Manual ComfyUI connection check
+│   ├── smoke_check.py           # Manual ComfyUI connection check
+│   └── validate_release_package.py # Release package consistency check
 ├── src/
 │   └── comfydex_mcp/
 │       ├── analyzer.py          # Workflow graph and node analysis
@@ -106,13 +109,14 @@ The Skill explains how Codex should work with ComfyUI workflows, including the d
 - UI workflow JSON, exported for the ComfyUI visual editor
 - API prompt JSON, submitted to ComfyUI `/prompt`
 
-Version `0.8.0` can import UI workflow files and help convert them, but submission still requires validated API prompt JSON. It also adds a shared project index, a workflow generation engine, a complete custom node loop, a local asset library for generated outputs, and a desktop app shell backed by a Python desktop bridge with Gallery And Batch UI surfaces.
+Version `0.9.0` can import UI workflow files and help convert them, but submission still requires validated API prompt JSON. It also adds a shared project index, a workflow generation engine, a complete custom node loop, a local asset library for generated outputs, a desktop app shell backed by a Python desktop bridge with Gallery And Batch UI surfaces, safe end-to-end automation, and release package validation.
 
 ## Capability Groups
 
 | Group | What it adds | Primary tools |
 | --- | --- | --- |
 | Workflow generation | Plan, generate, validate, repair, and classify submit policy for generated API workflows. | `comfy_plan_workflow_generation`, `comfy_generate_workflow`, `comfy_evaluate_submit_policy` |
+| End-to-end automation | Generate, save, submit, wait, fetch outputs, and reindex for low-risk single-run requests. | `comfy_generate_run_fetch` |
 | Project index | Build and inspect a local SQLite index for workflows, runs, outputs, batches, and index errors. | `comfy_project_status`, `comfy_reindex_project` |
 | Asset library | Reindex, search, annotate, sidecar, clean up, report, and compare generated output assets. | `comfy_reindex_assets`, `comfy_search_assets`, `comfy_update_asset_metadata`, `comfy_plan_asset_cleanup` |
 | UI workflow import | Classify, import, convert, and explain UI workflow conversion gaps. | `comfy_classify_workflow`, `comfy_import_ui_workflow`, `comfy_convert_ui_to_api` |
@@ -200,6 +204,7 @@ Comfydex exposes these tools:
 | `comfy_build_workflow` | Build and save a workflow from a plan. |
 | `comfy_plan_workflow_generation` | Create a scored generation plan from intent, parameters, template choice, and constraints. |
 | `comfy_generate_workflow` | Build, validate, repair, and save a generated workflow when submit policy allows. |
+| `comfy_generate_run_fetch` | Generate, save, submit, wait, fetch outputs, and reindex for low-risk single-run requests. |
 | `comfy_evaluate_submit_policy` | Evaluate whether an existing workflow is allowed, requires confirmation, or is blocked. |
 | `comfy_scaffold_custom_node_package` | Create a workspace-local custom node package. |
 | `comfy_inspect_custom_node_package` | Inspect custom node package files and mappings. |
@@ -243,7 +248,24 @@ comfy_fetch_outputs
 comfy_read_run
 ```
 
-## 0.8 Usage Examples
+For low-risk generated workflows, `comfy_generate_run_fetch` can combine generation, submission, waiting, output fetching, and reindexing in one call. It stops before saving or submitting when `policy.decision` is `requires_confirmation` unless `confirm_risky_actions=True`.
+
+## 0.9 Usage Examples
+
+### End-to-end automation
+
+```text
+comfy_generate_run_fetch
+name: city.json
+intent: text to image
+parameters:
+  checkpoint_name: model.safetensors
+  positive_prompt: cinematic city at night
+```
+
+The automation path is for low-risk single-run requests. It uses `wait_for_completion=True` and `fetch_outputs=True` by default, then runs project reindex so the workflow, run, and assets are visible to MCP and desktop views.
+
+If the response includes `object_info_unavailable`, workflow overwrite, or another medium-risk policy reason, review `policy.reasons` before rerunning with `confirm_risky_actions=True`. A blocked policy cannot be overridden.
 
 ### Desktop app shell
 
@@ -447,6 +469,12 @@ Validate the Codex plugin manifest:
 python scripts/validate_plugin.py
 ```
 
+Validate release package consistency:
+
+```powershell
+python scripts/validate_release_package.py
+```
+
 Validate the desktop app shell:
 
 ```powershell
@@ -456,6 +484,13 @@ cargo check --manifest-path desktop\src-tauri\Cargo.toml
 ```
 
 ## Release Notes
+
+### 0.9.0 - End-To-End Automation And Hardening
+
+- Added `comfy_generate_run_fetch` for safe one-call generate-run-fetch automation.
+- Hardened submit policy so `object_info_unavailable` and unknown validation states require explicit confirmation.
+- Added structured recovery responses for submit, wait, fetch, and reindex stages.
+- Added `scripts/validate_release_package.py` for release metadata, desktop package, docs, and plugin consistency checks.
 
 ### 0.8.0
 
