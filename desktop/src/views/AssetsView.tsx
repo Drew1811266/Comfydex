@@ -69,7 +69,17 @@ export function AssetsView({
     try {
       const updated = await updateAssetMetadata(selected.asset_id, patch);
       setAssetRows((rows) =>
-        rows.map((asset) => (asset.asset_id === selected.asset_id ? { ...asset, ...updated } : asset))
+        rows.map((asset) =>
+          asset.asset_id === selected.asset_id
+            ? {
+                ...asset,
+                favorite: updated.favorite,
+                rating: updated.rating,
+                tags: updated.tags,
+                notes: updated.notes
+              }
+            : asset
+        )
       );
     } catch (caught) {
       setActionError(caught instanceof Error ? caught.message : String(caught));
@@ -217,6 +227,7 @@ export function AssetsView({
                 <label>
                   Rating
                   <input
+                    key={`${selected.asset_id}-rating`}
                     max={5}
                     min={0}
                     onBlur={(event) => void patchSelected({ rating: Number(event.target.value) || null })}
@@ -228,6 +239,7 @@ export function AssetsView({
               <label>
                 Tags
                 <input
+                  key={`${selected.asset_id}-tags`}
                   defaultValue={selected.tags.join(", ")}
                   onBlur={(event) =>
                     void patchSelected({
@@ -242,6 +254,7 @@ export function AssetsView({
               <label>
                 Notes
                 <textarea
+                  key={`${selected.asset_id}-notes`}
                   defaultValue={selected.notes ?? ""}
                   onBlur={(event) => void patchSelected({ notes: event.target.value })}
                 />
