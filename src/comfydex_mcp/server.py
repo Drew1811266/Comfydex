@@ -31,6 +31,7 @@ from .conversion import (
     explain_conversion_gaps,
     save_conversion_report,
 )
+from .core import project_context_from_config, project_status, reindex_project
 from .custom_nodes import (
     check_node_imports,
     inspect_custom_node_package,
@@ -384,6 +385,20 @@ async def comfy_set_config(
     )
     save_config(updated)
     return redact_config(updated)
+
+
+@mcp.tool()
+async def comfy_project_status() -> dict[str, Any]:
+    ctx = tool_context()
+    project = project_context_from_config(ctx.config)
+    return project_status(project)
+
+
+@mcp.tool()
+async def comfy_reindex_project(include_outputs: bool = True) -> dict[str, Any]:
+    ctx = tool_context()
+    project = project_context_from_config(ctx.config)
+    return reindex_project(project, include_outputs=include_outputs)
 
 
 @mcp.tool()
