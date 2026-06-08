@@ -14,7 +14,7 @@ ComfyUI has two common workflow JSON shapes:
 - UI workflow JSON: exported for the ComfyUI visual editor. It usually has `nodes` and `links`.
 - API prompt JSON: submit-ready JSON for `/prompt`. It is usually a JSON object whose values contain `class_type` and `inputs`.
 
-First-version Comfydex can analyze both shapes, but `comfy_submit_workflow` requires API prompt JSON.
+Comfydex can classify, import, and convert UI workflow JSON, but `comfy_submit_workflow` requires validated API prompt JSON.
 
 ## Standard Tool Order
 
@@ -37,6 +37,30 @@ For a normal run:
 - Update only the smallest set of node inputs needed for the user request.
 - If a workflow is UI JSON, explain that submission requires API prompt JSON.
 - Use `comfy_get_object_info` before validating unfamiliar node inputs.
+
+## UI Workflow Import
+
+When the user provides ComfyUI UI workflow JSON, call tools in this order:
+
+1. `comfy_classify_workflow`
+2. `comfy_import_ui_workflow`
+3. `comfy_convert_ui_to_api`
+4. `comfy_validate_api_workflow`
+5. `comfy_submit_workflow` only after validation reports `valid`
+
+Keep the original `.ui.json` file. Treat conversion gaps as actionable work, not as successful conversion.
+
+## Workflow Builder
+
+For workflow creation from intent, call:
+
+1. `comfy_list_workflow_templates`
+2. `comfy_build_workflow_plan`
+3. `comfy_explain_workflow_plan`
+4. `comfy_build_workflow`
+5. `comfy_validate_workflow_against_object_info`
+
+Do not submit generated workflows while required inputs or unavailable node types are listed in the plan.
 
 ## Diagnosis Rules
 

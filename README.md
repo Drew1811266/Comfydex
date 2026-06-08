@@ -6,19 +6,24 @@ The plugin is installed in Codex, not in ComfyUI. ComfyUI remains the runtime se
 
 ## Status
 
-Current version: `0.1.0`
+Current version: `0.2.0`
 
-This first release focuses on a practical developer workflow:
+This release focuses on a practical developer workflow:
 
 - connect to a local or remote ComfyUI server
 - manage workflow JSON files from a Codex workspace
 - analyze workflow nodes, links, model references, and missing node types
+- import UI workflow JSON and convert it toward API prompt JSON
+- build first-pass workflows from templates and structured plans
+- scaffold, inspect, validate, import-check, and document custom node packages
 - submit API prompt JSON to ComfyUI
 - watch execution through WebSocket events
 - fall back to HTTP queue/history polling when WebSocket waiting fails
 - persist local run records
+- diagnose runs, export run reports, compare experiments, and manage outputs
+- submit simple batch runs with parameter variations
 - fetch or register generated outputs
-- provide a Codex Skill that teaches Codex how to reason about ComfyUI workflows
+- provide Codex Skills that teach Codex workflow and custom node procedures
 
 ## Why This Exists
 
@@ -38,7 +43,12 @@ Codex is strong at reading code, editing structured files, following tool workfl
 ├── .codex-plugin/
 │   └── plugin.json              # Codex plugin manifest
 ├── .mcp.json                    # MCP server launch config
+├── docs/
+│   └── usage/                   # 0.2 usage guides
+├── examples/                    # Workflow, report, and custom node examples
 ├── skills/
+│   ├── comfyui-custom-nodes/
+│   │   └── SKILL.md             # Codex custom node guidance
 │   └── comfyui-workflows/
 │       └── SKILL.md             # Codex workflow guidance
 ├── scripts/
@@ -46,11 +56,18 @@ Codex is strong at reading code, editing structured files, following tool workfl
 ├── src/
 │   └── comfydex_mcp/
 │       ├── analyzer.py          # Workflow graph and node analysis
+│       ├── batches.py           # Batch record and variation helpers
+│       ├── builder.py           # Workflow builder planning and assembly
 │       ├── comfy_client.py      # ComfyUI HTTP client
 │       ├── config.py            # Workspace config loading and redaction
+│       ├── conversion.py        # UI workflow import and API conversion
+│       ├── diagnostics.py       # Run diagnosis and comparison
+│       ├── outputs.py           # Output listing and cleanup
 │       ├── paths.py             # Path safety helpers
+│       ├── reports.py           # Markdown run reports
 │       ├── runs.py              # Run record persistence
 │       ├── server.py            # FastMCP tool server
+│       ├── templates.py         # Workflow templates and suggestions
 │       ├── workflows.py         # Workflow storage and summaries
 │       └── ws.py                # WebSocket waiting helpers
 └── tests/                       # Unit and integration-style tests
@@ -75,7 +92,18 @@ The Skill explains how Codex should work with ComfyUI workflows, including the d
 - UI workflow JSON, exported for the ComfyUI visual editor
 - API prompt JSON, submitted to ComfyUI `/prompt`
 
-Version `0.1.0` can analyze both shapes, but submission requires API prompt JSON.
+Version `0.2.0` can import UI workflow files and help convert them, but submission still requires validated API prompt JSON.
+
+## 0.2 Capability Groups
+
+| Group | What it adds | Primary tools |
+| --- | --- | --- |
+| UI workflow import | Classify, import, convert, and explain UI workflow conversion gaps. | `comfy_classify_workflow`, `comfy_import_ui_workflow`, `comfy_convert_ui_to_api` |
+| Workflow builder | Plan and build template-based API workflows from user intent. | `comfy_build_workflow_plan`, `comfy_explain_workflow_plan`, `comfy_build_workflow` |
+| Validation | Validate API workflows and generated workflows against object metadata. | `comfy_validate_api_workflow`, `comfy_validate_workflow_against_object_info` |
+| Custom node assistant | Scaffold, inspect, validate, import-check, and document custom node packages. | `comfy_scaffold_custom_node_package`, `comfy_validate_node_class`, `comfy_check_node_imports` |
+| Run diagnostics | Diagnose, report, compare, and inspect run outputs. | `comfy_diagnose_run`, `comfy_export_run_report`, `comfy_compare_runs`, `comfy_list_outputs` |
+| Batch runs | Submit parameter variations and read batch records. | `comfy_batch_submit`, `comfy_read_batch` |
 
 ## Configuration
 
@@ -132,6 +160,30 @@ Comfydex exposes these tools:
 | `comfy_list_runs` | List local run records. |
 | `comfy_read_run` | Read one run record. |
 | `comfy_fetch_outputs` | Fetch or register outputs for a run using ComfyUI history and `/view`. |
+| `comfy_classify_workflow` | Identify UI, API, or unknown workflow JSON. |
+| `comfy_import_ui_workflow` | Store a UI workflow export and metadata. |
+| `comfy_convert_ui_to_api` | Convert UI workflow JSON toward API prompt JSON. |
+| `comfy_explain_conversion_gaps` | Explain unresolved conversion gaps. |
+| `comfy_validate_api_workflow` | Validate API prompt shape before submission. |
+| `comfy_validate_workflow_against_object_info` | Validate node classes and required inputs with object metadata. |
+| `comfy_list_workflow_templates` | List built-in workflow templates. |
+| `comfy_suggest_workflow_template` | Suggest a template for user intent. |
+| `comfy_build_workflow_plan` | Create a structured workflow build plan. |
+| `comfy_explain_workflow_plan` | Explain required inputs and assumptions in a build plan. |
+| `comfy_build_workflow` | Build and save a workflow from a plan. |
+| `comfy_scaffold_custom_node_package` | Create a workspace-local custom node package. |
+| `comfy_inspect_custom_node_package` | Inspect custom node package files and mappings. |
+| `comfy_validate_node_mappings` | Validate custom node mapping dictionaries. |
+| `comfy_validate_node_class` | Validate custom node class contracts. |
+| `comfy_check_node_imports` | Import-check a custom node package in isolation. |
+| `comfy_generate_node_docs` | Generate deterministic node package documentation. |
+| `comfy_diagnose_run` | Produce structured run diagnostics and a short summary. |
+| `comfy_export_run_report` | Write `runs/<run_id>/report.md`. |
+| `comfy_compare_runs` | Compare two runs by status, output count, node inputs, and model references. |
+| `comfy_list_outputs` | List output files across valid run directories. |
+| `comfy_cleanup_outputs` | Dry-run or confirmed cleanup for selected outputs. |
+| `comfy_batch_submit` | Submit workflow parameter variations and record child runs. |
+| `comfy_read_batch` | Read a stored batch record. |
 
 ## Typical Workflow
 
@@ -157,6 +209,60 @@ comfy_wait_for_run
 comfy_fetch_outputs
 comfy_read_run
 ```
+
+## 0.2 Usage Examples
+
+### UI workflow import
+
+```text
+comfy_classify_workflow
+comfy_import_ui_workflow
+comfy_convert_ui_to_api
+comfy_validate_api_workflow
+comfy_submit_workflow
+```
+
+Keep the original UI workflow. Treat conversion gaps from `comfy_explain_conversion_gaps` as actionable work before submission.
+
+### Workflow builder
+
+```text
+comfy_list_workflow_templates
+comfy_suggest_workflow_template
+comfy_build_workflow_plan
+comfy_explain_workflow_plan
+comfy_build_workflow
+comfy_validate_workflow_against_object_info
+```
+
+Do not submit generated workflows while the plan lists missing required inputs or unavailable node types.
+
+### Custom node assistant
+
+```text
+comfy_scaffold_custom_node_package
+comfy_inspect_custom_node_package
+comfy_validate_node_mappings
+comfy_validate_node_class
+comfy_check_node_imports
+comfy_generate_node_docs
+```
+
+Default custom node writes are workspace-local under `custom_nodes/`.
+
+### Run diagnostics and batch work
+
+```text
+comfy_diagnose_run
+comfy_export_run_report
+comfy_compare_runs
+comfy_list_outputs
+comfy_cleanup_outputs
+comfy_batch_submit
+comfy_read_batch
+```
+
+Cleanup is dry-run by default. Use `confirm=True` only after inspecting candidates.
 
 ## Local Data
 
@@ -193,13 +299,16 @@ Run records store:
 
 ## Safety Boundaries
 
-Comfydex intentionally keeps the first release narrow:
+Comfydex intentionally keeps the implementation bounded:
 
 - default ComfyUI target is local: `http://127.0.0.1:8188`
 - remote URLs are opt-in through config
 - custom headers are supported, but login and OAuth flows are not implemented
 - workflow writes are restricted to the configured workflow directory
+- workflow submission should happen only after validation reports `valid`
+- custom node scaffolding defaults to workspace-local `custom_nodes/`
 - output downloads are restricted to the corresponding run output directory
+- output cleanup is dry-run by default and requires `confirm=True` for deletion
 - path traversal is rejected
 - header values are redacted in config responses
 - Comfydex does not modify ComfyUI installation files
@@ -256,8 +365,23 @@ python -m pytest -v
 Validate the Codex plugin manifest:
 
 ```powershell
-python "C:/Users/Drew/.codex/skills/.system/plugin-creator/scripts/validate_plugin.py" "C:/Users/Drew/plugins/comfydex"
+python scripts/validate_plugin.py
 ```
+
+## Release Notes
+
+### 0.2.0
+
+- Added UI workflow import, conversion, conversion-gap reporting, and API validation.
+- Added workflow templates, build plans, template suggestions, and generated workflow validation.
+- Added workspace-local custom node scaffolding, inspection, validation, import checks, and docs generation.
+- Added run diagnostics, markdown reports, run comparison, output listing, confirmed cleanup, and batch records.
+- Hardened run and output path safety around traversal, symlink/reparse redirection, and cleanup confirmation.
+
+### 0.1.0
+
+- Initial Codex plugin and Python MCP server.
+- Added ComfyUI connection checks, workflow storage, workflow analysis, submission, waiting, run records, and output fetching.
 
 Run a manual connection check from a Codex workspace:
 
@@ -287,33 +411,10 @@ Before publishing changes, run:
 
 ```powershell
 python -m pytest -q
-python "C:/Users/Drew/.codex/skills/.system/plugin-creator/scripts/validate_plugin.py" "C:/Users/Drew/plugins/comfydex"
+python scripts/validate_plugin.py
+python -m json.tool .codex-plugin/plugin.json > $null
+python -m json.tool .mcp.json > $null
 ```
-
-## Version 0.1.0 Scope
-
-Included:
-
-- Codex plugin scaffold
-- Python MCP server
-- ComfyUI HTTP client
-- ComfyUI WebSocket wait handling
-- HTTP polling fallback
-- workflow storage and analysis
-- run record persistence
-- output fetching
-- ComfyUI workflow Skill
-- smoke check script
-- automated tests
-
-Not included yet:
-
-- natural-language workflow generation
-- UI workflow JSON to API prompt JSON conversion
-- custom node package scaffolding
-- visual output preview inside Codex
-- old output cleanup
-- semantic workflow version diffing
 
 ## License
 

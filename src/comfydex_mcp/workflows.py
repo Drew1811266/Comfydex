@@ -5,7 +5,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
-from .paths import ensure_directory, safe_json_path
+from .paths import ensure_directory, safe_auxiliary_json_path, safe_json_path
 
 MODEL_KEYS = {
     "ckpt_name",
@@ -65,18 +65,119 @@ def summarize_workflow(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def workflow_metadata_filename(filename: str) -> str:
+    if not filename or filename != Path(filename).name or not filename.endswith(".json"):
+        raise ValueError("workflow filename must be a simple .json filename")
+    return f"{Path(filename).stem}.metadata.json"
+
+
+def workflow_metadata(
+    filename: str,
+    payload: dict[str, Any],
+    *,
+    source: str = "manual",
+    validation_status: str = "unknown",
+) -> dict[str, Any]:
+    kind = classify_workflow(payload)
+    actual_source = (
+        "converted"
+        if filename.endswith(".converted-draft.json") and source == "manual"
+        else source
+    )
+    submit_ready = kind == "api" and validation_status in {"unknown", "valid"}
+    if actual_source == "converted" and validation_status != "valid":
+        submit_ready = False
+    return {
+        "name": filename,
+        "kind": kind,
+        "source": actual_source,
+        "submit_ready": submit_ready,
+        "validation_status": validation_status,
+    }
+
+
+def save_workflow_metadata(
+    workflows_dir: Path,
+    filename: str,
+    metadata: dict[str, Any],
+) -> Path:
+    ensure_directory(workflows_dir / ".metadata")
+    target = safe_auxiliary_json_path(
+        workflows_dir,
+        ".metadata",
+        workflow_metadata_filename(filename),
+    )
+    target.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
+    return target
+
+
+def read_workflow_metadata(
+    workflows_dir: Path,
+    filename: str,
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    target = safe_auxiliary_json_path(
+        workflows_dir,
+        ".metadata",
+        workflow_metadata_filename(filename),
+    )
+    default = workflow_metadata(filename, payload)
+    if not target.exists():
+        return default
+
+    try:
+        saved = json.loads(target.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return default
+    if not isinstance(saved, dict):
+        return default
+
+    saved_source = saved.get("source")
+    source = saved_source if isinstance(saved_source, str) else default["source"]
+    saved_validation_status = saved.get("validation_status")
+    validation_status = (
+        saved_validation_status
+        if isinstance(saved_validation_status, str)
+        else default["validation_status"]
+    )
+    merged = workflow_metadata(
+        filename,
+        payload,
+        source=source,
+        validation_status=validation_status,
+    )
+    saved_submit_ready = saved.get("submit_ready")
+    if isinstance(saved_submit_ready, bool) and (
+        saved_submit_ready is False or merged["submit_ready"] is True
+    ):
+        merged["submit_ready"] = saved_submit_ready
+    return merged
+
+
 def save_workflow(
     workflows_dir: Path,
     filename: str,
     payload: dict[str, Any],
     *,
     require_api: bool = False,
+    source: str = "manual",
+    validation_status: str = "unknown",
 ) -> Path:
     if require_api and classify_workflow(payload) != "api":
         raise ValueError("workflow must be ComfyUI API prompt JSON")
     ensure_directory(workflows_dir)
     target = safe_json_path(workflows_dir, filename)
     target.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    save_workflow_metadata(
+        workflows_dir,
+        filename,
+        workflow_metadata(
+            filename,
+            payload,
+            source=source,
+            validation_status=validation_status,
+        ),
+    )
     return target
 
 
@@ -88,6 +189,7 @@ def read_workflow(workflows_dir: Path, filename: str) -> dict[str, Any]:
         "path": str(target),
         "kind": classify_workflow(payload),
         "summary": summarize_workflow(payload),
+        "metadata": read_workflow_metadata(workflows_dir, filename, payload),
         "json": payload,
     }
 

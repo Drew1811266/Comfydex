@@ -2,13 +2,15 @@ from __future__ import annotations
 
 import json
 import re
+import stat
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from .paths import ensure_directory
+from .paths import ensure_directory, is_redirected_path
 
 RUN_STATUSES = {"queued", "running", "completed", "failed", "cancelled", "unknown"}
+RUN_ID_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]*")
 
 
 def _now() -> datetime:
@@ -27,18 +29,54 @@ def _run_id(now: datetime, label: str | None) -> str:
     return f"{prefix}_{slug}" if slug else prefix
 
 
+def validate_run_id(run_id: str) -> str:
+    if not isinstance(run_id, str) or not run_id:
+        raise ValueError("run_id must be a non-empty safe identifier")
+    if Path(run_id).is_absolute() or run_id != Path(run_id).name:
+        raise ValueError("run_id must be a single safe path segment")
+    if run_id in {".", ".."} or not RUN_ID_PATTERN.fullmatch(run_id):
+        raise ValueError("run_id must be a single safe path segment")
+    return run_id
+
+
 def _run_dir(runs_dir: Path, run_id: str) -> Path:
     base = runs_dir.resolve()
-    target = (base / run_id).resolve()
-    try:
-        target.relative_to(base)
-    except ValueError:
-        raise ValueError("run_id must stay inside runs_dir")
+    safe_run_id = validate_run_id(run_id)
+    target = base / safe_run_id
+    if is_redirected_path(target):
+        raise ValueError("run directory must not be redirected")
+    if target.exists():
+        try:
+            target.resolve().relative_to(base)
+        except (OSError, RuntimeError, ValueError) as exc:
+            raise ValueError("run_id must stay inside runs_dir") from exc
     return target
 
 
+def run_dir_path(runs_dir: Path, run_id: str) -> Path:
+    return _run_dir(runs_dir, run_id)
+
+
 def _record_path(runs_dir: Path, run_id: str) -> Path:
-    return _run_dir(runs_dir, run_id) / "run.json"
+    path = _run_dir(runs_dir, run_id) / "run.json"
+    if is_redirected_path(path):
+        raise ValueError("run.json must stay inside run directory")
+    if path.exists():
+        base = runs_dir.resolve()
+        try:
+            path.resolve().relative_to(base)
+        except (OSError, RuntimeError, ValueError) as exc:
+            raise ValueError("run.json must stay inside runs_dir") from exc
+    return path
+
+
+def has_safe_run_record(runs_dir: Path, run_id: str) -> bool:
+    try:
+        path = _record_path(runs_dir, run_id)
+        path_stat = path.stat(follow_symlinks=False)
+    except (FileNotFoundError, OSError, RuntimeError, ValueError):
+        return False
+    return stat.S_ISREG(path_stat.st_mode)
 
 
 def _create_unique_run_dir(runs_dir: Path, base_run_id: str) -> tuple[str, Path]:
@@ -121,10 +159,15 @@ def register_outputs(runs_dir: Path, run_id: str, outputs: list[dict[str, Any]])
 
 
 def list_runs(runs_dir: Path) -> list[dict[str, Any]]:
-    ensure_directory(runs_dir)
+    ensured_runs_dir = ensure_directory(runs_dir)
     rows: list[dict[str, Any]] = []
-    for run_json in runs_dir.glob("*/run.json"):
-        record = json.loads(run_json.read_text(encoding="utf-8"))
+    for run_dir in sorted(ensured_runs_dir.iterdir(), key=lambda path: str(path)):
+        if not has_safe_run_record(ensured_runs_dir, run_dir.name):
+            continue
+        try:
+            record = read_run(ensured_runs_dir, run_dir.name)
+        except (OSError, ValueError, json.JSONDecodeError, KeyError):
+            continue
         rows.append(
             {
                 "run_id": record["run_id"],

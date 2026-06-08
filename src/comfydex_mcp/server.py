@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import re
 import uuid
@@ -12,10 +13,53 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 
 from .analyzer import analyze_workflow
+from .builder import (
+    build_workflow_from_plan,
+    build_workflow_plan as create_workflow_plan,
+)
+from .batches import (
+    create_batch_record,
+    read_batch_record,
+    update_batch_run,
+    variation_to_operations,
+)
 from .comfy_client import ComfyClient, extract_output_refs
 from .config import ComfydexConfig, load_config, redact_config, save_config
-from .paths import safe_output_path
-from .runs import append_event, create_run, list_runs, read_run, register_outputs, update_status
+from .conversion import (
+    conversion_report_path,
+    convert_ui_to_api,
+    explain_conversion_gaps,
+    save_conversion_report,
+)
+from .custom_nodes import (
+    check_node_imports,
+    inspect_custom_node_package,
+    validate_node_class,
+    validate_node_mappings,
+)
+from .diagnostics import compare_runs, diagnose_run
+from .node_docs import generate_node_docs
+from .outputs import cleanup_outputs, list_outputs as list_run_outputs
+from .node_scaffold import scaffold_custom_node_package, safe_custom_nodes_dir
+from .patching import patch_workflow
+from .paths import is_redirected_path, safe_json_path, safe_output_path, safe_package_dir
+from .reports import export_run_report
+from .runs import (
+    append_event,
+    create_run,
+    list_runs,
+    read_run,
+    register_outputs,
+    run_dir_path,
+    update_status,
+)
+from .templates import (
+    explain_workflow_plan,
+    list_workflow_templates,
+    suggest_workflow_template,
+)
+from .ui_workflows import classify_workflow_payload, import_ui_workflow
+from .validation import validate_api_workflow
 from .workflows import list_workflows, read_workflow, save_workflow
 from .ws import wait_for_prompt
 
@@ -35,6 +79,21 @@ def resolve_workspace() -> Path:
 def tool_context(workspace: Path | None = None) -> ToolContext:
     resolved = (workspace or resolve_workspace()).resolve()
     return ToolContext(workspace=resolved, config=load_config(resolved))
+
+
+def _custom_node_package_path(workspace: Path, package_name: str) -> Path:
+    custom_nodes_dir = safe_custom_nodes_dir(workspace)
+    return safe_package_dir(custom_nodes_dir, package_name)
+
+
+def _validate_node_import_options(
+    timeout_seconds: int,
+    max_output_bytes: int,
+) -> None:
+    if not 1 <= timeout_seconds <= 30:
+        raise ValueError("timeout_seconds must be between 1 and 30")
+    if not 0 <= max_output_bytes <= 200000:
+        raise ValueError("max_output_bytes must be between 0 and 200000")
 
 
 def _resolve_config_dir(workspace: Path, value: str | None, current: Path) -> Path:
@@ -125,6 +184,81 @@ def _fallback_history_status(result: dict[str, Any], prompt_id: str) -> str | No
     return _history_status(result.get("fallback", {}).get("history", {}), prompt_id)
 
 
+def _short_wait_message(value: str) -> str:
+    text = " ".join(value.split())
+    return text[:177].rstrip() + "..." if len(text) > 180 else text
+
+
+def _wait_texts(value: Any, depth: int = 0) -> list[str]:
+    if depth > 5:
+        return []
+    if isinstance(value, str):
+        text = _short_wait_message(value)
+        return [text] if text else []
+    if isinstance(value, (int, float, bool)):
+        return [str(value)]
+    if isinstance(value, dict):
+        texts: list[str] = []
+        for item in value.values():
+            texts.extend(_wait_texts(item, depth + 1))
+        return texts
+    if isinstance(value, (list, tuple)):
+        texts = []
+        for item in value:
+            texts.extend(_wait_texts(item, depth + 1))
+        return texts
+    return []
+
+
+def _wait_result_event(result: dict[str, Any], prompt_id: str) -> dict[str, Any]:
+    history_status = _fallback_history_status(result, prompt_id)
+    if history_status is None and isinstance(result.get("terminal_status"), str):
+        terminal_status = result["terminal_status"]
+        if terminal_status in {"completed", "failed"}:
+            history_status = terminal_status
+    event: dict[str, Any] = {
+        "type": "wait_result",
+        "fallback_used": bool(result.get("fallback_used")),
+        "completed": bool(result.get("completed")),
+    }
+    if history_status is not None:
+        event["history_status"] = history_status
+    if result.get("timeout") is True:
+        event["timeout"] = True
+    if isinstance(result.get("polls"), int):
+        event["polls"] = result["polls"]
+    history = result.get("fallback", {}).get("history", {})
+    prompt_history = _prompt_history(history, prompt_id)
+    messages = _wait_texts(prompt_history if prompt_history is not None else history)
+    if messages:
+        seen: set[str] = set()
+        event["messages"] = []
+        for message in messages:
+            if message and message not in seen:
+                event["messages"].append(message)
+                seen.add(message)
+            if len(event["messages"]) >= 5:
+                break
+    return event
+
+
+def _same_workflow_path(left: Path, right: Path) -> bool:
+    left_resolved = left.resolve()
+    right_resolved = right.resolve()
+    try:
+        if left_resolved.samefile(right_resolved):
+            return True
+    except OSError:
+        pass
+
+    left_text = str(left_resolved)
+    right_text = str(right_resolved)
+    if os.name == "nt":
+        left_text = left_text.casefold()
+        right_text = right_text.casefold()
+    return left_text == right_text
+
+
 async def _poll_history_until_terminal(
     *,
     client: ComfyClient,
@@ -163,6 +297,47 @@ async def _poll_history_until_terminal(
 def _safe_output_type(value: Any) -> str:
     cleaned = re.sub(r"[^A-Za-z0-9_.-]+", "-", str(value or "output")).strip(".-")
     return cleaned or "output"
+
+
+def _batch_child_workflow_name(workflow_name: str, batch_id: str, index: int) -> str:
+    stem = re.sub(r"[^A-Za-z0-9_.-]+", "-", Path(workflow_name).stem).strip(".-")
+    return f"{stem or 'workflow'}.{batch_id}-{index}.json"
+
+
+def _run_dir_after_read(runs_dir: Path, run_id: str) -> Path:
+    return run_dir_path(runs_dir, run_id)
+
+
+def _run_file_after_read(runs_dir: Path, run_id: str, filename: str) -> Path:
+    base = runs_dir.resolve()
+    path = _run_dir_after_read(runs_dir, run_id) / filename
+    label = "workflow snapshot" if filename == "workflow.json" else f"{filename} snapshot"
+    if is_redirected_path(path):
+        raise ValueError(f"{label} must stay inside runs_dir")
+    try:
+        exists = path.exists()
+    except OSError as exc:
+        raise ValueError(f"{label} could not be inspected") from exc
+    if exists:
+        try:
+            path.resolve().relative_to(base)
+        except (OSError, RuntimeError, ValueError) as exc:
+            raise ValueError(f"{label} must stay inside runs_dir") from exc
+    return path
+
+
+def _read_workflow_snapshot(
+    runs_dir: Path,
+    run_id: str,
+    *,
+    required: bool,
+) -> Any:
+    path = _run_file_after_read(runs_dir, run_id, "workflow.json")
+    if not path.exists():
+        if required:
+            raise ValueError(f"workflow snapshot missing for run_id: {run_id}")
+        return None
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 @mcp.tool()
@@ -223,6 +398,199 @@ async def comfy_get_object_info() -> dict[str, Any]:
 
 
 @mcp.tool()
+async def comfy_scaffold_custom_node_package(package_name: str) -> dict[str, Any]:
+    ctx = tool_context()
+    return scaffold_custom_node_package(ctx.workspace, package_name)
+
+
+@mcp.tool()
+async def comfy_inspect_custom_node_package(package_name: str) -> dict[str, Any]:
+    ctx = tool_context()
+    return inspect_custom_node_package(
+        _custom_node_package_path(ctx.workspace, package_name)
+    )
+
+
+@mcp.tool()
+async def comfy_validate_node_mappings(package_name: str) -> dict[str, Any]:
+    ctx = tool_context()
+    return validate_node_mappings(_custom_node_package_path(ctx.workspace, package_name))
+
+
+@mcp.tool()
+async def comfy_validate_node_class(
+    package_name: str,
+    class_name: str,
+) -> dict[str, Any]:
+    ctx = tool_context()
+    return validate_node_class(
+        _custom_node_package_path(ctx.workspace, package_name),
+        class_name,
+    )
+
+
+@mcp.tool()
+async def comfy_generate_node_docs(package_name: str) -> dict[str, Any]:
+    ctx = tool_context()
+    return generate_node_docs(_custom_node_package_path(ctx.workspace, package_name))
+
+
+@mcp.tool()
+async def comfy_check_node_imports(
+    package_name: str,
+    timeout_seconds: int = 5,
+    max_output_bytes: int = 20000,
+) -> dict[str, Any]:
+    ctx = tool_context()
+    package_dir = _custom_node_package_path(ctx.workspace, package_name)
+    _validate_node_import_options(timeout_seconds, max_output_bytes)
+    return check_node_imports(
+        package_dir,
+        timeout_seconds=timeout_seconds,
+        max_output_bytes=max_output_bytes,
+    )
+
+
+@mcp.tool()
+async def comfy_list_workflow_templates() -> list[dict[str, Any]]:
+    return list_workflow_templates()
+
+
+@mcp.tool()
+async def comfy_suggest_workflow_template(intent: str) -> dict[str, Any]:
+    return suggest_workflow_template(intent)
+
+
+@mcp.tool()
+async def comfy_build_workflow_plan(
+    intent: str,
+    parameters: dict[str, Any] | None = None,
+    template_id: str | None = None,
+) -> dict[str, Any]:
+    return create_workflow_plan(intent, template_id, parameters or {})
+
+
+@mcp.tool()
+async def comfy_explain_workflow_plan(plan: dict[str, Any]) -> dict[str, Any]:
+    return explain_workflow_plan(plan)
+
+
+@mcp.tool()
+async def comfy_build_workflow(
+    name: str,
+    intent: str,
+    parameters: dict[str, Any] | None = None,
+    template_id: str | None = None,
+    allow_draft: bool = False,
+) -> dict[str, Any]:
+    ctx = tool_context()
+    safe_json_path(ctx.config.workflows_dir, name)
+
+    plan = create_workflow_plan(intent, template_id, parameters or {})
+    if plan.get("missing_information"):
+        return build_workflow_from_plan(plan, {})
+
+    async with ComfyClient(
+        ctx.config.base_url,
+        ctx.config.headers,
+        ctx.config.request_timeout_seconds,
+    ) as client:
+        object_info = await client.get_object_info()
+
+    result = build_workflow_from_plan(plan, object_info)
+    workflow_to_save = result["workflow"]
+    draft_saved = False
+    if workflow_to_save is None and allow_draft:
+        workflow_to_save = result.get("draft_workflow")
+        draft_saved = workflow_to_save is not None
+
+    if workflow_to_save is not None and (result["submit_ready"] or draft_saved):
+        validation = result.get("validation")
+        validation_status = (
+            validation["status"]
+            if isinstance(validation, dict) and isinstance(validation.get("status"), str)
+            else result["status"]
+        )
+        save_workflow(
+            ctx.config.workflows_dir,
+            name,
+            workflow_to_save,
+            require_api=True,
+            source="generated",
+            validation_status=validation_status,
+        )
+        result["saved_workflow"] = name
+        if draft_saved:
+            result["draft_saved"] = True
+
+    return result
+
+
+@mcp.tool()
+async def comfy_patch_workflow(
+    name: str,
+    operations: Any,
+    target_name: str | None = None,
+    allow_draft: bool = False,
+) -> dict[str, Any]:
+    ctx = tool_context()
+    loaded = read_workflow(ctx.config.workflows_dir, name)
+    if loaded["kind"] != "api":
+        raise ValueError("comfy_patch_workflow requires ComfyUI API prompt JSON")
+    source_path = safe_json_path(ctx.config.workflows_dir, name)
+    if target_name is not None:
+        target_path = safe_json_path(ctx.config.workflows_dir, target_name)
+        if _same_workflow_path(source_path, target_path):
+            raise ValueError(
+                "target workflow name must differ from source workflow name"
+            )
+
+    preflight = patch_workflow(
+        loaded["json"],
+        operations,
+        object_info=None,
+        raise_on_error=False,
+    )
+    if preflight["status"] == "failed":
+        return preflight
+
+    async with ComfyClient(
+        ctx.config.base_url,
+        ctx.config.headers,
+        ctx.config.request_timeout_seconds,
+    ) as client:
+        object_info = await client.get_object_info()
+
+    result = patch_workflow(
+        loaded["json"],
+        operations,
+        object_info,
+        raise_on_error=False,
+    )
+    if result["submit_ready"] or (allow_draft and result["status"] == "invalid"):
+        validation = result.get("validation")
+        validation_status = (
+            validation["status"]
+            if isinstance(validation, dict) and isinstance(validation.get("status"), str)
+            else result["status"]
+        )
+        saved_name = target_name or name
+        save_workflow(
+            ctx.config.workflows_dir,
+            saved_name,
+            result["workflow"],
+            require_api=True,
+            source="patched",
+            validation_status=validation_status,
+        )
+        result["saved_workflow"] = saved_name
+        if not result["submit_ready"]:
+            result["draft_saved"] = True
+
+    return result
+
+
+@mcp.tool()
 async def comfy_list_workflows() -> list[dict[str, Any]]:
     ctx = tool_context()
     return list_workflows(ctx.config.workflows_dir)
@@ -232,6 +600,120 @@ async def comfy_list_workflows() -> list[dict[str, Any]]:
 async def comfy_read_workflow(name: str) -> dict[str, Any]:
     ctx = tool_context()
     return read_workflow(ctx.config.workflows_dir, name)
+
+
+@mcp.tool()
+async def comfy_validate_api_workflow(name: str) -> dict[str, Any]:
+    ctx = tool_context()
+    loaded = read_workflow(ctx.config.workflows_dir, name)
+    if loaded["kind"] != "api":
+        raise ValueError(
+            "comfy_validate_api_workflow requires ComfyUI API prompt JSON"
+        )
+
+    async with ComfyClient(
+        ctx.config.base_url,
+        ctx.config.headers,
+        ctx.config.request_timeout_seconds,
+    ) as client:
+        object_info = await client.get_object_info()
+    return validate_api_workflow(loaded["json"], object_info)
+
+
+@mcp.tool()
+async def comfy_validate_workflow_against_object_info(name: str) -> dict[str, Any]:
+    return await comfy_validate_api_workflow(name)
+
+
+@mcp.tool()
+async def comfy_convert_ui_to_api(
+    source_name: str,
+    target_name: str,
+    allow_draft: bool = False,
+) -> dict[str, Any]:
+    ctx = tool_context()
+    loaded = read_workflow(ctx.config.workflows_dir, source_name)
+    if loaded["kind"] != "ui":
+        raise ValueError("comfy_convert_ui_to_api requires ComfyUI UI workflow JSON")
+    source_path = safe_json_path(ctx.config.workflows_dir, source_name)
+    try:
+        target_path = safe_json_path(ctx.config.workflows_dir, target_name)
+    except ValueError:
+        candidate_path = ctx.config.workflows_dir / target_name
+        if (
+            target_name
+            and target_name == Path(target_name).name
+            and _same_workflow_path(source_path, candidate_path)
+        ):
+            raise ValueError(
+                "target workflow name must differ from source workflow name"
+            ) from None
+        raise
+    if _same_workflow_path(source_path, target_path):
+        raise ValueError("target workflow name must differ from source workflow name")
+    draft_name = f"{Path(target_name).stem}.converted-draft.json"
+    if allow_draft:
+        draft_path = safe_json_path(ctx.config.workflows_dir, draft_name)
+        if _same_workflow_path(source_path, draft_path) or _same_workflow_path(
+            target_path,
+            draft_path,
+        ):
+            raise ValueError(
+                "draft workflow name must differ from source and target workflow names"
+            )
+
+    async with ComfyClient(
+        ctx.config.base_url,
+        ctx.config.headers,
+        ctx.config.request_timeout_seconds,
+    ) as client:
+        object_info = await client.get_object_info()
+
+    result = convert_ui_to_api(
+        loaded["json"],
+        object_info,
+        source_name,
+        target_name,
+    )
+    report_path = save_conversion_report(
+        ctx.config.workflows_dir,
+        source_name,
+        result["report"],
+    )
+    result["report_path"] = str(report_path)
+    result["draft_saved"] = False
+
+    if result["workflow"] is not None:
+        save_workflow(
+            ctx.config.workflows_dir,
+            target_name,
+            result["workflow"],
+            require_api=True,
+            source="converted",
+            validation_status="valid",
+        )
+        result["saved_workflow"] = target_name
+    elif allow_draft and result["draft_workflow"] is not None:
+        save_workflow(
+            ctx.config.workflows_dir,
+            draft_name,
+            result["draft_workflow"],
+            require_api=True,
+            source="converted",
+            validation_status=result["report"]["status"],
+        )
+        result["draft_saved"] = True
+        result["draft_workflow_name"] = draft_name
+
+    return result
+
+
+@mcp.tool()
+async def comfy_explain_conversion_gaps(source_name: str) -> dict[str, Any]:
+    ctx = tool_context()
+    report_path = conversion_report_path(ctx.config.workflows_dir, source_name)
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    return explain_conversion_gaps(report) | {"report_path": str(report_path)}
 
 
 @mcp.tool()
@@ -248,6 +730,41 @@ async def comfy_save_workflow(
         require_api=require_api,
     )
     return read_workflow(path.parent, path.name)
+
+
+@mcp.tool()
+async def comfy_classify_workflow(workflow: dict[str, Any]) -> dict[str, Any]:
+    return classify_workflow_payload(workflow)
+
+
+@mcp.tool()
+async def comfy_import_ui_workflow(
+    name: str,
+    workflow: dict[str, Any],
+    use_object_info: bool = True,
+) -> dict[str, Any]:
+    ctx = tool_context()
+    classification = classify_workflow_payload(workflow)
+    if classification["kind"] != "ui":
+        raise ValueError(
+            "comfy_import_ui_workflow requires ComfyUI UI workflow JSON"
+        )
+    safe_json_path(ctx.config.workflows_dir, name)
+
+    object_info = None
+    if use_object_info:
+        async with ComfyClient(
+            ctx.config.base_url,
+            ctx.config.headers,
+            ctx.config.request_timeout_seconds,
+        ) as client:
+            object_info = await client.get_object_info()
+    return import_ui_workflow(
+        ctx.config.workflows_dir,
+        name,
+        workflow,
+        object_info=object_info,
+    )
 
 
 @mcp.tool()
@@ -278,6 +795,10 @@ async def comfy_submit_workflow(
     loaded = read_workflow(ctx.config.workflows_dir, name)
     if loaded["kind"] != "api":
         raise ValueError("comfy_submit_workflow requires ComfyUI API prompt JSON")
+    if loaded.get("metadata", {}).get("submit_ready", True) is False:
+        raise ValueError(
+            "comfy_submit_workflow requires a submit-ready API workflow"
+        )
 
     actual_client_id = client_id or f"comfydex-{uuid.uuid4()}"
     async with ComfyClient(
@@ -306,6 +827,10 @@ async def comfy_submit_workflow(
                 },
             )
             update_status(ctx.config.runs_dir, failed_run["run_id"], "failed")
+            try:
+                setattr(exc, "run_id", failed_run["run_id"])
+            except Exception:
+                pass
             raise
 
     prompt_id = _require_prompt_id(submitted)
@@ -318,6 +843,93 @@ async def comfy_submit_workflow(
         actual_client_id,
         run_label or Path(name).stem,
     )
+
+
+@mcp.tool()
+async def comfy_batch_submit(
+    workflow_name: str,
+    variations: list[dict[str, Any]],
+    batch_label: str = "batch",
+) -> dict[str, Any]:
+    ctx = tool_context()
+    batch = create_batch_record(
+        ctx.config.runs_dir,
+        batch_label,
+        workflow_name,
+        variations,
+    )
+    batch_id = batch["batch_id"]
+
+    for index, variation in enumerate(variations):
+        run_id: str | None = None
+        try:
+            loaded = read_workflow(ctx.config.workflows_dir, workflow_name)
+            if loaded["kind"] != "api":
+                raise ValueError("comfy_batch_submit requires ComfyUI API prompt JSON")
+
+            operations = variation_to_operations(variation)
+            patched = patch_workflow(
+                loaded["json"],
+                operations,
+                object_info=None,
+                raise_on_error=False,
+            )
+            if patched["status"] != "patched":
+                raise ValueError(f"workflow patch failed: {patched['report']!r}")
+
+            child_name = _batch_child_workflow_name(workflow_name, batch_id, index)
+            save_workflow(
+                ctx.config.workflows_dir,
+                child_name,
+                patched["workflow"],
+                require_api=True,
+                source="patched",
+                validation_status="unknown",
+            )
+            submitted = await comfy_submit_workflow(
+                child_name,
+                run_label=f"{batch_id}-{index}",
+            )
+            submitted_run_id = (
+                submitted.get("run_id") if isinstance(submitted, dict) else None
+            )
+            if not isinstance(submitted_run_id, str) or not submitted_run_id:
+                raise ValueError("comfy_submit_workflow returned no run_id")
+            run_id = submitted_run_id
+            submitted_status = (
+                submitted.get("status") if isinstance(submitted, dict) else None
+            )
+            if submitted_status is None:
+                submitted_status = "queued"
+            if not isinstance(submitted_status, str):
+                raise ValueError("comfy_submit_workflow returned invalid status")
+            batch = update_batch_run(
+                ctx.config.runs_dir,
+                batch_id,
+                index,
+                run_id,
+                submitted_status,
+            )
+        except Exception as exc:
+            exc_run_id = getattr(exc, "run_id", None)
+            if isinstance(exc_run_id, str) and exc_run_id:
+                run_id = exc_run_id
+            batch = update_batch_run(
+                ctx.config.runs_dir,
+                batch_id,
+                index,
+                run_id,
+                "failed",
+                error=str(exc),
+            )
+            continue
+
+    return batch
+
+
+@mcp.tool()
+async def comfy_read_batch(batch_id: str) -> dict[str, Any]:
+    return read_batch_record(tool_context().config.runs_dir, batch_id)
 
 
 @mcp.tool()
@@ -377,6 +989,7 @@ async def comfy_wait_for_run(run_id: str) -> dict[str, Any]:
         raise
 
     fallback_status = _fallback_history_status(result, prompt_id)
+    append_event(ctx.config.runs_dir, run_id, _wait_result_event(result, prompt_id))
     if result.get("completed") or fallback_status == "completed":
         update_status(ctx.config.runs_dir, run_id, "completed")
     elif fallback_status == "failed":
@@ -416,6 +1029,79 @@ async def comfy_list_runs() -> list[dict[str, Any]]:
 @mcp.tool()
 async def comfy_read_run(run_id: str) -> dict[str, Any]:
     return read_run(tool_context().config.runs_dir, run_id)
+
+
+@mcp.tool()
+async def comfy_diagnose_run(
+    run_id: str,
+    use_object_info: bool = True,
+) -> dict[str, Any]:
+    ctx = tool_context()
+    record = read_run(ctx.config.runs_dir, run_id)
+    workflow = _read_workflow_snapshot(ctx.config.runs_dir, run_id, required=False)
+    object_info = None
+    if use_object_info:
+        async with ComfyClient(
+            ctx.config.base_url,
+            ctx.config.headers,
+            ctx.config.request_timeout_seconds,
+        ) as client:
+            object_info = await client.get_object_info()
+    workflow_analysis = analyze_workflow(workflow, object_info) if isinstance(workflow, dict) else None
+    return diagnose_run(record, workflow, object_info, workflow_analysis=workflow_analysis)
+
+
+@mcp.tool()
+async def comfy_export_run_report(run_id: str) -> dict[str, Any]:
+    ctx = tool_context()
+    record = read_run(ctx.config.runs_dir, run_id)
+    workflow = _read_workflow_snapshot(ctx.config.runs_dir, run_id, required=True)
+    analysis = analyze_workflow(workflow)
+    diagnosis = diagnose_run(record, workflow, workflow_analysis=analysis)
+    workflow_summary = (
+        analysis.get("summary", {"node_count": 0})
+        if isinstance(analysis, dict)
+        else {"node_count": 0}
+    )
+    run_dir = _run_dir_after_read(ctx.config.runs_dir, run_id)
+    return export_run_report(run_dir, record, workflow_summary, diagnosis)
+
+
+@mcp.tool()
+async def comfy_compare_runs(left_run_id: str, right_run_id: str) -> dict[str, Any]:
+    ctx = tool_context()
+    left_run = read_run(ctx.config.runs_dir, left_run_id)
+    right_run = read_run(ctx.config.runs_dir, right_run_id)
+    left_workflow = _read_workflow_snapshot(
+        ctx.config.runs_dir,
+        left_run_id,
+        required=True,
+    )
+    right_workflow = _read_workflow_snapshot(
+        ctx.config.runs_dir,
+        right_run_id,
+        required=True,
+    )
+    return compare_runs(left_run, right_run, left_workflow, right_workflow)
+
+
+@mcp.tool()
+async def comfy_list_outputs() -> list[dict[str, Any]]:
+    return list_run_outputs(tool_context().config.runs_dir)
+
+
+@mcp.tool()
+async def comfy_cleanup_outputs(
+    confirm: bool = False,
+    failed_run_ids: list[str] | None = None,
+    older_than_seconds: int | None = None,
+) -> dict[str, Any]:
+    return cleanup_outputs(
+        tool_context().config.runs_dir,
+        confirm=confirm,
+        failed_run_ids=failed_run_ids,
+        older_than_seconds=older_than_seconds,
+    )
 
 
 @mcp.tool()
