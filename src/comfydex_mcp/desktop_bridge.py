@@ -8,7 +8,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from .assets import search_assets
+from .assets import (
+    compare_assets,
+    export_asset_library_report,
+    plan_asset_cleanup,
+    search_assets,
+    update_asset_metadata,
+)
+from .batches import read_batch_record
 from .comfy_client import ComfyClient
 from .config import ComfydexConfig, load_config, redact_config, save_config
 from .core import project_context_from_config, project_status, reindex_project
@@ -82,7 +89,39 @@ def _dispatch(
         return list_runs(config.runs_dir)
     if operation == "search_assets":
         return search_assets(project, payload)
+    if operation == "update_asset_metadata":
+        return _update_asset_metadata(project, payload)
+    if operation == "plan_asset_cleanup":
+        return plan_asset_cleanup(
+            project,
+            filters=payload.get("filters"),
+            asset_ids=payload.get("asset_ids"),
+            confirm=bool(payload.get("confirm", False)),
+        )
+    if operation == "export_asset_library_report":
+        filters = payload.get("filters") if "filters" in payload else payload
+        return export_asset_library_report(project, filters=filters)
+    if operation == "compare_assets":
+        return compare_assets(
+            project,
+            str(payload.get("left_asset_id", "")),
+            str(payload.get("right_asset_id", "")),
+        )
+    if operation == "list_batches":
+        return _list_batches(config.runs_dir)
+    if operation == "read_batch":
+        return read_batch_record(config.runs_dir, str(payload.get("batch_id", "")))
     raise ValueError(f"unsupported desktop bridge operation: {operation}")
+
+
+def _update_asset_metadata(project: Any, payload: dict[str, Any]) -> dict[str, Any]:
+    asset_id = str(payload.get("asset_id", ""))
+    kwargs = {
+        key: payload[key]
+        for key in ("tags", "rating", "favorite", "notes")
+        if key in payload
+    }
+    return update_asset_metadata(project, asset_id, **kwargs)
 
 
 def _updated_config(
@@ -144,6 +183,63 @@ def _connection_error_message(result: dict[str, Any]) -> str:
     error_type = str(result.get("error_type") or "ConnectionError")
     error = str(result.get("error") or error_type)
     return f"{error_type}: {error}"
+
+
+def _list_batches(runs_dir: Path) -> list[dict[str, Any]]:
+    runs_base = runs_dir.resolve()
+    batches_dir = (runs_base / ".batches").resolve()
+    if not batches_dir.exists():
+        return []
+    if is_redirected_path(batches_dir) or not _is_relative_to(batches_dir, runs_base):
+        raise ValueError(".batches directory must stay inside runs_dir")
+
+    batches: list[dict[str, Any]] = []
+    for record_path in sorted(batches_dir.glob("*/batch.json")):
+        try:
+            if is_redirected_path(record_path) or not _is_relative_to(
+                record_path.resolve(),
+                batches_dir,
+            ):
+                continue
+            record = json.loads(record_path.read_text(encoding="utf-8"))
+            if isinstance(record, dict):
+                batches.append(_batch_summary(record))
+        except (OSError, json.JSONDecodeError, ValueError):
+            continue
+
+    batches.sort(
+        key=lambda batch: (
+            str(batch.get("updated_at") or ""),
+            str(batch.get("batch_id") or ""),
+        ),
+        reverse=True,
+    )
+    return batches
+
+
+def _batch_summary(record: dict[str, Any]) -> dict[str, Any]:
+    runs = record.get("runs") if isinstance(record.get("runs"), list) else []
+    completed = sum(1 for run in runs if isinstance(run, dict) and run.get("status") == "completed")
+    failed = sum(1 for run in runs if isinstance(run, dict) and run.get("status") == "failed")
+    return {
+        "batch_id": str(record.get("batch_id", "")),
+        "label": str(record.get("label", "")),
+        "workflow_name": str(record.get("workflow_name", "")),
+        "status": str(record.get("status", "unknown")),
+        "created_at": record.get("created_at"),
+        "updated_at": record.get("updated_at"),
+        "run_count": len(runs),
+        "completed_count": completed,
+        "failed_count": failed,
+    }
+
+
+def _is_relative_to(child: Path, parent: Path) -> bool:
+    try:
+        child.relative_to(parent)
+        return True
+    except ValueError:
+        return False
 
 
 def _workspace_path(value: str | Path) -> Path:
