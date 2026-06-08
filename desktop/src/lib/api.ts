@@ -100,7 +100,7 @@ export function getConfig(): Promise<ConfigState> {
 }
 
 export function setConfig(configPatch: Partial<ConfigState>): Promise<ConfigState> {
-  return call("set_config", { ...fallbackConfig, ...configPatch }, { config: configPatch });
+  return call("set_config", { ...fallbackConfig, ...configPatch }, { payload: configPatch });
 }
 
 export function checkConnection(): Promise<ConnectionResult> {
@@ -149,5 +149,5 @@ export function searchAssets(filters: AssetSearchFilters = {}): Promise<AssetSea
         tags: ["portrait"]
       }
     ]
-  }, { filters });
+  }, { payload: filters });
 }
