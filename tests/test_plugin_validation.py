@@ -45,3 +45,28 @@ def test_validate_release_package_reports_version_mismatch(tmp_path):
     errors = validate_release_package(package_root)
 
     assert any("version mismatch" in error for error in errors)
+
+
+def test_validate_release_package_requires_install_script(tmp_path):
+    root = Path(__file__).parents[1]
+    package_root = tmp_path / "package"
+    shutil.copytree(
+        root,
+        package_root,
+        ignore=shutil.ignore_patterns(
+            ".git",
+            "__pycache__",
+            ".pytest_cache",
+            "target",
+            "node_modules",
+            "dist",
+            "vite.*.log",
+        ),
+    )
+    install_script = package_root / "scripts" / "install_windows.ps1"
+    if install_script.exists():
+        install_script.unlink()
+
+    errors = validate_release_package(package_root)
+
+    assert any("scripts/install_windows.ps1" in error for error in errors)

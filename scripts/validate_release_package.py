@@ -28,8 +28,12 @@ REQUIRED_FILES = (
     Path("src/comfydex_mcp/server.py"),
     Path("scripts/validate_plugin.py"),
     Path("scripts/validate_release_package.py"),
+    Path("scripts/install_windows.ps1"),
     Path(".codex-plugin/plugin.json"),
     Path(".mcp.json"),
+    Path("docs/release/windows-install.md"),
+    Path("docs/release/1.0-release-checklist.md"),
+    Path("docs/release/security-path-review.md"),
     Path("desktop/package.json"),
     Path("desktop/package-lock.json"),
     Path("desktop/src/App.tsx"),
@@ -108,6 +112,21 @@ def _version_tuple(version: str) -> tuple[int, int, int]:
     if len(parts) != 3 or not all(part.isdigit() for part in parts):
         return (0, 0, 0)
     return (int(parts[0]), int(parts[1]), int(parts[2]))
+
+
+def _require_markers(
+    root: Path,
+    relative_path: Path,
+    markers: tuple[str, ...],
+    errors: list[str],
+) -> None:
+    path = root / relative_path
+    if not path.is_file():
+        return
+    text = path.read_text(encoding="utf-8")
+    for marker in markers:
+        if marker not in text:
+            errors.append(f"{relative_path.as_posix()} must mention {marker}")
 
 
 def validate_release_package(root: Path) -> list[str]:
@@ -204,6 +223,50 @@ def validate_release_package(root: Path) -> list[str]:
                     errors.append(
                         f"docs/usage/end-to-end-automation.md must mention {marker}"
                     )
+
+    _require_markers(
+        root,
+        Path("docs/release/windows-install.md"),
+        (
+            "python -m pip install -e",
+            "npm --prefix desktop install",
+            "comfy_check_connection",
+            "validate_release_package.py",
+        ),
+        errors,
+    )
+    _require_markers(
+        root,
+        Path("docs/release/1.0-release-checklist.md"),
+        (
+            "python -m pytest tests -q",
+            "python scripts\\validate_release_package.py",
+            "git ls-remote origin refs/heads/main refs/tags/v1.0.0",
+        ),
+        errors,
+    )
+    _require_markers(
+        root,
+        Path("docs/release/security-path-review.md"),
+        (
+            "path traversal",
+            "header redaction",
+            "cleanup confirmation",
+            "desktop bridge",
+        ),
+        errors,
+    )
+    _require_markers(
+        root,
+        Path("scripts/install_windows.ps1"),
+        (
+            "python -m pip install -e",
+            "npm --prefix desktop install",
+            "comfy_check_connection",
+            "validate_release_package.py",
+        ),
+        errors,
+    )
 
     return errors
 
