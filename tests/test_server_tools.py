@@ -482,6 +482,231 @@ async def test_comfy_evaluate_submit_policy_tool_blocks_invalid_workflow(
 
 
 @pytest.mark.asyncio
+async def test_comfy_generate_run_fetch_completes_low_risk_flow(
+    monkeypatch,
+    tmp_path: Path,
+):
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+
+    class EndToEndClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            pass
+
+        async def get_object_info(self):
+            return TEXT_TO_IMAGE_OBJECT_INFO
+
+        async def submit_prompt(self, workflow, client_id):
+            return {"prompt_id": "prompt-1"}
+
+        async def get_queue(self):
+            return {"queue_running": [], "queue_pending": []}
+
+        async def get_history(self, prompt_id):
+            return {
+                "prompt-1": {
+                    "status": {"completed": True},
+                    "outputs": {
+                        "9": {
+                            "images": [
+                                {
+                                    "filename": "city.png",
+                                    "subfolder": "",
+                                    "type": "output",
+                                }
+                            ]
+                        }
+                    },
+                }
+            }
+
+        async def download_output(self, ref, target):
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text("image", encoding="utf-8")
+            return target
+
+    async def fake_wait_for_prompt(**kwargs):
+        return {
+            "completed": True,
+            "fallback_used": True,
+            "fallback": await kwargs["fallback"](),
+        }
+
+    monkeypatch.setattr(server, "ComfyClient", EndToEndClient)
+    monkeypatch.setattr(server, "wait_for_prompt", fake_wait_for_prompt)
+
+    result = await server.comfy_generate_run_fetch(
+        "city.json",
+        "text to image",
+        parameters={
+            "checkpoint_name": "model.safetensors",
+            "positive_prompt": "city",
+        },
+    )
+
+    assert result["status"] == "completed"
+    assert result["stage"] == "completed"
+    assert result["saved_workflow"] == "city.json"
+    assert result["run"]["status"] == "completed"
+    assert result["outputs"]["outputs"][0]["filename"] == "city.png"
+    assert Path(result["outputs"]["outputs"][0]["downloaded_path"]).exists()
+    assert result["index"]["status"] == "completed"
+
+
+@pytest.mark.asyncio
+async def test_comfy_generate_run_fetch_requires_confirmation_before_overwrite(
+    monkeypatch,
+    tmp_path: Path,
+):
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+    save_workflow(tmp_path / "workflows", "city.json", API_WORKFLOW, require_api=True)
+    monkeypatch.setattr(
+        server,
+        "ComfyClient",
+        object_info_client(TEXT_TO_IMAGE_OBJECT_INFO),
+    )
+
+    result = await server.comfy_generate_run_fetch(
+        "city.json",
+        "text to image",
+        parameters={
+            "checkpoint_name": "model.safetensors",
+            "positive_prompt": "city",
+        },
+    )
+
+    assert result["status"] == "requires_confirmation"
+    assert result["stage"] == "policy"
+    assert "workflow_overwrite" in result["policy"]["reasons"]
+    assert not (tmp_path / "runs").exists()
+
+
+@pytest.mark.asyncio
+async def test_comfy_generate_run_fetch_requires_confirmation_when_object_info_unavailable(
+    monkeypatch,
+    tmp_path: Path,
+):
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+
+    class ObjectInfoFails:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            pass
+
+        async def get_object_info(self):
+            raise RuntimeError("object info down")
+
+    monkeypatch.setattr(server, "ComfyClient", ObjectInfoFails)
+
+    result = await server.comfy_generate_run_fetch(
+        "city.json",
+        "text to image",
+        parameters={
+            "checkpoint_name": "model.safetensors",
+            "positive_prompt": "city",
+        },
+    )
+
+    assert result["status"] == "requires_confirmation"
+    assert result["object_info_warning"]["reason"] == "object_info_unavailable"
+    assert "object_info_unavailable" in result["policy"]["reasons"]
+    assert not (tmp_path / "runs").exists()
+
+
+@pytest.mark.asyncio
+async def test_comfy_generate_run_fetch_returns_failed_submit_recovery(
+    monkeypatch,
+    tmp_path: Path,
+):
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+
+    class SubmitFails:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            pass
+
+        async def get_object_info(self):
+            return TEXT_TO_IMAGE_OBJECT_INFO
+
+        async def submit_prompt(self, workflow, client_id):
+            raise RuntimeError("submit failed")
+
+    monkeypatch.setattr(server, "ComfyClient", SubmitFails)
+
+    result = await server.comfy_generate_run_fetch(
+        "city.json",
+        "text to image",
+        parameters={
+            "checkpoint_name": "model.safetensors",
+            "positive_prompt": "city",
+        },
+    )
+
+    assert result["status"] == "failed"
+    assert result["stage"] == "submit"
+    assert result["run"]["status"] == "failed"
+    assert "submit failed" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_comfy_generate_run_fetch_tool_is_registered_with_mcp(
+    monkeypatch,
+    tmp_path: Path,
+):
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+
+    class SubmitOnlyClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            pass
+
+        async def get_object_info(self):
+            return TEXT_TO_IMAGE_OBJECT_INFO
+
+        async def submit_prompt(self, workflow, client_id):
+            return {"prompt_id": "prompt-mcp"}
+
+    monkeypatch.setattr(server, "ComfyClient", SubmitOnlyClient)
+
+    _content, structured = await server.mcp.call_tool(
+        "comfy_generate_run_fetch",
+        {
+            "name": "city.json",
+            "intent": "text to image",
+            "parameters": {
+                "checkpoint_name": "model.safetensors",
+                "positive_prompt": "city",
+            },
+            "wait_for_completion": False,
+            "fetch_outputs": False,
+        },
+    )
+
+    assert structured["status"] == "submitted"
+    assert structured["run"]["status"] == "queued"
+
+
+@pytest.mark.asyncio
 async def test_comfy_classify_workflow_tool():
     result = await server.comfy_classify_workflow(
         {"nodes": [{"id": 1, "type": "SaveImage"}], "links": []}
