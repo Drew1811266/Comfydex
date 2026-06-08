@@ -204,6 +204,11 @@ def validate_release_package(root: Path) -> list[str]:
                 errors.append("README.md must mention comfy_generate_run_fetch for 0.9+")
             if "validate_release_package.py" not in readme:
                 errors.append("README.md must mention validate_release_package.py for 0.9+")
+        if _version_tuple(current_version) >= (1, 0, 0):
+            if "Usable Developer Release" not in readme:
+                errors.append("README.md must mention Usable Developer Release for 1.0+")
+            if "scripts/install_windows.ps1" not in readme:
+                errors.append("README.md must mention scripts/install_windows.ps1 for 1.0+")
 
     if current_version is not None and _version_tuple(current_version) >= (0, 9, 0):
         automation_doc = root / "docs/usage/end-to-end-automation.md"
