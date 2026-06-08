@@ -56,6 +56,14 @@ Use `comfy_plan_asset_cleanup` as a dry-run before deleting asset files. Only pa
 
 Use `comfy_export_asset_library_report` for a markdown asset summary and `comfy_compare_assets` for asset-to-asset comparison.
 
+## Desktop App Boundary
+
+Comfydex also includes a `desktop/` Tauri desktop app shell for local project browsing. Treat it as a workbench for project status, workflow lists, run lists, asset search, and settings visibility.
+
+The desktop app uses the Python desktop bridge, so its data should match MCP project operations such as `comfy_project_status`, `comfy_reindex_project`, `comfy_list_workflows`, `comfy_list_runs`, and `comfy_search_assets`.
+
+Do not assume the desktop shell can edit ComfyUI workflow graphs, run ComfyUI itself, package Python offline, or replace Codex reasoning. Use MCP tools for authoritative workflow generation, validation, submission, queue waiting, output collection, diagnostics, and asset metadata updates.
+
 ## Workflow Generation
 
 Use `comfy_plan_workflow_generation` to turn intent and parameters into a scored generation plan. Resolve `missing_information` before generating.

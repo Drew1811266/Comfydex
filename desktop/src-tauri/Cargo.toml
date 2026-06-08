@@ -1,0 +1,15 @@
+[package]
+name = "comfydex-desktop"
+version = "0.7.0"
+description = "Comfydex desktop shell"
+authors = ["Local developer"]
+license = "MIT"
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tauri = { version = "2", features = [] }
