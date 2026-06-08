@@ -242,6 +242,36 @@ def test_tool_context_loads_default_config(tmp_path: Path):
 
 
 @pytest.mark.asyncio
+async def test_comfy_project_status_tool_reports_local_project(
+    monkeypatch,
+    tmp_path: Path,
+):
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+
+    result = await server.comfy_project_status()
+
+    assert result["workspace"] == str(tmp_path.resolve())
+    assert result["database_exists"] is True
+    assert result["counts"]["workflows"] == 0
+    assert result["counts"]["runs"] == 0
+
+
+@pytest.mark.asyncio
+async def test_comfy_reindex_project_tool_indexes_local_workflows(
+    monkeypatch,
+    tmp_path: Path,
+):
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+    save_workflow(tmp_path / "workflows", "wf.json", API_WORKFLOW)
+
+    result = await server.comfy_reindex_project()
+
+    assert result["status"] == "completed"
+    assert result["counts"]["workflows"] == 1
+    assert result["counts"]["errors"] == 0
+
+
+@pytest.mark.asyncio
 async def test_comfy_classify_workflow_tool():
     result = await server.comfy_classify_workflow(
         {"nodes": [{"id": 1, "type": "SaveImage"}], "links": []}
