@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ..config import ComfydexConfig
+from .schema import SCHEMA_VERSION
 
 
 @dataclass(frozen=True)
@@ -27,3 +28,25 @@ def project_context_from_config(config: ComfydexConfig) -> ProjectContext:
         state_dir=state_dir,
         database_path=database_path,
     )
+
+
+def project_status(context: ProjectContext) -> dict[str, object]:
+    from .database import connect_database, migrate_project
+    from .store import counts, metadata_value
+
+    migrate_project(context)
+    with connect_database(context.database_path) as db:
+        current_counts = counts(db)
+        last_reindexed_at = metadata_value(db, "last_reindexed_at")
+
+    return {
+        "workspace": str(context.workspace),
+        "workflows_dir": str(context.workflows_dir),
+        "runs_dir": str(context.runs_dir),
+        "state_dir": str(context.state_dir),
+        "database_path": str(context.database_path),
+        "schema_version": SCHEMA_VERSION,
+        "database_exists": context.database_path.is_file(),
+        "counts": current_counts,
+        "last_reindexed_at": last_reindexed_at,
+    }
