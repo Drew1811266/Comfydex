@@ -152,6 +152,7 @@ def custom_node_repair_guidance(package_dir: Path) -> dict[str, Any]:
     mappings = validate_node_mappings(package_dir)
     imports = check_node_imports(package_dir)
     actions: list[dict[str, Any]] = []
+    contract_results: list[dict[str, Any]] = []
     actions.extend(_mapping_actions(mappings.get("errors", [])))
 
     inspection = mappings.get("inspection", {})
@@ -172,6 +173,18 @@ def custom_node_repair_guidance(package_dir: Path) -> dict[str, Any]:
                 "next_step": "Fix the import error before running contract tests.",
             }
         )
+    elif mappings["status"] == "valid" and isinstance(class_mappings, dict):
+        for mapping_key, class_name in class_mappings.items():
+            contract_result = run_node_contract_tests(package_dir, class_name)
+            contract_results.append(
+                {
+                    "mapping_key": mapping_key,
+                    "class_name": class_name,
+                    "status": contract_result["status"],
+                    "reason": contract_result["reason"],
+                }
+            )
+            actions.extend(_contract_actions(contract_result, mapping_key))
 
     blocked = any(action["severity"] == "blocked" for action in actions)
     return {
@@ -180,6 +193,7 @@ def custom_node_repair_guidance(package_dir: Path) -> dict[str, Any]:
         "actions": actions,
         "mapping_status": mappings["status"],
         "import_status": imports["status"],
+        "contract_results": contract_results,
     }
 
 
@@ -284,6 +298,39 @@ def _class_actions(
     for action in actions:
         action["mapping_key"] = mapping_key
     return actions
+
+
+def _contract_actions(
+    contract_result: dict[str, Any],
+    mapping_key: str,
+) -> list[dict[str, Any]]:
+    if contract_result["status"] == "passed":
+        return []
+
+    if contract_result["status"] == "blocked":
+        return [
+            {
+                "reason": "contract_blocked",
+                "severity": "blocked",
+                "message": "Contract tests cannot run with the generated local examples.",
+                "next_step": "Provide defaults for required scalar inputs or run this node with live ComfyUI runtime values.",
+                "mapping_key": mapping_key,
+                "class_name": contract_result["class_name"],
+                "contract_reason": contract_result["reason"],
+            }
+        ]
+
+    return [
+        {
+            "reason": "contract_failed",
+            "severity": "important",
+            "message": "The custom node contract test failed in an isolated subprocess.",
+            "next_step": "Fix the node function so it returns a tuple matching RETURN_TYPES.",
+            "mapping_key": mapping_key,
+            "class_name": contract_result["class_name"],
+            "contract_reason": contract_result["reason"],
+        }
+    ]
 
 
 def _action_from_error(

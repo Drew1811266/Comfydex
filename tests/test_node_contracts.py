@@ -262,3 +262,27 @@ def test_custom_node_repair_guidance_reports_ready_package(tmp_path: Path):
 
     assert result["status"] == "ready"
     assert result["actions"] == []
+
+
+def test_custom_node_repair_guidance_reports_contract_blockers(tmp_path: Path):
+    package = tmp_path / "pkg"
+    _write_package(
+        package,
+        "class ImageNode:\n"
+        "    CATEGORY = 'Comfydex'\n"
+        "    FUNCTION = 'run'\n"
+        "    RETURN_TYPES = ('IMAGE',)\n"
+        "    @classmethod\n"
+        "    def INPUT_TYPES(cls):\n"
+        "        return {'required': {'image': ('IMAGE',)}}\n"
+        "    def run(self, image):\n"
+        "        return (image,)\n\n"
+        "NODE_CLASS_MAPPINGS = {'ImageNode': ImageNode}\n"
+        "NODE_DISPLAY_NAME_MAPPINGS = {'ImageNode': 'Image Node'}\n",
+    )
+
+    result = custom_node_repair_guidance(package)
+
+    assert result["status"] == "blocked"
+    assert result["contract_results"][0]["status"] == "blocked"
+    assert any(action["reason"] == "contract_blocked" for action in result["actions"])
