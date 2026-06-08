@@ -39,6 +39,11 @@ from .custom_nodes import (
     validate_node_mappings,
 )
 from .diagnostics import compare_runs, diagnose_run
+from .generation import (
+    build_generated_workflow,
+    evaluate_submit_policy,
+    plan_workflow_generation,
+)
 from .node_docs import generate_node_docs
 from .outputs import cleanup_outputs, list_outputs as list_run_outputs
 from .node_scaffold import scaffold_custom_node_package, safe_custom_nodes_dir
@@ -488,6 +493,117 @@ async def comfy_build_workflow_plan(
 @mcp.tool()
 async def comfy_explain_workflow_plan(plan: dict[str, Any]) -> dict[str, Any]:
     return explain_workflow_plan(plan)
+
+
+@mcp.tool()
+async def comfy_plan_workflow_generation(
+    intent: str,
+    parameters: dict[str, Any] | None = None,
+    template_id: str | None = None,
+    constraints: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    return plan_workflow_generation(intent, parameters, template_id, constraints)
+
+
+@mcp.tool()
+async def comfy_generate_workflow(
+    name: str,
+    intent: str,
+    parameters: dict[str, Any] | None = None,
+    template_id: str | None = None,
+    constraints: dict[str, Any] | None = None,
+    allow_draft: bool = False,
+    use_object_info: bool = True,
+) -> dict[str, Any]:
+    ctx = tool_context()
+    target_path = safe_json_path(ctx.config.workflows_dir, name)
+    plan = plan_workflow_generation(intent, parameters, template_id, constraints)
+    object_info: dict[str, Any] = {}
+    if use_object_info:
+        async with ComfyClient(
+            ctx.config.base_url,
+            ctx.config.headers,
+            ctx.config.request_timeout_seconds,
+        ) as client:
+            object_info = await client.get_object_info()
+
+    result = build_generated_workflow(
+        plan,
+        object_info,
+        target_exists=target_path.exists(),
+        allow_draft=allow_draft,
+    )
+    if result.get("workflow") is not None and result["policy"]["decision"] == "allowed":
+        path = save_workflow(
+            ctx.config.workflows_dir,
+            name,
+            result["workflow"],
+            require_api=True,
+            source="generated",
+            validation_status=result["status"],
+        )
+        result["saved_workflow"] = path.name
+        try:
+            reindex_project(project_context_from_config(ctx.config))
+        except Exception as exc:
+            result["index_warning"] = str(exc)
+    elif allow_draft and result.get("draft_workflow") is not None:
+        path = save_workflow(
+            ctx.config.workflows_dir,
+            name,
+            result["draft_workflow"],
+            require_api=True,
+            source="generated",
+            validation_status=result["status"],
+        )
+        result["saved_workflow"] = path.name
+        result["draft_saved"] = True
+    return result
+
+
+@mcp.tool()
+async def comfy_evaluate_submit_policy(
+    name: str,
+    constraints: dict[str, Any] | None = None,
+    use_object_info: bool = True,
+) -> dict[str, Any]:
+    ctx = tool_context()
+    loaded = read_workflow(ctx.config.workflows_dir, name)
+    if loaded["kind"] != "api":
+        return evaluate_submit_policy(
+            validation={"status": "invalid", "errors": [], "warnings": []},
+            submit_ready=False,
+            constraints=constraints or {},
+            issues=["workflow_not_api"],
+        )
+
+    if use_object_info:
+        try:
+            async with ComfyClient(
+                ctx.config.base_url,
+                ctx.config.headers,
+                ctx.config.request_timeout_seconds,
+            ) as client:
+                object_info = await client.get_object_info()
+            validation = validate_api_workflow(loaded["json"], object_info)
+        except Exception as exc:
+            return evaluate_submit_policy(
+                validation={
+                    "status": "not_run",
+                    "errors": [],
+                    "warnings": [{"reason": "object_info_unavailable", "error": str(exc)}],
+                },
+                submit_ready=False,
+                constraints=constraints or {},
+                issues=["unknown_validation"],
+            )
+    else:
+        validation = validate_api_workflow(loaded["json"], {})
+    return evaluate_submit_policy(
+        validation=validation,
+        submit_ready=validation["status"] == "valid",
+        constraints=constraints or {},
+    )
 
 
 @mcp.tool()

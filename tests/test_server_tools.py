@@ -272,6 +272,60 @@ async def test_comfy_reindex_project_tool_indexes_local_workflows(
 
 
 @pytest.mark.asyncio
+async def test_comfy_plan_workflow_generation_tool(monkeypatch, tmp_path: Path):
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+
+    result = await server.comfy_plan_workflow_generation(
+        "sdxl city",
+        parameters={
+            "checkpoint_name": "sdxl.safetensors",
+            "positive_prompt": "city",
+        },
+    )
+
+    assert result["selected_template_id"] == "sdxl-text-to-image"
+
+
+@pytest.mark.asyncio
+async def test_comfy_generate_workflow_tool_saves_valid_workflow(
+    monkeypatch,
+    tmp_path: Path,
+):
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+    monkeypatch.setattr(
+        server,
+        "ComfyClient",
+        object_info_client(TEXT_TO_IMAGE_OBJECT_INFO),
+    )
+
+    result = await server.comfy_generate_workflow(
+        "generated.json",
+        "text to image",
+        parameters={
+            "checkpoint_name": "model.safetensors",
+            "positive_prompt": "cat",
+        },
+    )
+
+    assert result["status"] == "valid"
+    assert result["saved_workflow"] == "generated.json"
+    assert (tmp_path / "workflows" / "generated.json").exists()
+
+
+@pytest.mark.asyncio
+async def test_comfy_evaluate_submit_policy_tool_blocks_invalid_workflow(
+    monkeypatch,
+    tmp_path: Path,
+):
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+    save_workflow(tmp_path / "workflows", "invalid.json", {"bad": {}}, require_api=False)
+
+    result = await server.comfy_evaluate_submit_policy("invalid.json")
+
+    assert result["decision"] == "blocked"
+
+
+@pytest.mark.asyncio
 async def test_comfy_classify_workflow_tool():
     result = await server.comfy_classify_workflow(
         {"nodes": [{"id": 1, "type": "SaveImage"}], "links": []}
