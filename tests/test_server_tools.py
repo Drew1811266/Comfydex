@@ -664,6 +664,103 @@ async def test_comfy_generate_run_fetch_returns_failed_submit_recovery(
 
 
 @pytest.mark.asyncio
+async def test_comfy_generate_run_fetch_returns_failed_fetch_recovery(
+    monkeypatch,
+    tmp_path: Path,
+):
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+
+    class FetchFails:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            pass
+
+        async def get_object_info(self):
+            return TEXT_TO_IMAGE_OBJECT_INFO
+
+        async def submit_prompt(self, workflow, client_id):
+            return {"prompt_id": "prompt-fetch"}
+
+        async def get_queue(self):
+            return {"queue_running": [], "queue_pending": []}
+
+        async def get_history(self, prompt_id):
+            return {
+                "prompt-fetch": {
+                    "status": {"completed": True},
+                    "outputs": {
+                        "9": {
+                            "images": [
+                                {
+                                    "filename": "city.png",
+                                    "subfolder": "",
+                                    "type": "output",
+                                }
+                            ]
+                        }
+                    },
+                }
+            }
+
+        async def download_output(self, ref, target):
+            raise RuntimeError("download failed")
+
+    async def fake_wait_for_prompt(**kwargs):
+        return {
+            "completed": True,
+            "fallback_used": True,
+            "fallback": await kwargs["fallback"](),
+        }
+
+    monkeypatch.setattr(server, "ComfyClient", FetchFails)
+    monkeypatch.setattr(server, "wait_for_prompt", fake_wait_for_prompt)
+
+    result = await server.comfy_generate_run_fetch(
+        "city.json",
+        "text to image",
+        parameters={
+            "checkpoint_name": "model.safetensors",
+            "positive_prompt": "city",
+        },
+    )
+
+    assert result["status"] == "failed"
+    assert result["stage"] == "fetch"
+    assert result["run"]["status"] == "completed"
+    assert "download failed" in result["error"]
+    assert "comfy_fetch_outputs" in result["next_actions"][0]
+
+
+@pytest.mark.asyncio
+async def test_comfy_generate_run_fetch_rejects_bad_name_before_remote_call(
+    monkeypatch,
+    tmp_path: Path,
+):
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+
+    class RemoteShouldNotBeCalled:
+        def __init__(self, *args, **kwargs):
+            raise RuntimeError("remote called before path validation")
+
+    monkeypatch.setattr(server, "ComfyClient", RemoteShouldNotBeCalled)
+
+    with pytest.raises(ValueError, match="simple .json filename"):
+        await server.comfy_generate_run_fetch(
+            "../escape.json",
+            "text to image",
+            parameters={
+                "checkpoint_name": "model.safetensors",
+                "positive_prompt": "city",
+            },
+        )
+
+
+@pytest.mark.asyncio
 async def test_comfy_generate_run_fetch_tool_is_registered_with_mcp(
     monkeypatch,
     tmp_path: Path,
