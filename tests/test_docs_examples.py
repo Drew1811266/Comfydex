@@ -30,6 +30,9 @@ def test_custom_node_skill_exists_and_mentions_workspace_boundary():
     assert "custom_nodes/" in text
     assert "comfy_scaffold_custom_node_package" in text
     assert "comfy_check_node_imports" in text
+    assert "comfy_generate_node_examples" in text
+    assert "comfy_run_node_contract_tests" in text
+    assert "comfy_custom_node_repair_guidance" in text
 
 
 def test_example_workflows_are_classified():
@@ -79,10 +82,10 @@ def test_usage_docs_cover_new_capabilities():
         assert marker in text
 
 
-def test_readme_mentions_0_4_capabilities():
+def test_readme_mentions_0_5_capabilities():
     text = (ROOT / "README.md").read_text(encoding="utf-8")
 
-    assert "0.4.0" in text
+    assert "0.5.0" in text
     assert "UI workflow" in text
     assert "custom node" in text
     assert "batch" in text
@@ -93,7 +96,29 @@ def test_readme_mentions_0_4_capabilities():
     assert "comfy_plan_workflow_generation" in text
     assert "comfy_generate_workflow" in text
     assert "comfy_evaluate_submit_policy" in text
+    assert "comfy_generate_node_examples" in text
+    assert "comfy_run_node_contract_tests" in text
+    assert "comfy_custom_node_repair_guidance" in text
     assert ".comfydex/comfydex.db" in text
+
+
+def test_custom_node_docs_cover_complete_loop_tools():
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    usage = (ROOT / "docs" / "usage" / "custom-node-development.md").read_text(
+        encoding="utf-8"
+    )
+    skill = (ROOT / "skills" / "comfyui-custom-nodes" / "SKILL.md").read_text(
+        encoding="utf-8"
+    )
+
+    for marker in (
+        "comfy_generate_node_examples",
+        "comfy_run_node_contract_tests",
+        "comfy_custom_node_repair_guidance",
+    ):
+        assert marker in readme
+        assert marker in usage
+        assert marker in skill
 
 
 def test_project_index_doc_explains_reindex_safety():

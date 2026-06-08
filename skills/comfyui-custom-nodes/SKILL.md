@@ -20,6 +20,9 @@ Do not write into a user's ComfyUI installation unless the user explicitly confi
 4. `comfy_validate_node_class`
 5. `comfy_check_node_imports`
 6. `comfy_generate_node_docs`
+7. `comfy_generate_node_examples`
+8. `comfy_run_node_contract_tests`
+9. `comfy_custom_node_repair_guidance`
 
 ## Existing Package Flow
 
@@ -28,5 +31,8 @@ Do not write into a user's ComfyUI installation unless the user explicitly confi
 3. `comfy_validate_node_class`
 4. `comfy_check_node_imports`
 5. `comfy_generate_node_docs`
+6. `comfy_generate_node_examples`
+7. `comfy_run_node_contract_tests`
+8. `comfy_custom_node_repair_guidance`
 
-Report import errors without crashing the MCP server. Keep generated documentation deterministic.
+Report import errors without crashing the MCP server. Prefer the complete loop `comfy_generate_node_examples` -> `comfy_run_node_contract_tests` -> `comfy_custom_node_repair_guidance` after static validation and import checks. Keep generated documentation deterministic.
