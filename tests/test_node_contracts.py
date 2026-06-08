@@ -1,6 +1,10 @@
 from pathlib import Path
 
-from comfydex_mcp.node_contracts import generate_node_examples, run_node_contract_tests
+from comfydex_mcp.node_contracts import (
+    custom_node_repair_guidance,
+    generate_node_examples,
+    run_node_contract_tests,
+)
 
 
 def _write_package(path: Path, nodes_source: str) -> None:
@@ -206,3 +210,55 @@ def test_run_node_contract_tests_fails_return_count_mismatch(tmp_path: Path):
     assert result["reason"] == "return_count_mismatch"
     assert result["contract"]["result_length"] == 1
     assert result["contract"]["expected_return_count"] == 2
+
+
+def test_custom_node_repair_guidance_reports_missing_display_mapping(
+    tmp_path: Path,
+):
+    package = tmp_path / "pkg"
+    package.mkdir()
+    (package / "__init__.py").write_text(
+        "from .nodes import NODE_CLASS_MAPPINGS\n",
+        encoding="utf-8",
+    )
+    (package / "nodes.py").write_text(
+        "class GoodNode:\n"
+        "    CATEGORY = 'Comfydex'\n"
+        "    FUNCTION = 'run'\n"
+        "    RETURN_TYPES = ('INT',)\n"
+        "    @classmethod\n"
+        "    def INPUT_TYPES(cls):\n"
+        "        return {'required': {'value': ('INT',)}}\n"
+        "    def run(self, value):\n"
+        "        return (value,)\n"
+        "NODE_CLASS_MAPPINGS = {'GoodNode': GoodNode}\n",
+        encoding="utf-8",
+    )
+
+    result = custom_node_repair_guidance(package)
+
+    assert result["status"] == "needs_work"
+    assert any(action["reason"] == "missing_display_name" for action in result["actions"])
+
+
+def test_custom_node_repair_guidance_reports_ready_package(tmp_path: Path):
+    package = tmp_path / "pkg"
+    _write_package(
+        package,
+        "class GoodNode:\n"
+        "    CATEGORY = 'Comfydex'\n"
+        "    FUNCTION = 'run'\n"
+        "    RETURN_TYPES = ('INT',)\n"
+        "    @classmethod\n"
+        "    def INPUT_TYPES(cls):\n"
+        "        return {'required': {'value': ('INT',)}}\n"
+        "    def run(self, value):\n"
+        "        return (value,)\n\n"
+        "NODE_CLASS_MAPPINGS = {'GoodNode': GoodNode}\n"
+        "NODE_DISPLAY_NAME_MAPPINGS = {'GoodNode': 'Good Node'}\n",
+    )
+
+    result = custom_node_repair_guidance(package)
+
+    assert result["status"] == "ready"
+    assert result["actions"] == []

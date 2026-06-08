@@ -14,8 +14,11 @@ from .custom_nodes import (
     _cleanup_process_tree,
     _kill_process_best_effort,
     _wait_process_best_effort,
+    check_node_imports,
     node_class_details,
     parse_traceback_diagnostics,
+    validate_node_class,
+    validate_node_mappings,
 )
 
 SCALAR_DEFAULTS: dict[str, Any] = {
@@ -143,6 +146,169 @@ def run_node_contract_tests(
         "stdout_truncated": process_result["stdout_truncated"],
         "stderr_truncated": process_result["stderr_truncated"],
     }
+
+
+def custom_node_repair_guidance(package_dir: Path) -> dict[str, Any]:
+    mappings = validate_node_mappings(package_dir)
+    imports = check_node_imports(package_dir)
+    actions: list[dict[str, Any]] = []
+    actions.extend(_mapping_actions(mappings.get("errors", [])))
+
+    inspection = mappings.get("inspection", {})
+    class_mappings = inspection.get("class_mappings", {})
+    if isinstance(class_mappings, dict):
+        for mapping_key, class_name in class_mappings.items():
+            class_result = validate_node_class(package_dir, class_name)
+            actions.extend(_class_actions(class_result.get("errors", []), mapping_key))
+
+    if imports["status"] != "passed":
+        actions.append(
+            {
+                "reason": "import_failed",
+                "severity": "blocked",
+                "message": imports["diagnostics"].get("summary")
+                or imports["reason"]
+                or "Custom node package import failed.",
+                "next_step": "Fix the import error before running contract tests.",
+            }
+        )
+
+    blocked = any(action["severity"] == "blocked" for action in actions)
+    return {
+        "status": "blocked" if blocked else "needs_work" if actions else "ready",
+        "package_dir": str(package_dir),
+        "actions": actions,
+        "mapping_status": mappings["status"],
+        "import_status": imports["status"],
+    }
+
+
+def _mapping_actions(errors: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    guidance = {
+        "missing_class_mappings": (
+            "blocked",
+            "Define NODE_CLASS_MAPPINGS in nodes.py.",
+            "Add NODE_CLASS_MAPPINGS = {'MappingName': ClassName}.",
+        ),
+        "invalid_class_mappings": (
+            "blocked",
+            "NODE_CLASS_MAPPINGS must be a literal dictionary.",
+            "Replace dynamic mapping construction with a literal dictionary.",
+        ),
+        "duplicate_mapping_key": (
+            "blocked",
+            "NODE_CLASS_MAPPINGS contains duplicate mapping keys.",
+            "Keep one entry for the duplicated mapping key.",
+        ),
+        "unsupported_mapping_value": (
+            "blocked",
+            "NODE_CLASS_MAPPINGS values must reference class names directly.",
+            "Use {'MappingName': ClassName} instead of calls or string values.",
+        ),
+        "missing_class": (
+            "blocked",
+            "A mapped custom node class is missing from nodes.py.",
+            "Create the class or update the mapping to reference an existing class.",
+        ),
+        "missing_display_name": (
+            "important",
+            "NODE_DISPLAY_NAME_MAPPINGS is missing an entry for a mapped node.",
+            "Add NODE_DISPLAY_NAME_MAPPINGS with a display name for every mapping key.",
+        ),
+    }
+    return [_action_from_error(error, guidance) for error in errors]
+
+
+def _class_actions(
+    errors: list[dict[str, Any]],
+    mapping_key: str,
+) -> list[dict[str, Any]]:
+    guidance = {
+        "missing_input_types": (
+            "blocked",
+            "Custom node class is missing INPUT_TYPES.",
+            "Add a classmethod or staticmethod INPUT_TYPES returning a dictionary.",
+        ),
+        "invalid_input_types": (
+            "blocked",
+            "INPUT_TYPES must be a classmethod or staticmethod returning a literal dictionary.",
+            "Return {'required': {...}} from INPUT_TYPES.",
+        ),
+        "invalid_input_spec": (
+            "blocked",
+            "An INPUT_TYPES field has a malformed input spec.",
+            "Use specs like ('INT', {'default': 1}) or (['choice'],).",
+        ),
+        "missing_return_types": (
+            "blocked",
+            "Custom node class is missing RETURN_TYPES.",
+            "Add RETURN_TYPES as a tuple of output type strings.",
+        ),
+        "invalid_return_types": (
+            "blocked",
+            "RETURN_TYPES must be a tuple or list of strings.",
+            "Set RETURN_TYPES = ('INT',) or another tuple of ComfyUI output types.",
+        ),
+        "missing_function": (
+            "blocked",
+            "Custom node class is missing FUNCTION.",
+            "Set FUNCTION to the method name that executes the node.",
+        ),
+        "invalid_function": (
+            "blocked",
+            "FUNCTION must be a string method name.",
+            "Set FUNCTION = 'run' or another callable method name.",
+        ),
+        "missing_callable_function": (
+            "blocked",
+            "FUNCTION references a missing or non-callable method.",
+            "Add the method named by FUNCTION and make it a normal callable method.",
+        ),
+        "missing_category": (
+            "important",
+            "Custom node class is missing CATEGORY.",
+            "Set CATEGORY to the ComfyUI menu category for this node.",
+        ),
+        "invalid_category": (
+            "important",
+            "CATEGORY must be a string.",
+            "Set CATEGORY = 'Comfydex' or another string category.",
+        ),
+        "missing_class": (
+            "blocked",
+            "A mapped class could not be found.",
+            "Create the class or fix NODE_CLASS_MAPPINGS.",
+        ),
+    }
+    actions = [_action_from_error(error, guidance) for error in errors]
+    for action in actions:
+        action["mapping_key"] = mapping_key
+    return actions
+
+
+def _action_from_error(
+    error: dict[str, Any],
+    guidance: dict[str, tuple[str, str, str]],
+) -> dict[str, Any]:
+    reason = error.get("reason", "unknown")
+    severity, message, next_step = guidance.get(
+        reason,
+        (
+            "important",
+            f"Custom node validation reported {reason}.",
+            "Inspect the validation error and adjust nodes.py.",
+        ),
+    )
+    action = {
+        "reason": reason,
+        "severity": severity,
+        "message": message,
+        "next_step": next_step,
+    }
+    for key in ("mapping_key", "class_name", "input_name", "input_group", "function"):
+        if key in error:
+            action[key] = error[key]
+    return action
 
 
 def _run_contract_subprocess(
