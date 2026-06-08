@@ -6,12 +6,13 @@ The plugin is installed in Codex, not in ComfyUI. ComfyUI remains the runtime se
 
 ## Status
 
-Current version: `0.2.0`
+Current version: `0.3.0`
 
 This release focuses on a practical developer workflow:
 
 - connect to a local or remote ComfyUI server
 - manage workflow JSON files from a Codex workspace
+- maintain a workspace-local project index at `.comfydex/comfydex.db`
 - analyze workflow nodes, links, model references, and missing node types
 - import UI workflow JSON and convert it toward API prompt JSON
 - build first-pass workflows from templates and structured plans
@@ -44,7 +45,7 @@ Codex is strong at reading code, editing structured files, following tool workfl
 │   └── plugin.json              # Codex plugin manifest
 ├── .mcp.json                    # MCP server launch config
 ├── docs/
-│   └── usage/                   # 0.2 usage guides
+│   └── usage/                   # 0.3 usage guides
 ├── examples/                    # Workflow, report, and custom node examples
 ├── skills/
 │   ├── comfyui-custom-nodes/
@@ -61,6 +62,7 @@ Codex is strong at reading code, editing structured files, following tool workfl
 │       ├── comfy_client.py      # ComfyUI HTTP client
 │       ├── config.py            # Workspace config loading and redaction
 │       ├── conversion.py        # UI workflow import and API conversion
+│       ├── core/                # Shared project context, SQLite index, and migrations
 │       ├── diagnostics.py       # Run diagnosis and comparison
 │       ├── outputs.py           # Output listing and cleanup
 │       ├── paths.py             # Path safety helpers
@@ -92,12 +94,13 @@ The Skill explains how Codex should work with ComfyUI workflows, including the d
 - UI workflow JSON, exported for the ComfyUI visual editor
 - API prompt JSON, submitted to ComfyUI `/prompt`
 
-Version `0.2.0` can import UI workflow files and help convert them, but submission still requires validated API prompt JSON.
+Version `0.3.0` can import UI workflow files and help convert them, but submission still requires validated API prompt JSON. It also adds a shared project index that future desktop and automation layers can reuse.
 
-## 0.2 Capability Groups
+## 0.3 Capability Groups
 
 | Group | What it adds | Primary tools |
 | --- | --- | --- |
+| Project index | Build and inspect a local SQLite index for workflows, runs, outputs, batches, and index errors. | `comfy_project_status`, `comfy_reindex_project` |
 | UI workflow import | Classify, import, convert, and explain UI workflow conversion gaps. | `comfy_classify_workflow`, `comfy_import_ui_workflow`, `comfy_convert_ui_to_api` |
 | Workflow builder | Plan and build template-based API workflows from user intent. | `comfy_build_workflow_plan`, `comfy_explain_workflow_plan`, `comfy_build_workflow` |
 | Validation | Validate API workflows and generated workflows against object metadata. | `comfy_validate_api_workflow`, `comfy_validate_workflow_against_object_info` |
@@ -148,6 +151,8 @@ Comfydex exposes these tools:
 | `comfy_check_connection` | Check whether the configured ComfyUI server is reachable. |
 | `comfy_get_config` | Return the active config with sensitive header values redacted. |
 | `comfy_set_config` | Update base URL, directories, headers, and timeout settings. |
+| `comfy_project_status` | Inspect workspace paths, database path, schema version, index counts, and index errors. |
+| `comfy_reindex_project` | Rebuild the project index from local compatibility records. |
 | `comfy_get_object_info` | Read ComfyUI `/object_info` node metadata. |
 | `comfy_list_workflows` | List local workflow JSON files. |
 | `comfy_read_workflow` | Read and summarize one workflow. |
@@ -210,7 +215,17 @@ comfy_fetch_outputs
 comfy_read_run
 ```
 
-## 0.2 Usage Examples
+## 0.3 Usage Examples
+
+### Project index
+
+```text
+comfy_project_status
+comfy_reindex_project
+comfy_project_status
+```
+
+The project index is stored at `.comfydex/comfydex.db`. Reindexing rebuilds SQLite rows from compatibility records and does not delete workflow files, run records, batch records, or output files.
 
 ### UI workflow import
 
@@ -271,6 +286,7 @@ By default, Comfydex stores workspace data in:
 ```text
 workflows/
 runs/
+.comfydex/comfydex.db
 ```
 
 Workflow files are stored as JSON under `workflows/`.
@@ -296,6 +312,8 @@ Run records store:
 - timestamps
 - WebSocket and fallback events
 - output references and downloaded paths
+
+The SQLite project index under `.comfydex/comfydex.db` stores searchable rows for workflows, runs, outputs, batches, and recoverable index errors. It is rebuilt from the JSON and filesystem compatibility records.
 
 ## Safety Boundaries
 
@@ -370,6 +388,13 @@ python scripts/validate_plugin.py
 
 ## Release Notes
 
+### 0.3.0
+
+- Added a shared project core with `ProjectContext`, SQLite schema migrations, and project status reporting.
+- Added a workspace-local project index at `.comfydex/comfydex.db`.
+- Added `comfy_project_status` and `comfy_reindex_project`.
+- Indexed workflows, runs, outputs, batches, and recoverable index errors while preserving compatibility records.
+
 ### 0.2.0
 
 - Added UI workflow import, conversion, conversion-gap reporting, and API validation.
@@ -399,6 +424,7 @@ If ComfyUI is not running or is blocked by a proxy, the smoke check exits normal
 The implementation is intentionally modular:
 
 - `config.py` owns config defaults, validation, persistence, and redaction.
+- `core/` owns project context, SQLite migrations, indexing, and status queries.
 - `paths.py` owns path traversal protection.
 - `workflows.py` owns workflow file operations and summaries.
 - `analyzer.py` owns graph and object metadata analysis.

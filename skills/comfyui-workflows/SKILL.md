@@ -1,6 +1,6 @@
 ---
 name: comfyui-workflows
-description: Use when working with ComfyUI workflows from Codex, including inspecting workflow JSON, checking ComfyUI connection, submitting prompts, waiting for queue execution, fetching outputs, or diagnosing missing nodes and models through Comfydex MCP tools.
+description: Use when working with ComfyUI workflows from Codex, including inspecting workflow JSON, checking project index state, checking ComfyUI connection, submitting prompts, waiting for queue execution, fetching outputs, or diagnosing missing nodes and models through Comfydex MCP tools.
 ---
 
 # ComfyUI Workflows With Comfydex
@@ -20,15 +20,23 @@ Comfydex can classify, import, and convert UI workflow JSON, but `comfy_submit_w
 
 For a normal run:
 
-1. Call `comfy_check_connection`.
-2. Call `comfy_get_object_info` when node metadata is needed.
-3. Call `comfy_list_workflows`.
-4. Call `comfy_read_workflow` for the selected file.
-5. Call `comfy_analyze_workflow`.
-6. Call `comfy_submit_workflow`.
-7. Call `comfy_wait_for_run`.
-8. Call `comfy_fetch_outputs`.
-9. Call `comfy_read_run`.
+1. Call `comfy_project_status`.
+2. Call `comfy_reindex_project` when project counts are stale or files were changed outside Comfydex.
+3. Call `comfy_check_connection`.
+4. Call `comfy_get_object_info` when node metadata is needed.
+5. Call `comfy_list_workflows`.
+6. Call `comfy_read_workflow` for the selected file.
+7. Call `comfy_analyze_workflow`.
+8. Call `comfy_submit_workflow`.
+9. Call `comfy_wait_for_run`.
+10. Call `comfy_fetch_outputs`.
+11. Call `comfy_read_run`.
+
+## Project Index
+
+Use `comfy_project_status` to inspect the workspace paths, `.comfydex/comfydex.db`, schema version, index counts, and index error count.
+
+Use `comfy_reindex_project` after manual file changes or when project status looks stale. Reindexing rebuilds SQLite rows from compatibility records and does not delete workflow files, run records, batch records, or output files.
 
 ## Workflow Editing Rules
 
