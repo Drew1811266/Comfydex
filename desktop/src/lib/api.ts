@@ -1,9 +1,13 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
   AppInfo,
+  AssetComparison,
+  AssetMetadataPatch,
+  AssetReport,
   AssetRow,
   AssetSearchFilters,
   AssetSearchResult,
+  CleanupPlan,
   ConfigState,
   ConnectionResult,
   ProjectStatus,
@@ -133,21 +137,96 @@ export function searchAssets(filters: AssetSearchFilters = {}): Promise<AssetSea
       {
         asset_id: "asset-1",
         filename: "city.png",
+        path: "C:/Users/Drew/Comfydex Demo Workspace/runs/demo/outputs/city.png",
         workflow_name: "sdxl-city.json",
         status: "completed",
         rating: 5,
         favorite: true,
-        tags: ["city", "keeper"]
+        tags: ["city", "keeper"],
+        notes: "High contrast keeper",
+        prompt_text: "cinematic city at night",
+        model_references: ["sdxl.safetensors"],
+        size_bytes: 2048,
+        modified_time: 1780924800
       },
       {
         asset_id: "asset-2",
         filename: "portrait.png",
+        path: "C:/Users/Drew/Comfydex Demo Workspace/runs/demo/outputs/portrait.png",
         workflow_name: "portrait-lora.json",
         status: "completed",
         rating: 4,
         favorite: false,
-        tags: ["portrait"]
+        tags: ["portrait"],
+        notes: "Needs crop review",
+        prompt_text: "studio portrait",
+        model_references: ["portrait-lora.safetensors"],
+        size_bytes: 3072,
+        modified_time: 1780928400
       }
     ]
   }, { payload: filters });
+}
+
+export function updateAssetMetadata(assetId: string, patch: AssetMetadataPatch): Promise<AssetRow> {
+  return call("update_asset_metadata", {
+    asset_id: assetId,
+    filename: "updated.png",
+    workflow_name: null,
+    status: "completed",
+    rating: patch.rating ?? null,
+    favorite: patch.favorite ?? false,
+    tags: patch.tags ?? [],
+    notes: patch.notes ?? ""
+  }, { payload: { asset_id: assetId, ...patch } });
+}
+
+export function planAssetCleanup(payload: {
+  asset_ids?: string[];
+  filters?: AssetSearchFilters;
+  confirm?: boolean;
+}): Promise<CleanupPlan> {
+  return call("plan_asset_cleanup", {
+    dry_run: payload.confirm !== true,
+    candidates: [],
+    deleted: [],
+    skipped: []
+  }, { payload });
+}
+
+export function exportAssetLibraryReport(filters: AssetSearchFilters = {}): Promise<AssetReport> {
+  return call("export_asset_library_report", {
+    path: ".comfydex/reports/asset-library-report.md",
+    markdown: "# Comfydex Asset Library Report\n\n## Summary\n\n- Total assets: 2\n"
+  }, { payload: filters });
+}
+
+export function compareAssets(leftAssetId: string, rightAssetId: string): Promise<AssetComparison> {
+  const left = {
+    asset_id: leftAssetId,
+    filename: "city.png",
+    workflow_name: "sdxl-city.json",
+    status: "completed",
+    rating: 5,
+    favorite: true,
+    tags: ["city"]
+  };
+  const right = {
+    asset_id: rightAssetId,
+    filename: "portrait.png",
+    workflow_name: "portrait-lora.json",
+    status: "completed",
+    rating: 4,
+    favorite: false,
+    tags: ["portrait"]
+  };
+  return call("compare_assets", {
+    left,
+    right,
+    differences: {
+      workflow_name: { left: left.workflow_name, right: right.workflow_name, changed: true },
+      rating: { left: left.rating, right: right.rating, changed: true },
+      favorite: { left: left.favorite, right: right.favorite, changed: true }
+    }
+  }, { payload: { left_asset_id: leftAssetId, right_asset_id: rightAssetId } });
 }

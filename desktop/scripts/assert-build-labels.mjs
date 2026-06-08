@@ -23,7 +23,17 @@ const requiredLabels = [
   "Reindex",
   "Check connection",
   "No workflows indexed",
-  "Unable to load"
+  "Unable to load",
+  "Gallery",
+  "Table",
+  "Compare",
+  "Cleanup",
+  "Generate report",
+  "Dry run",
+  "Confirm cleanup",
+  "Favorite",
+  "Rating",
+  "Notes"
 ];
 
 const missing = requiredLabels.filter((label) => !chunks.includes(label));
