@@ -49,3 +49,29 @@ export type ConfigState = {
   request_timeout_seconds: number;
   websocket_timeout_seconds: number;
 };
+
+export type AppInfo = {
+  name: string;
+  version: string;
+};
+
+export type ConnectionResult = {
+  ok: boolean;
+  base_url: string;
+  message: string;
+  checked_at: string;
+};
+
+export type AssetSearchFilters = {
+  query?: string;
+  favorite?: boolean;
+  min_rating?: number;
+  tags?: string[];
+};
+
+export type AssetSearchResult = {
+  total: number;
+  assets: AssetRow[];
+};
+
+export type LoadState = "loading" | "empty" | "error" | "loaded";

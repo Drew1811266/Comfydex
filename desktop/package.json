@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 1420",
-    "build": "vite build",
+    "build": "vite build && node scripts/assert-build-labels.mjs",
+    "build:vite": "vite build",
     "typecheck": "tsc --noEmit",
     "tauri": "tauri"
   },

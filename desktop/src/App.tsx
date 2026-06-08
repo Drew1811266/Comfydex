@@ -1,7 +1,31 @@
-import { useEffect, useState } from "react";
-import { Activity, Database, FolderOpen, Image, ListChecks, Settings } from "lucide-react";
-import { getConfig, getProjectStatus, listRuns, listWorkflows, searchAssets } from "./lib/api";
-import type { AssetRow, ConfigState, ProjectStatus, RunRow, WorkflowRow } from "./lib/types";
+import { useCallback, useEffect, useState } from "react";
+import {
+  Activity,
+  Database,
+  FolderOpen,
+  Image,
+  ListChecks,
+  RefreshCw,
+  Settings
+} from "lucide-react";
+import {
+  checkConnection,
+  getConfig,
+  getProjectStatus,
+  listRuns,
+  listWorkflows,
+  reindexProject,
+  searchAssets
+} from "./lib/api";
+import type {
+  AssetRow,
+  ConfigState,
+  ConnectionResult,
+  LoadState,
+  ProjectStatus,
+  RunRow,
+  WorkflowRow
+} from "./lib/types";
 import { AssetsView } from "./views/AssetsView";
 import { DashboardView } from "./views/DashboardView";
 import { RunsView } from "./views/RunsView";
@@ -20,34 +44,106 @@ const navItems: Array<{ id: View; label: string; icon: typeof Activity }> = [
 
 export function App() {
   const [view, setView] = useState<View>("dashboard");
+  const [loadState, setLoadState] = useState<LoadState>("loading");
+  const [actionBusy, setActionBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<ProjectStatus | null>(null);
+  const [connection, setConnection] = useState<ConnectionResult | null>(null);
   const [workflows, setWorkflows] = useState<WorkflowRow[]>([]);
   const [runs, setRuns] = useState<RunRow[]>([]);
   const [assets, setAssets] = useState<AssetRow[]>([]);
-  const [config, setConfig] = useState<ConfigState | null>(null);
+  const [config, setConfigState] = useState<ConfigState | null>(null);
 
-  useEffect(() => {
-    void Promise.all([
-      getProjectStatus(),
-      listWorkflows(),
-      listRuns(),
-      searchAssets(),
-      getConfig()
-    ]).then(([projectStatus, workflowRows, runRows, assetResult, configState]) => {
+  const refresh = useCallback(async () => {
+    setLoadState("loading");
+    setError(null);
+    try {
+      const [projectStatus, workflowRows, runRows, assetResult, configState, connectionState] =
+        await Promise.all([
+          getProjectStatus(),
+          listWorkflows(),
+          listRuns(),
+          searchAssets(),
+          getConfig(),
+          checkConnection()
+        ]);
+
       setStatus(projectStatus);
       setWorkflows(workflowRows);
       setRuns(runRows);
       setAssets(assetResult.assets);
-      setConfig(configState);
-    });
+      setConfigState(configState);
+      setConnection(connectionState);
+      setLoadState(projectStatus.workspace === "No workspace selected" ? "empty" : "loaded");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+      setLoadState("error");
+    }
   }, []);
 
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  async function handleReindex() {
+    setActionBusy(true);
+    setError(null);
+    try {
+      const nextStatus = await reindexProject();
+      setStatus(nextStatus);
+      setLoadState(nextStatus.workspace === "No workspace selected" ? "empty" : "loaded");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+      setLoadState("error");
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
+  async function handleCheckConnection() {
+    setActionBusy(true);
+    setError(null);
+    try {
+      setConnection(await checkConnection());
+    } catch (caught) {
+      setConnection({
+        ok: false,
+        base_url: config?.base_url ?? "unknown",
+        message: caught instanceof Error ? caught.message : String(caught),
+        checked_at: new Date().toISOString()
+      });
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
   const currentView = (() => {
-    if (view === "workflows") return <WorkflowsView workflows={workflows} />;
-    if (view === "runs") return <RunsView runs={runs} />;
-    if (view === "assets") return <AssetsView assets={assets} />;
-    if (view === "settings") return <SettingsView config={config} />;
-    return <DashboardView status={status} />;
+    if (view === "workflows") return <WorkflowsView error={error} state={loadState} workflows={workflows} />;
+    if (view === "runs") return <RunsView error={error} runs={runs} state={loadState} />;
+    if (view === "assets") return <AssetsView assets={assets} error={error} state={loadState} />;
+    if (view === "settings") {
+      return (
+        <SettingsView
+          config={config}
+          connection={connection}
+          error={error}
+          onCheckConnection={handleCheckConnection}
+          state={loadState}
+        />
+      );
+    }
+    return (
+      <DashboardView
+        busy={actionBusy}
+        connection={connection}
+        error={error}
+        onCheckConnection={handleCheckConnection}
+        onRefresh={refresh}
+        onReindex={handleReindex}
+        state={loadState}
+        status={status}
+      />
+    );
   })();
 
   return (
@@ -57,11 +153,12 @@ export function App() {
           <Database size={18} />
           <span>Comfydex</span>
         </div>
-        <nav>
+        <nav aria-label="Primary">
           {navItems.map((item) => {
             const Icon = item.icon;
             return (
               <button
+                aria-current={view === item.id ? "page" : undefined}
                 className={view === item.id ? "nav-item active" : "nav-item"}
                 key={item.id}
                 onClick={() => setView(item.id)}
@@ -76,14 +173,17 @@ export function App() {
       </aside>
       <section className="workspace">
         <header className="topbar">
-          <div>
+          <div className="topbar-project">
             <span className="eyebrow">Project</span>
             <strong>{status?.workspace ?? "Loading workspace"}</strong>
           </div>
-          <div className="connection">
+          <div className={connection?.ok ? "connection online" : "connection offline"}>
             <span className="status-dot" />
             <span>Connection</span>
           </div>
+          <button className="icon-button" onClick={() => void refresh()} title="Refresh project data" type="button">
+            <RefreshCw size={16} />
+          </button>
         </header>
         {currentView}
       </section>

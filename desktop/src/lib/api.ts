@@ -1,10 +1,19 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { AssetRow, ConfigState, ProjectStatus, RunRow, WorkflowRow } from "./types";
+import type {
+  AppInfo,
+  AssetRow,
+  AssetSearchFilters,
+  AssetSearchResult,
+  ConfigState,
+  ConnectionResult,
+  ProjectStatus,
+  RunRow,
+  WorkflowRow
+} from "./types";
 
-type AssetSearchResult = {
-  total: number;
-  assets: AssetRow[];
-};
+type BridgeEnvelope<T> =
+  | { ok: true; data: T }
+  | { ok: false; error: { type: string; message: string } };
 
 const fallbackStatus: ProjectStatus = {
   workspace: "No workspace selected",
@@ -30,6 +39,13 @@ const fallbackConfig: ConfigState = {
   websocket_timeout_seconds: 600
 };
 
+const fallbackConnection: ConnectionResult = {
+  ok: false,
+  base_url: fallbackConfig.base_url,
+  message: "Connection has not been checked",
+  checked_at: "2026-06-08T00:00:00+00:00"
+};
+
 function hasTauri(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
@@ -38,21 +54,63 @@ async function call<T>(command: string, fallback: T, args: Record<string, unknow
   if (!hasTauri()) {
     return fallback;
   }
-  return invoke<T>(command, args);
+
+  const result = await invoke<T | BridgeEnvelope<T>>(command, args);
+
+  if (isBridgeEnvelope(result)) {
+    if (result.ok) {
+      return result.data;
+    }
+    throw new Error(`${result.error.type}: ${result.error.message}`);
+  }
+
+  return result;
+}
+
+function isBridgeEnvelope<T>(value: T | BridgeEnvelope<T>): value is BridgeEnvelope<T> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "ok" in value &&
+    (("data" in value) || ("error" in value))
+  );
+}
+
+export function getAppInfo(): Promise<AppInfo> {
+  return call("app_info", { name: "Comfydex", version: "0.7.0" });
+}
+
+export function setWorkspace(path: string): Promise<ProjectStatus> {
+  return call("set_workspace", fallbackStatus, { path });
 }
 
 export function getProjectStatus(): Promise<ProjectStatus> {
   return call("project_status", fallbackStatus);
 }
 
+export function reindexProject(): Promise<ProjectStatus> {
+  return call("reindex_project", {
+    ...fallbackStatus,
+    last_reindexed_at: new Date().toISOString()
+  });
+}
+
 export function getConfig(): Promise<ConfigState> {
   return call("get_config", fallbackConfig);
 }
 
+export function setConfig(configPatch: Partial<ConfigState>): Promise<ConfigState> {
+  return call("set_config", { ...fallbackConfig, ...configPatch }, { config: configPatch });
+}
+
+export function checkConnection(): Promise<ConnectionResult> {
+  return call("check_connection", fallbackConnection);
+}
+
 export function listWorkflows(): Promise<WorkflowRow[]> {
   return call("list_workflows", [
-    { name: "sdxl-city.json", kind: "api", modified_time: 0, size: 3200, valid_json: true },
-    { name: "portrait-lora.json", kind: "api", modified_time: 0, size: 4100, valid_json: true }
+    { name: "sdxl-city.json", kind: "api", modified_time: 1780924800, size: 3200, valid_json: true },
+    { name: "portrait-lora.json", kind: "api", modified_time: 1780928400, size: 4100, valid_json: true }
   ]);
 }
 
@@ -68,7 +126,7 @@ export function listRuns(): Promise<RunRow[]> {
   ]);
 }
 
-export function searchAssets(): Promise<AssetSearchResult> {
+export function searchAssets(filters: AssetSearchFilters = {}): Promise<AssetSearchResult> {
   return call("search_assets", {
     total: 2,
     assets: [
@@ -91,5 +149,5 @@ export function searchAssets(): Promise<AssetSearchResult> {
         tags: ["portrait"]
       }
     ]
-  });
+  }, { filters });
 }
