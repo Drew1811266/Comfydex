@@ -12,6 +12,7 @@ import {
   checkConnection,
   getConfig,
   getProjectStatus,
+  listBatches,
   listRuns,
   listWorkflows,
   reindexProject,
@@ -19,6 +20,7 @@ import {
 } from "./lib/api";
 import type {
   AssetRow,
+  BatchSummary,
   ConfigState,
   ConnectionResult,
   LoadState,
@@ -27,18 +29,20 @@ import type {
   WorkflowRow
 } from "./lib/types";
 import { AssetsView } from "./views/AssetsView";
+import { BatchesView } from "./views/BatchesView";
 import { DashboardView } from "./views/DashboardView";
 import { RunsView } from "./views/RunsView";
 import { SettingsView } from "./views/SettingsView";
 import { WorkflowsView } from "./views/WorkflowsView";
 
-type View = "dashboard" | "workflows" | "runs" | "assets" | "settings";
+type View = "dashboard" | "workflows" | "runs" | "assets" | "batches" | "settings";
 
 const navItems: Array<{ id: View; label: string; icon: typeof Activity }> = [
   { id: "dashboard", label: "Project", icon: Activity },
   { id: "workflows", label: "Workflows", icon: FolderOpen },
   { id: "runs", label: "Runs", icon: ListChecks },
   { id: "assets", label: "Assets", icon: Image },
+  { id: "batches", label: "Batches", icon: ListChecks },
   { id: "settings", label: "Settings", icon: Settings }
 ];
 
@@ -52,18 +56,20 @@ export function App() {
   const [workflows, setWorkflows] = useState<WorkflowRow[]>([]);
   const [runs, setRuns] = useState<RunRow[]>([]);
   const [assets, setAssets] = useState<AssetRow[]>([]);
+  const [batches, setBatches] = useState<BatchSummary[]>([]);
   const [config, setConfigState] = useState<ConfigState | null>(null);
 
   const refresh = useCallback(async () => {
     setLoadState("loading");
     setError(null);
     try {
-      const [projectStatus, workflowRows, runRows, assetResult, configState, connectionState] =
+      const [projectStatus, workflowRows, runRows, assetResult, batchRows, configState, connectionState] =
         await Promise.all([
           getProjectStatus(),
           listWorkflows(),
           listRuns(),
           searchAssets(),
+          listBatches(),
           getConfig(),
           checkConnection()
         ]);
@@ -72,6 +78,7 @@ export function App() {
       setWorkflows(workflowRows);
       setRuns(runRows);
       setAssets(assetResult.assets);
+      setBatches(batchRows);
       setConfigState(configState);
       setConnection(connectionState);
       setLoadState(projectStatus.workspace === "No workspace selected" ? "empty" : "loaded");
@@ -121,6 +128,7 @@ export function App() {
     if (view === "workflows") return <WorkflowsView error={error} state={loadState} workflows={workflows} />;
     if (view === "runs") return <RunsView error={error} runs={runs} state={loadState} />;
     if (view === "assets") return <AssetsView assets={assets} error={error} state={loadState} />;
+    if (view === "batches") return <BatchesView batches={batches} error={error} state={loadState} />;
     if (view === "settings") {
       return (
         <SettingsView

@@ -33,7 +33,13 @@ const requiredLabels = [
   "Confirm cleanup",
   "Favorite",
   "Rating",
-  "Notes"
+  "Notes",
+  "Batches",
+  "Batch detail",
+  "Child runs",
+  "Variation parameters",
+  "completed",
+  "failed"
 ];
 
 const missing = requiredLabels.filter((label) => !chunks.includes(label));

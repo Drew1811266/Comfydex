@@ -7,6 +7,8 @@ import type {
   AssetRow,
   AssetSearchFilters,
   AssetSearchResult,
+  BatchRecord,
+  BatchSummary,
   CleanupPlan,
   ConfigState,
   ConnectionResult,
@@ -229,4 +231,68 @@ export function compareAssets(leftAssetId: string, rightAssetId: string): Promis
       favorite: { left: left.favorite, right: right.favorite, changed: true }
     }
   }, { payload: { left_asset_id: leftAssetId, right_asset_id: rightAssetId } });
+}
+
+const fallbackBatches: BatchRecord[] = [
+  {
+    batch_id: "2026-06-08T00-00-00-city-sweep",
+    label: "city sweep",
+    workflow_name: "sdxl-city.json",
+    status: "completed",
+    created_at: "2026-06-08T00:00:00+00:00",
+    updated_at: "2026-06-08T00:20:00+00:00",
+    run_count: 2,
+    completed_count: 2,
+    failed_count: 0,
+    runs: [
+      {
+        index: 0,
+        parameters: { node_id: "4", inputs: { text: "cinematic city morning" } },
+        status: "completed",
+        run_id: "run-city-0"
+      },
+      {
+        index: 1,
+        parameters: { node_id: "4", inputs: { text: "cinematic city night" } },
+        status: "completed",
+        run_id: "run-city-1"
+      }
+    ]
+  },
+  {
+    batch_id: "2026-06-08T01-00-00-portrait-test",
+    label: "portrait test",
+    workflow_name: "portrait-lora.json",
+    status: "failed",
+    created_at: "2026-06-08T01:00:00+00:00",
+    updated_at: "2026-06-08T01:12:00+00:00",
+    run_count: 2,
+    completed_count: 1,
+    failed_count: 1,
+    runs: [
+      {
+        index: 0,
+        parameters: { node_id: "6", inputs: { strength: 0.7 } },
+        status: "completed",
+        run_id: "run-portrait-0"
+      },
+      {
+        index: 1,
+        parameters: { node_id: "6", inputs: { strength: 1.1 } },
+        status: "failed",
+        run_id: null,
+        error: "missing model"
+      }
+    ]
+  }
+];
+
+export function listBatches(): Promise<BatchSummary[]> {
+  return call("list_batches", fallbackBatches.map(({ runs: _runs, ...summary }) => summary));
+}
+
+export function readBatch(batchId: string): Promise<BatchRecord> {
+  return call("read_batch", fallbackBatches.find((batch) => batch.batch_id === batchId) ?? fallbackBatches[0], {
+    batchId
+  });
 }

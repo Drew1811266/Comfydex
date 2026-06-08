@@ -105,4 +105,28 @@ export type AssetComparison = {
   differences: Record<string, { left: unknown; right: unknown; changed: boolean }>;
 };
 
+export type BatchSummary = {
+  batch_id: string;
+  label: string;
+  workflow_name: string;
+  status: string;
+  created_at: string | null;
+  updated_at: string | null;
+  run_count: number;
+  completed_count: number;
+  failed_count: number;
+};
+
+export type BatchRunRow = {
+  index: number;
+  parameters: Record<string, unknown>;
+  status: string;
+  run_id: string | null;
+  error?: string;
+};
+
+export type BatchRecord = BatchSummary & {
+  runs: BatchRunRow[];
+};
+
 export type LoadState = "loading" | "empty" | "error" | "loaded";
