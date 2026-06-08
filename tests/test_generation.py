@@ -185,3 +185,34 @@ def test_evaluate_submit_policy_requires_confirmation_for_overwrite():
     assert policy["decision"] == "requires_confirmation"
     assert policy["requires_confirmation"] is True
     assert "workflow_overwrite" in policy["reasons"]
+
+
+def test_evaluate_submit_policy_requires_confirmation_for_unknown_validation():
+    policy = evaluate_submit_policy(
+        validation={"status": "valid", "errors": [], "warnings": []},
+        submit_ready=True,
+        constraints={},
+        issues=["object_info_unavailable"],
+    )
+
+    assert policy["decision"] == "requires_confirmation"
+    assert policy["requires_confirmation"] is True
+    assert policy["risk_level"] == "medium"
+    assert "object_info_unavailable" in policy["reasons"]
+
+
+def test_evaluate_submit_policy_blocks_invalid_even_with_unknown_validation():
+    policy = evaluate_submit_policy(
+        validation={
+            "status": "invalid",
+            "errors": [{"reason": "bad"}],
+            "warnings": [],
+        },
+        submit_ready=False,
+        constraints={},
+        issues=["object_info_unavailable"],
+    )
+
+    assert policy["decision"] == "blocked"
+    assert policy["blocked"] is True
+    assert "validation_not_submit_ready" in policy["reasons"]

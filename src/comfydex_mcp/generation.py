@@ -13,6 +13,15 @@ DEFAULT_CONSTRAINTS = {
     "max_pixels": 1048576,
 }
 
+CONFIRMATION_ISSUES = {
+    "batch_request",
+    "object_info_unavailable",
+    "unknown_validation",
+    "missing_model",
+    "missing_node",
+    "high_step_count",
+}
+
 INT_PARAMETER_KEYS = {"width", "height", "steps", "seed"}
 FLOAT_PARAMETER_KEYS = {
     "cfg",
@@ -288,9 +297,13 @@ def evaluate_submit_policy(
         if not blocked:
             requires_confirmation = True
 
-    if "batch_request" in reasons and not normalized_constraints["allow_batch"]:
-        if not blocked:
-            requires_confirmation = True
+    confirmation_reasons = {
+        reason for reason in reasons if reason in CONFIRMATION_ISSUES
+    }
+    if normalized_constraints["allow_batch"]:
+        confirmation_reasons.discard("batch_request")
+    if confirmation_reasons and not blocked:
+        requires_confirmation = True
 
     decision = (
         "blocked"
