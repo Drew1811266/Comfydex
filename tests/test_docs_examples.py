@@ -134,6 +134,16 @@ def test_readme_mentions_0_9_automation():
     assert "validate_release_package.py" in text
 
 
+def test_readme_mentions_1_0_release():
+    text = (ROOT / "README.md").read_text(encoding="utf-8")
+
+    assert "1.0.0" in text
+    assert "Usable Developer Release" in text
+    assert "scripts/install_windows.ps1" in text
+    assert "comfy_generate_run_fetch" in text
+    assert "validate_release_package.py" in text
+
+
 def test_end_to_end_automation_docs_cover_confirmation_and_recovery():
     usage = (ROOT / "docs" / "usage" / "end-to-end-automation.md").read_text(
         encoding="utf-8"

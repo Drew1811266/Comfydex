@@ -16,6 +16,8 @@ ComfyUI has two common workflow JSON shapes:
 
 Comfydex can classify, import, and convert UI workflow JSON, but `comfy_submit_workflow` requires validated API prompt JSON.
 
+Comfydex `1.0.0` is a Windows-first local developer toolchain. Use MCP tools for workflow generation, validation, safe submission, queue waiting, output fetching, diagnostics, asset management, custom node validation, and project indexing. Use `scripts/install_windows.ps1` and `docs/release/windows-install.md` for local install verification when the user asks how to install or validate the 1.0 release.
+
 ## Standard Tool Order
 
 For a normal run:
