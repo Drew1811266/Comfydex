@@ -21,6 +21,7 @@ def counts(db: sqlite3.Connection) -> dict[str, int]:
         "workflows": int(db.execute("SELECT COUNT(*) FROM workflow_records").fetchone()[0]),
         "runs": int(db.execute("SELECT COUNT(*) FROM run_records").fetchone()[0]),
         "outputs": int(db.execute("SELECT COUNT(*) FROM output_records").fetchone()[0]),
+        "assets": int(db.execute("SELECT COUNT(*) FROM asset_records").fetchone()[0]),
         "batches": int(db.execute("SELECT COUNT(*) FROM batch_records").fetchone()[0]),
         "errors": int(db.execute("SELECT COUNT(*) FROM index_errors").fetchone()[0]),
     }
@@ -176,6 +177,105 @@ def replace_output_rows(db: sqlite3.Connection, rows: list[dict[str, Any]]) -> N
             )
             for row in rows
         ],
+    )
+
+
+def existing_asset_annotations(db: sqlite3.Connection) -> dict[str, dict[str, Any]]:
+    rows = db.execute(
+        """
+        SELECT asset_id, tags_json, rating, favorite, notes, sidecar_path,
+               thumbnail_path, updated_at
+        FROM asset_records
+        """
+    ).fetchall()
+    return {str(row["asset_id"]): dict(row) for row in rows}
+
+
+def replace_asset_rows(db: sqlite3.Connection, rows: list[dict[str, Any]]) -> None:
+    db.execute("DELETE FROM asset_records")
+    db.executemany(
+        """
+        INSERT INTO asset_records(
+          asset_id, output_id, run_id, workflow_name, status, prompt_text,
+          model_references_json, path, filename, type, subfolder, size_bytes,
+          modified_time, content_hash, sidecar_path, thumbnail_path,
+          thumbnail_status, tags_json, rating, favorite, notes, indexed_at,
+          updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        [
+            (
+                row["asset_id"],
+                row["output_id"],
+                row["run_id"],
+                row.get("workflow_name"),
+                row["status"],
+                row["prompt_text"],
+                _json(row["model_references"]),
+                row["path"],
+                row["filename"],
+                row["type"],
+                row["subfolder"],
+                row["size_bytes"],
+                row["modified_time"],
+                row["content_hash"],
+                row.get("sidecar_path"),
+                row.get("thumbnail_path"),
+                row["thumbnail_status"],
+                row["tags_json"],
+                row.get("rating"),
+                1 if row["favorite"] else 0,
+                row["notes"],
+                row["indexed_at"],
+                row["updated_at"],
+            )
+            for row in rows
+        ],
+    )
+
+
+def list_asset_rows(db: sqlite3.Connection) -> list[dict[str, Any]]:
+    rows = db.execute(
+        """
+        SELECT *
+        FROM asset_records
+        ORDER BY favorite DESC, rating DESC, modified_time DESC, filename ASC
+        """
+    ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def get_asset_row(db: sqlite3.Connection, asset_id: str) -> dict[str, Any] | None:
+    row = db.execute(
+        "SELECT * FROM asset_records WHERE asset_id = ?",
+        (asset_id,),
+    ).fetchone()
+    return None if row is None else dict(row)
+
+
+def update_asset_annotation(
+    db: sqlite3.Connection,
+    asset_id: str,
+    updates: dict[str, Any],
+) -> None:
+    allowed = {
+        "tags_json",
+        "rating",
+        "favorite",
+        "notes",
+        "sidecar_path",
+        "thumbnail_path",
+        "updated_at",
+    }
+    keys = [key for key in updates if key in allowed]
+    if not keys:
+        return
+    assignments = ", ".join(f"{key} = ?" for key in keys)
+    values = [updates[key] for key in keys]
+    db.execute(
+        f"UPDATE asset_records SET {assignments} WHERE asset_id = ?",
+        (*values, asset_id),
     )
 
 

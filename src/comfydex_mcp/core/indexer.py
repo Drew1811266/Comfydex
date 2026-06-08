@@ -10,21 +10,32 @@ from ..batches import read_batch_record
 from ..outputs import list_outputs
 from ..paths import ensure_directory
 from ..runs import read_run, validate_run_id
-from ..workflows import read_workflow
+from ..workflows import read_workflow, summarize_workflow
 from .database import migrate_project, open_database
 from .project import ProjectContext
 from .schema import SCHEMA_VERSION
 from .store import (
     clear_index_errors,
     counts,
+    existing_asset_annotations,
     list_index_errors,
     record_index_error,
+    replace_asset_rows,
     replace_batch_rows,
     replace_output_rows,
     replace_run_rows,
     replace_workflow_rows,
     set_metadata,
 )
+
+PROMPT_KEYS = {
+    "text",
+    "positive",
+    "positive_prompt",
+    "negative",
+    "negative_prompt",
+}
+IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
 
 
 def _now() -> str:
@@ -99,6 +110,95 @@ def _stored_output_rows(db, valid_run_ids: set[str]) -> list[dict[str, Any]]:
         for row in rows
         if str(row["run_id"]) in valid_run_ids
     ]
+
+
+def _asset_rows(
+    context: ProjectContext,
+    output_rows: list[dict[str, Any]],
+    run_rows: list[dict[str, Any]],
+    annotations: dict[str, dict[str, Any]],
+) -> list[dict[str, Any]]:
+    run_index = {str(row["run_id"]): row for row in run_rows}
+    rows: list[dict[str, Any]] = []
+    for output in output_rows:
+        output_id = str(output["output_id"])
+        run_id = str(output["run_id"])
+        run = run_index.get(run_id, {})
+        workflow = _safe_run_workflow(context, run_id)
+        summary = summarize_workflow(workflow) if workflow else {}
+        annotation = annotations.get(output_id, {})
+        rows.append(
+            {
+                "asset_id": output_id,
+                "output_id": output_id,
+                "run_id": run_id,
+                "workflow_name": run.get("workflow_name"),
+                "status": _as_text(run.get("status"), "unknown"),
+                "prompt_text": _prompt_text(workflow),
+                "model_references": summary.get("model_references", []),
+                "path": output["path"],
+                "filename": output["filename"],
+                "type": output["type"],
+                "subfolder": output["subfolder"],
+                "size_bytes": output["size_bytes"],
+                "modified_time": output["modified_time"],
+                "content_hash": _safe_content_hash(Path(output["path"])),
+                "sidecar_path": annotation.get("sidecar_path"),
+                "thumbnail_path": annotation.get("thumbnail_path"),
+                "thumbnail_status": _thumbnail_status(output["filename"], annotation),
+                "tags_json": str(annotation.get("tags_json") or "[]"),
+                "rating": annotation.get("rating"),
+                "favorite": bool(annotation.get("favorite", 0)),
+                "notes": str(annotation.get("notes") or ""),
+                "indexed_at": _now(),
+                "updated_at": str(annotation.get("updated_at") or _now()),
+            }
+        )
+    return rows
+
+
+def _safe_run_workflow(context: ProjectContext, run_id: str) -> dict[str, Any]:
+    path = context.runs_dir / run_id / "workflow.json"
+    try:
+        loaded = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return loaded if isinstance(loaded, dict) else {}
+
+
+def _prompt_text(workflow: dict[str, Any]) -> str:
+    values: list[str] = []
+    if not isinstance(workflow, dict):
+        return ""
+    for node in workflow.values():
+        if not isinstance(node, dict):
+            continue
+        inputs = node.get("inputs", {})
+        if not isinstance(inputs, dict):
+            continue
+        for key, value in inputs.items():
+            if str(key).lower() not in PROMPT_KEYS or not isinstance(value, str):
+                continue
+            text = " ".join(value.split())
+            if text and text not in values:
+                values.append(text)
+    return " ".join(values)[:1000]
+
+
+def _safe_content_hash(path: Path) -> str:
+    try:
+        return _hash_file(path)
+    except OSError:
+        return ""
+
+
+def _thumbnail_status(filename: str, annotation: dict[str, Any]) -> str:
+    thumbnail_path = annotation.get("thumbnail_path")
+    if isinstance(thumbnail_path, str) and thumbnail_path:
+        return "available"
+    if Path(filename).suffix.lower() in IMAGE_EXTENSIONS:
+        return "pending"
+    return "not_supported"
 
 
 def _record_scan_error(
@@ -279,12 +379,16 @@ def reindex_project(
             if include_outputs
             else _stored_output_rows(db, valid_run_ids)
         )
+        annotations = existing_asset_annotations(db)
+        asset_rows = _asset_rows(context, output_rows, run_rows, annotations)
         batch_rows = _safe_batch_rows(context, db)
 
+        replace_asset_rows(db, [])
         replace_output_rows(db, [])
         replace_workflow_rows(db, workflow_rows)
         replace_run_rows(db, run_rows)
         replace_output_rows(db, output_rows)
+        replace_asset_rows(db, asset_rows)
         replace_batch_rows(db, batch_rows)
         set_metadata(db, "last_reindexed_at", _now())
 

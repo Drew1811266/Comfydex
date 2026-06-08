@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 INITIAL_PROJECT_INDEX_SQL = """
 CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -119,10 +119,63 @@ CREATE INDEX IF NOT EXISTS idx_index_errors_source
   ON index_errors(source_type, source_id);
 """
 
+ASSET_LIBRARY_CORE_SQL = """
+CREATE TABLE IF NOT EXISTS asset_records (
+  asset_id TEXT PRIMARY KEY,
+  output_id TEXT NOT NULL UNIQUE,
+  run_id TEXT NOT NULL,
+  workflow_name TEXT,
+  status TEXT NOT NULL,
+  prompt_text TEXT NOT NULL,
+  model_references_json TEXT NOT NULL,
+  path TEXT NOT NULL,
+  filename TEXT NOT NULL,
+  type TEXT NOT NULL,
+  subfolder TEXT NOT NULL,
+  size_bytes INTEGER NOT NULL,
+  modified_time REAL NOT NULL,
+  content_hash TEXT NOT NULL,
+  sidecar_path TEXT,
+  thumbnail_path TEXT,
+  thumbnail_status TEXT NOT NULL,
+  tags_json TEXT NOT NULL,
+  rating INTEGER,
+  favorite INTEGER NOT NULL,
+  notes TEXT NOT NULL,
+  indexed_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (run_id) REFERENCES run_records(run_id) ON DELETE CASCADE,
+  FOREIGN KEY (output_id) REFERENCES output_records(output_id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_asset_records_run_id
+  ON asset_records(run_id);
+
+CREATE INDEX IF NOT EXISTS idx_asset_records_workflow_name
+  ON asset_records(workflow_name);
+
+CREATE INDEX IF NOT EXISTS idx_asset_records_status
+  ON asset_records(status);
+
+CREATE INDEX IF NOT EXISTS idx_asset_records_modified_time
+  ON asset_records(modified_time);
+
+CREATE INDEX IF NOT EXISTS idx_asset_records_favorite
+  ON asset_records(favorite);
+
+CREATE INDEX IF NOT EXISTS idx_asset_records_rating
+  ON asset_records(rating);
+"""
+
 MIGRATIONS: list[dict[str, Any]] = [
     {
         "version": 1,
         "name": "initial_project_index",
         "sql": INITIAL_PROJECT_INDEX_SQL,
+    },
+    {
+        "version": 2,
+        "name": "asset_library_core",
+        "sql": ASSET_LIBRARY_CORE_SQL,
     }
 ]

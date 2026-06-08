@@ -13,6 +13,14 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 
 from .analyzer import analyze_workflow
+from .assets import (
+    compare_assets,
+    export_asset_library_report,
+    plan_asset_cleanup,
+    search_assets,
+    update_asset_metadata,
+    write_asset_sidecars,
+)
 from .builder import (
     build_workflow_from_plan,
     build_workflow_plan as create_workflow_plan,
@@ -409,6 +417,122 @@ async def comfy_reindex_project(include_outputs: bool = True) -> dict[str, Any]:
     ctx = tool_context()
     project = project_context_from_config(ctx.config)
     return reindex_project(project, include_outputs=include_outputs)
+
+
+@mcp.tool()
+async def comfy_reindex_assets(include_sidecars: bool = False) -> dict[str, Any]:
+    ctx = tool_context()
+    project = project_context_from_config(ctx.config)
+    result = reindex_project(project, include_outputs=True)
+    sidecars = (
+        write_asset_sidecars(project)
+        if include_sidecars
+        else {"written_count": 0, "written": [], "errors": []}
+    )
+    return {
+        **result,
+        "asset_count": result["counts"].get("assets", 0),
+        "sidecar_count": sidecars["written_count"],
+        "sidecars": sidecars,
+    }
+
+
+@mcp.tool()
+async def comfy_search_assets(
+    query: str | None = None,
+    run_id: str | None = None,
+    workflow_name: str | None = None,
+    status: str | None = None,
+    type: str | None = None,
+    tags: list[str] | None = None,
+    favorite: bool | None = None,
+    min_rating: int | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> dict[str, Any]:
+    ctx = tool_context()
+    project = project_context_from_config(ctx.config)
+    filters = {
+        "query": query,
+        "run_id": run_id,
+        "workflow_name": workflow_name,
+        "status": status,
+        "type": type,
+        "tags": tags,
+        "favorite": favorite,
+        "min_rating": min_rating,
+        "date_from": date_from,
+        "date_to": date_to,
+        "limit": limit,
+        "offset": offset,
+    }
+    return search_assets(project, filters)
+
+
+@mcp.tool()
+async def comfy_update_asset_metadata(
+    asset_id: str,
+    tags: list[str] | None = None,
+    rating: int | None = None,
+    favorite: bool | None = None,
+    notes: str | None = None,
+) -> dict[str, Any]:
+    ctx = tool_context()
+    project = project_context_from_config(ctx.config)
+    return update_asset_metadata(
+        project,
+        asset_id,
+        tags=tags,
+        rating=rating,
+        favorite=favorite,
+        notes=notes,
+    )
+
+
+@mcp.tool()
+async def comfy_write_asset_sidecars(
+    asset_ids: list[str] | None = None,
+) -> dict[str, Any]:
+    ctx = tool_context()
+    project = project_context_from_config(ctx.config)
+    return write_asset_sidecars(project, asset_ids=asset_ids)
+
+
+@mcp.tool()
+async def comfy_plan_asset_cleanup(
+    filters: dict[str, Any] | None = None,
+    asset_ids: list[str] | None = None,
+    confirm: bool = False,
+) -> dict[str, Any]:
+    ctx = tool_context()
+    project = project_context_from_config(ctx.config)
+    return plan_asset_cleanup(
+        project,
+        filters=filters,
+        asset_ids=asset_ids,
+        confirm=confirm,
+    )
+
+
+@mcp.tool()
+async def comfy_export_asset_library_report(
+    filters: dict[str, Any] | None = None,
+) -> dict[str, str]:
+    ctx = tool_context()
+    project = project_context_from_config(ctx.config)
+    return export_asset_library_report(project, filters=filters)
+
+
+@mcp.tool()
+async def comfy_compare_assets(
+    left_asset_id: str,
+    right_asset_id: str,
+) -> dict[str, Any]:
+    ctx = tool_context()
+    project = project_context_from_config(ctx.config)
+    return compare_assets(project, left_asset_id, right_asset_id)
 
 
 @mcp.tool()
