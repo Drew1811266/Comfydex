@@ -15,6 +15,9 @@ def test_workflow_skill_mentions_new_tool_order():
     assert "comfy_import_ui_workflow" in text
     assert "comfy_project_status" in text
     assert "comfy_reindex_project" in text
+    assert "comfy_plan_workflow_generation" in text
+    assert "comfy_generate_workflow" in text
+    assert "comfy_evaluate_submit_policy" in text
     assert "comfy_build_workflow_plan" in text
     assert "comfy_validate_api_workflow" in text
 
@@ -69,22 +72,27 @@ def test_usage_docs_cover_new_capabilities():
         "custom-node-development.md": "comfy_validate_node_class",
         "run-diagnostics.md": "comfy_diagnose_run",
         "project-index.md": "comfy_reindex_project",
+        "workflow-generation.md": "comfy_generate_workflow",
     }
     for filename, marker in required.items():
         text = (ROOT / "docs" / "usage" / filename).read_text(encoding="utf-8")
         assert marker in text
 
 
-def test_readme_mentions_0_3_capabilities():
+def test_readme_mentions_0_4_capabilities():
     text = (ROOT / "README.md").read_text(encoding="utf-8")
 
-    assert "0.3.0" in text
+    assert "0.4.0" in text
     assert "UI workflow" in text
     assert "custom node" in text
     assert "batch" in text
     assert "project index" in text
+    assert "workflow generation" in text
     assert "comfy_project_status" in text
     assert "comfy_reindex_project" in text
+    assert "comfy_plan_workflow_generation" in text
+    assert "comfy_generate_workflow" in text
+    assert "comfy_evaluate_submit_policy" in text
     assert ".comfydex/comfydex.db" in text
 
 
@@ -98,6 +106,19 @@ def test_project_index_doc_explains_reindex_safety():
     assert "comfy_reindex_project" in text
     assert "does not delete" in text
     assert "compatibility records" in text
+
+
+def test_workflow_generation_doc_explains_submit_policy():
+    text = (ROOT / "docs" / "usage" / "workflow-generation.md").read_text(
+        encoding="utf-8"
+    )
+
+    assert "comfy_plan_workflow_generation" in text
+    assert "comfy_generate_workflow" in text
+    assert "comfy_evaluate_submit_policy" in text
+    assert "allowed" in text
+    assert "requires_confirmation" in text
+    assert "blocked" in text
 
 
 def test_readme_does_not_describe_0_2_features_as_future_scope():

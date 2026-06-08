@@ -3,7 +3,7 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any
 
-from .templates import build_template_plan
+from .generation import plan_workflow_generation
 from .validation import validate_api_workflow
 
 
@@ -12,7 +12,7 @@ def build_workflow_plan(
     template_id: str | None = None,
     parameters: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    return build_template_plan(intent, template_id, parameters)
+    return plan_workflow_generation(intent, parameters, template_id)
 
 
 def build_workflow_from_template(
