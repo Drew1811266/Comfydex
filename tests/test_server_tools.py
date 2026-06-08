@@ -4,12 +4,23 @@ from pathlib import Path
 import pytest
 
 from comfydex_mcp import server
-from comfydex_mcp.runs import create_run, read_run
+from comfydex_mcp.runs import create_run, read_run, register_outputs, update_status
 from comfydex_mcp.server import resolve_workspace, tool_context
 from comfydex_mcp.workflows import save_workflow
 
 
 API_WORKFLOW = {"1": {"class_type": "SaveImage", "inputs": {}}}
+ASSET_WORKFLOW = {
+    "3": {
+        "class_type": "CheckpointLoaderSimple",
+        "inputs": {"ckpt_name": "sdxl.safetensors"},
+    },
+    "4": {
+        "class_type": "CLIPTextEncode",
+        "inputs": {"text": "cinematic cat", "clip": ["3", 1]},
+    },
+    "5": {"class_type": "SaveImage", "inputs": {"images": ["4", 0]}},
+}
 UI_WORKFLOW = {"nodes": [{"id": 1, "type": "SaveImage"}], "links": []}
 PATCH_OBJECT_INFO = {
     "ImageSource": {"input": {"required": {}}, "output": ["IMAGE"]},
@@ -308,6 +319,78 @@ async def test_comfy_reindex_project_tool_indexes_local_workflows(
     assert result["status"] == "completed"
     assert result["counts"]["workflows"] == 1
     assert result["counts"]["errors"] == 0
+
+
+def _write_server_asset_workspace(tmp_path: Path) -> None:
+    runs_dir = tmp_path / "runs"
+    run = create_run(
+        runs_dir,
+        "cat.json",
+        ASSET_WORKFLOW,
+        "http://127.0.0.1:8188",
+        "prompt-asset",
+    )
+    update_status(runs_dir, run["run_id"], "completed")
+    output_path = runs_dir / run["run_id"] / "outputs" / "images" / "cat.png"
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text("image", encoding="utf-8")
+    register_outputs(
+        runs_dir,
+        run["run_id"],
+        [
+            {
+                "filename": "cat.png",
+                "type": "images",
+                "subfolder": "images",
+                "downloaded_path": str(output_path),
+            }
+        ],
+    )
+
+
+@pytest.mark.asyncio
+async def test_comfy_asset_library_tools(monkeypatch, tmp_path: Path):
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+    _write_server_asset_workspace(tmp_path)
+
+    reindex = await server.comfy_reindex_assets(include_sidecars=True)
+    search = await server.comfy_search_assets(query="cinematic")
+    asset_id = search["assets"][0]["asset_id"]
+    updated = await server.comfy_update_asset_metadata(
+        asset_id,
+        tags=["cat"],
+        rating=5,
+        favorite=True,
+    )
+    sidecars = await server.comfy_write_asset_sidecars(asset_ids=[asset_id])
+    cleanup = await server.comfy_plan_asset_cleanup(asset_ids=[asset_id])
+    report = await server.comfy_export_asset_library_report(filters={"query": "cat"})
+    comparison = await server.comfy_compare_assets(asset_id, asset_id)
+
+    assert reindex["asset_count"] == 1
+    assert search["total"] == 1
+    assert updated["tags"] == ["cat"]
+    assert sidecars["written_count"] == 1
+    assert cleanup["dry_run"] is True
+    assert Path(report["path"]).exists()
+    assert comparison["differences"]["prompt_text"]["changed"] is False
+
+
+@pytest.mark.asyncio
+async def test_comfy_asset_library_tool_is_registered_with_mcp(
+    monkeypatch,
+    tmp_path: Path,
+):
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+    _write_server_asset_workspace(tmp_path)
+    await server.comfy_reindex_assets()
+
+    _content, structured = await server.mcp.call_tool(
+        "comfy_search_assets",
+        {"query": "cinematic"},
+    )
+
+    assert structured["total"] == 1
 
 
 @pytest.mark.asyncio
