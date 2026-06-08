@@ -100,6 +100,60 @@ fn search_assets(app: AppHandle, payload: Value) -> Value {
     }
 }
 
+#[tauri::command]
+fn update_asset_metadata(app: AppHandle, payload: Value) -> Value {
+    match current_workspace(&app) {
+        Ok(Some(workspace)) => run_bridge("update_asset_metadata", &workspace, payload),
+        Ok(None) => bridge_error("WorkspaceError", "workspace must be selected before updating asset metadata"),
+        Err(message) => bridge_error("WorkspaceError", message),
+    }
+}
+
+#[tauri::command]
+fn plan_asset_cleanup(app: AppHandle, payload: Value) -> Value {
+    match current_workspace(&app) {
+        Ok(Some(workspace)) => run_bridge("plan_asset_cleanup", &workspace, payload),
+        Ok(None) => bridge_error("WorkspaceError", "workspace must be selected before planning cleanup"),
+        Err(message) => bridge_error("WorkspaceError", message),
+    }
+}
+
+#[tauri::command]
+fn export_asset_library_report(app: AppHandle, payload: Value) -> Value {
+    match current_workspace(&app) {
+        Ok(Some(workspace)) => run_bridge("export_asset_library_report", &workspace, payload),
+        Ok(None) => bridge_error("WorkspaceError", "workspace must be selected before exporting reports"),
+        Err(message) => bridge_error("WorkspaceError", message),
+    }
+}
+
+#[tauri::command]
+fn compare_assets(app: AppHandle, payload: Value) -> Value {
+    match current_workspace(&app) {
+        Ok(Some(workspace)) => run_bridge("compare_assets", &workspace, payload),
+        Ok(None) => bridge_error("WorkspaceError", "workspace must be selected before comparing assets"),
+        Err(message) => bridge_error("WorkspaceError", message),
+    }
+}
+
+#[tauri::command]
+fn list_batches(app: AppHandle) -> Value {
+    match current_workspace(&app) {
+        Ok(Some(workspace)) => run_bridge("list_batches", &workspace, json!({})),
+        Ok(None) => ok(json!([])),
+        Err(message) => bridge_error("WorkspaceError", message),
+    }
+}
+
+#[tauri::command]
+fn read_batch(app: AppHandle, batch_id: String) -> Value {
+    match current_workspace(&app) {
+        Ok(Some(workspace)) => run_bridge("read_batch", &workspace, json!({ "batch_id": batch_id })),
+        Ok(None) => bridge_error("WorkspaceError", "workspace must be selected before reading batches"),
+        Err(message) => bridge_error("WorkspaceError", message),
+    }
+}
+
 fn main() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
@@ -112,7 +166,13 @@ fn main() {
             check_connection,
             list_workflows,
             list_runs,
-            search_assets
+            search_assets,
+            update_asset_metadata,
+            plan_asset_cleanup,
+            export_asset_library_report,
+            compare_assets,
+            list_batches,
+            read_batch
         ])
         .run(tauri::generate_context!())
         .expect("error while running Comfydex desktop");
