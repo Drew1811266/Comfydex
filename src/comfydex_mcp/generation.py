@@ -92,7 +92,7 @@ _KEYWORD_RULES: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
 def normalize_constraints(constraints: dict[str, Any] | None) -> dict[str, Any]:
     merged = {**DEFAULT_CONSTRAINTS, **deepcopy(constraints or {})}
     for key in ("allow_overwrite", "allow_batch"):
-        merged[key] = bool(merged[key])
+        merged[key] = _maybe_bool(merged[key])
     for key in ("max_steps", "max_pixels"):
         merged[key] = _maybe_int(merged[key])
     return merged
@@ -386,6 +386,18 @@ def _maybe_float(value: Any) -> Any:
         except ValueError:
             return value
     return value
+
+
+def _maybe_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().casefold()
+        if normalized in {"true", "1", "yes", "y", "on"}:
+            return True
+        if normalized in {"false", "0", "no", "n", "off", ""}:
+            return False
+    return bool(value)
 
 
 def _not_run_validation() -> dict[str, Any]:

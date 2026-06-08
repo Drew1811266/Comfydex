@@ -313,6 +313,40 @@ async def test_comfy_generate_workflow_tool_saves_valid_workflow(
 
 
 @pytest.mark.asyncio
+async def test_comfy_generate_workflow_draft_does_not_overwrite_without_policy(
+    monkeypatch,
+    tmp_path: Path,
+):
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+    monkeypatch.setattr(
+        server,
+        "ComfyClient",
+        object_info_client(TEXT_TO_IMAGE_OBJECT_INFO),
+    )
+    existing = save_workflow(
+        tmp_path / "workflows",
+        "generated.json",
+        API_WORKFLOW,
+        require_api=True,
+    )
+    original_text = existing.read_text(encoding="utf-8")
+
+    result = await server.comfy_generate_workflow(
+        "generated.json",
+        "text to image",
+        parameters={
+            "checkpoint_name": "model.safetensors",
+            "positive_prompt": "cat",
+            "width": "wide",
+        },
+        allow_draft=True,
+    )
+
+    assert result.get("draft_saved") is not True
+    assert existing.read_text(encoding="utf-8") == original_text
+
+
+@pytest.mark.asyncio
 async def test_comfy_evaluate_submit_policy_tool_blocks_invalid_workflow(
     monkeypatch,
     tmp_path: Path,

@@ -547,7 +547,11 @@ async def comfy_generate_workflow(
             reindex_project(project_context_from_config(ctx.config))
         except Exception as exc:
             result["index_warning"] = str(exc)
-    elif allow_draft and result.get("draft_workflow") is not None:
+    elif (
+        allow_draft
+        and result.get("draft_workflow") is not None
+        and (not target_path.exists() or bool(plan["constraints"].get("allow_overwrite")))
+    ):
         path = save_workflow(
             ctx.config.workflows_dir,
             name,
@@ -558,6 +562,9 @@ async def comfy_generate_workflow(
         )
         result["saved_workflow"] = path.name
         result["draft_saved"] = True
+    elif allow_draft and result.get("draft_workflow") is not None:
+        result["draft_saved"] = False
+        result["draft_save_blocked"] = "workflow_overwrite"
     return result
 
 

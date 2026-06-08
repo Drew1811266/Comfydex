@@ -122,6 +122,15 @@ def test_normalize_constraints_uses_safe_defaults():
     assert normalize_constraints({}) == DEFAULT_CONSTRAINTS
 
 
+def test_normalize_constraints_parses_string_booleans_safely():
+    constraints = normalize_constraints(
+        {"allow_overwrite": "false", "allow_batch": "true"}
+    )
+
+    assert constraints["allow_overwrite"] is False
+    assert constraints["allow_batch"] is True
+
+
 def test_build_generated_workflow_clamps_repairable_steps():
     plan = plan_workflow_generation(
         "text to image",
