@@ -134,6 +134,45 @@ async def test_comfy_custom_node_tools_use_package_name(
 
 
 @pytest.mark.asyncio
+async def test_comfy_custom_node_complete_loop_tools(monkeypatch, tmp_path: Path):
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+    scaffolded = await server.comfy_scaffold_custom_node_package("simple_math")
+
+    examples = await server.comfy_generate_node_examples(
+        "simple_math",
+        scaffolded["class_name"],
+    )
+    contract = await server.comfy_run_node_contract_tests(
+        "simple_math",
+        scaffolded["class_name"],
+    )
+    guidance = await server.comfy_custom_node_repair_guidance("simple_math")
+
+    assert examples["status"] == "generated"
+    assert contract["status"] == "passed"
+    assert guidance["status"] == "ready"
+
+
+@pytest.mark.asyncio
+async def test_comfy_custom_node_complete_loop_tools_are_registered_with_mcp(
+    monkeypatch,
+    tmp_path: Path,
+):
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+    scaffolded = await server.comfy_scaffold_custom_node_package("simple_math")
+
+    _content, structured = await server.mcp.call_tool(
+        "comfy_run_node_contract_tests",
+        {
+            "package_name": "simple_math",
+            "class_name": scaffolded["class_name"],
+        },
+    )
+
+    assert structured["status"] == "passed"
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("timeout_seconds", [0, -1, 31])
 async def test_comfy_check_node_imports_rejects_invalid_timeout_before_import_check(
     monkeypatch,

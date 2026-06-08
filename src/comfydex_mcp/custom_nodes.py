@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 import ctypes
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -137,6 +138,10 @@ def validate_node_class(package_dir: Path, class_name: str) -> dict[str, Any]:
         errors.append({"class_name": class_name, "reason": "missing_input_types"})
     elif not _has_valid_input_types_method(class_node):
         errors.append({"class_name": class_name, "reason": "invalid_input_types"})
+    else:
+        input_types_method = methods["INPUT_TYPES"]
+        input_schema = _input_types_schema(input_types_method) or {}
+        errors.extend(_input_spec_errors(class_name, input_schema))
     if "RETURN_TYPES" not in assigned_values:
         errors.append({"class_name": class_name, "reason": "missing_return_types"})
     elif _literal_string_sequence(assigned_values["RETURN_TYPES"]) is None:
@@ -546,6 +551,40 @@ def _input_types_schema(function_node: ast.FunctionDef) -> dict[str, Any] | None
     return None
 
 
+def _input_spec_errors(
+    class_name: str,
+    input_schema: dict[str, Any],
+) -> list[dict[str, Any]]:
+    errors: list[dict[str, Any]] = []
+    for group_name, section_fields in input_schema.items():
+        if not isinstance(section_fields, dict):
+            continue
+        for input_name, input_spec in section_fields.items():
+            if not _is_valid_input_spec(input_spec):
+                errors.append(
+                    {
+                        "class_name": class_name,
+                        "input_name": input_name,
+                        "input_group": group_name,
+                        "reason": "invalid_input_spec",
+                    }
+                )
+    return errors
+
+
+def _is_valid_input_spec(input_spec: Any) -> bool:
+    if isinstance(input_spec, str):
+        return bool(input_spec)
+    if not isinstance(input_spec, (tuple, list)) or not input_spec:
+        return False
+    first_item = input_spec[0]
+    if isinstance(first_item, str):
+        return bool(first_item)
+    if isinstance(first_item, (tuple, list)):
+        return bool(first_item)
+    return False
+
+
 def _literal_string(value: ast.expr | None) -> str | None:
     if isinstance(value, ast.Constant) and isinstance(value.value, str):
         return value.value
@@ -624,7 +663,56 @@ def _import_check_result(
         "stderr": stderr,
         "stdout_truncated": stdout_truncated,
         "stderr_truncated": stderr_truncated,
+        "diagnostics": parse_traceback_diagnostics(stderr),
     }
+
+
+def parse_traceback_diagnostics(stderr: str) -> dict[str, Any]:
+    lines = [line.rstrip() for line in stderr.splitlines() if line.strip()]
+    exception_type = None
+    message = ""
+    for line in reversed(lines):
+        if ":" not in line or line.lstrip().startswith("File "):
+            continue
+        candidate_type, candidate_message = line.split(":", 1)
+        candidate_type = candidate_type.strip()
+        if candidate_type.endswith(("Error", "Exception")):
+            exception_type = candidate_type
+            message = candidate_message.strip()
+            break
+
+    frame_file = None
+    frame_line = None
+    for line in reversed(lines):
+        if line.lstrip().startswith("File "):
+            frame_file, frame_line = _parse_frame_line(line)
+            if frame_file is not None:
+                break
+
+    return {
+        "exception_type": exception_type,
+        "message": message,
+        "file": frame_file,
+        "line": frame_line,
+        "summary": _diagnostic_summary(exception_type, message),
+    }
+
+
+def _parse_frame_line(line: str) -> tuple[str | None, int | None]:
+    match = re.search(r'File "([^"]+)", line (\d+)', line)
+    if match is None:
+        return None, None
+    return match.group(1), int(match.group(2))
+
+
+def _diagnostic_summary(exception_type: str | None, message: str) -> str | None:
+    if exception_type and message:
+        return f"{exception_type}: {message}"
+    if exception_type:
+        return exception_type
+    if message:
+        return message
+    return None
 
 
 def _cleanup_process_tree(process: subprocess.Popen[Any], job: Any) -> None:

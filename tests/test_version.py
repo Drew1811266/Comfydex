@@ -8,12 +8,15 @@ import comfydex_mcp
 ROOT = Path(__file__).parents[1]
 
 
-def test_versions_match_0_4_0():
+EXPECTED_VERSION = "0.5.0"
+
+
+def test_versions_match_expected_version():
     pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     manifest = json.loads(
         (ROOT / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8")
     )
 
-    assert pyproject["project"]["version"] == "0.4.0"
-    assert manifest["version"] == "0.4.0"
-    assert comfydex_mcp.__version__ == "0.4.0"
+    assert pyproject["project"]["version"] == EXPECTED_VERSION
+    assert manifest["version"] == EXPECTED_VERSION
+    assert comfydex_mcp.__version__ == EXPECTED_VERSION

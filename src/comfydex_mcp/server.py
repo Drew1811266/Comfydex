@@ -45,6 +45,11 @@ from .generation import (
     plan_workflow_generation,
 )
 from .node_docs import generate_node_docs
+from .node_contracts import (
+    custom_node_repair_guidance,
+    generate_node_examples,
+    run_node_contract_tests,
+)
 from .outputs import cleanup_outputs, list_outputs as list_run_outputs
 from .node_scaffold import scaffold_custom_node_package, safe_custom_nodes_dir
 from .patching import patch_workflow
@@ -468,6 +473,43 @@ async def comfy_check_node_imports(
         package_dir,
         timeout_seconds=timeout_seconds,
         max_output_bytes=max_output_bytes,
+    )
+
+
+@mcp.tool()
+async def comfy_generate_node_examples(
+    package_name: str,
+    class_name: str,
+) -> dict[str, Any]:
+    ctx = tool_context()
+    return generate_node_examples(
+        _custom_node_package_path(ctx.workspace, package_name),
+        class_name,
+    )
+
+
+@mcp.tool()
+async def comfy_run_node_contract_tests(
+    package_name: str,
+    class_name: str,
+    timeout_seconds: int = 5,
+    max_output_bytes: int = 20000,
+) -> dict[str, Any]:
+    ctx = tool_context()
+    _validate_node_import_options(timeout_seconds, max_output_bytes)
+    return run_node_contract_tests(
+        _custom_node_package_path(ctx.workspace, package_name),
+        class_name,
+        timeout_seconds=timeout_seconds,
+        max_output_bytes=max_output_bytes,
+    )
+
+
+@mcp.tool()
+async def comfy_custom_node_repair_guidance(package_name: str) -> dict[str, Any]:
+    ctx = tool_context()
+    return custom_node_repair_guidance(
+        _custom_node_package_path(ctx.workspace, package_name)
     )
 
 

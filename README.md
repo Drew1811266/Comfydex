@@ -6,7 +6,7 @@ The plugin is installed in Codex, not in ComfyUI. ComfyUI remains the runtime se
 
 ## Status
 
-Current version: `0.4.0`
+Current version: `0.5.0`
 
 This release focuses on a practical developer workflow:
 
@@ -18,7 +18,7 @@ This release focuses on a practical developer workflow:
 - analyze workflow nodes, links, model references, and missing node types
 - import UI workflow JSON and convert it toward API prompt JSON
 - build first-pass workflows from templates and structured plans
-- scaffold, inspect, validate, import-check, and document custom node packages
+- scaffold, inspect, validate, import-check, document, contract-test, and repair-guide custom node packages
 - submit API prompt JSON to ComfyUI
 - watch execution through WebSocket events
 - fall back to HTTP queue/history polling when WebSocket waiting fails
@@ -47,7 +47,7 @@ Codex is strong at reading code, editing structured files, following tool workfl
 │   └── plugin.json              # Codex plugin manifest
 ├── .mcp.json                    # MCP server launch config
 ├── docs/
-│   └── usage/                   # 0.3 usage guides
+│   └── usage/                   # Usage guides
 ├── examples/                    # Workflow, report, and custom node examples
 ├── skills/
 │   ├── comfyui-custom-nodes/
@@ -66,6 +66,7 @@ Codex is strong at reading code, editing structured files, following tool workfl
 │       ├── conversion.py        # UI workflow import and API conversion
 │       ├── core/                # Shared project context, SQLite index, and migrations
 │       ├── diagnostics.py       # Run diagnosis and comparison
+│       ├── node_contracts.py    # Custom node examples, contracts, and repair guidance
 │       ├── outputs.py           # Output listing and cleanup
 │       ├── paths.py             # Path safety helpers
 │       ├── reports.py           # Markdown run reports
@@ -96,9 +97,9 @@ The Skill explains how Codex should work with ComfyUI workflows, including the d
 - UI workflow JSON, exported for the ComfyUI visual editor
 - API prompt JSON, submitted to ComfyUI `/prompt`
 
-Version `0.4.0` can import UI workflow files and help convert them, but submission still requires validated API prompt JSON. It also adds a shared project index and a workflow generation engine that returns validation, repair, and submit policy results.
+Version `0.5.0` can import UI workflow files and help convert them, but submission still requires validated API prompt JSON. It also adds a shared project index, a workflow generation engine, and a complete custom node loop with example generation, isolated contract tests, import diagnostics, and repair guidance.
 
-## 0.3 Capability Groups
+## Capability Groups
 
 | Group | What it adds | Primary tools |
 | --- | --- | --- |
@@ -107,7 +108,7 @@ Version `0.4.0` can import UI workflow files and help convert them, but submissi
 | UI workflow import | Classify, import, convert, and explain UI workflow conversion gaps. | `comfy_classify_workflow`, `comfy_import_ui_workflow`, `comfy_convert_ui_to_api` |
 | Workflow builder | Plan and build template-based API workflows from user intent. | `comfy_build_workflow_plan`, `comfy_explain_workflow_plan`, `comfy_build_workflow` |
 | Validation | Validate API workflows and generated workflows against object metadata. | `comfy_validate_api_workflow`, `comfy_validate_workflow_against_object_info` |
-| Custom node assistant | Scaffold, inspect, validate, import-check, and document custom node packages. | `comfy_scaffold_custom_node_package`, `comfy_validate_node_class`, `comfy_check_node_imports` |
+| Custom node assistant | Scaffold, inspect, validate, import-check, document, generate examples, run contract tests, and produce repair guidance. | `comfy_scaffold_custom_node_package`, `comfy_validate_node_class`, `comfy_check_node_imports`, `comfy_generate_node_examples`, `comfy_run_node_contract_tests`, `comfy_custom_node_repair_guidance` |
 | Run diagnostics | Diagnose, report, compare, and inspect run outputs. | `comfy_diagnose_run`, `comfy_export_run_report`, `comfy_compare_runs`, `comfy_list_outputs` |
 | Batch runs | Submit parameter variations and read batch records. | `comfy_batch_submit`, `comfy_read_batch` |
 
@@ -187,6 +188,9 @@ Comfydex exposes these tools:
 | `comfy_validate_node_mappings` | Validate custom node mapping dictionaries. |
 | `comfy_validate_node_class` | Validate custom node class contracts. |
 | `comfy_check_node_imports` | Import-check a custom node package in isolation. |
+| `comfy_generate_node_examples` | Generate deterministic example inputs for scalar and enum node inputs. |
+| `comfy_run_node_contract_tests` | Import and execute a mapped node class in an isolated subprocess and verify tuple returns. |
+| `comfy_custom_node_repair_guidance` | Aggregate mapping, class, import, and contract readiness guidance for a package. |
 | `comfy_generate_node_docs` | Generate deterministic node package documentation. |
 | `comfy_diagnose_run` | Produce structured run diagnostics and a short summary. |
 | `comfy_export_run_report` | Write `runs/<run_id>/report.md`. |
@@ -221,7 +225,7 @@ comfy_fetch_outputs
 comfy_read_run
 ```
 
-## 0.4 Usage Examples
+## 0.5 Usage Examples
 
 ### Workflow generation
 
@@ -277,9 +281,12 @@ comfy_validate_node_mappings
 comfy_validate_node_class
 comfy_check_node_imports
 comfy_generate_node_docs
+comfy_generate_node_examples
+comfy_run_node_contract_tests
+comfy_custom_node_repair_guidance
 ```
 
-Default custom node writes are workspace-local under `custom_nodes/`.
+Default custom node writes are workspace-local under `custom_nodes/`. Example generation returns `generated` or `blocked`; contract tests return `passed`, `blocked`, or `failed`; repair guidance returns `ready`, `needs_work`, or `blocked`.
 
 ### Run diagnostics and batch work
 
@@ -403,6 +410,13 @@ python scripts/validate_plugin.py
 ```
 
 ## Release Notes
+
+### 0.5.0
+
+- Added deterministic custom node example generation for scalar defaults and enum choices.
+- Added isolated custom node contract tests that instantiate mapped node classes, call `FUNCTION`, and verify tuple return counts.
+- Added parsed import diagnostics and package-level repair guidance.
+- Added `comfy_generate_node_examples`, `comfy_run_node_contract_tests`, and `comfy_custom_node_repair_guidance`.
 
 ### 0.4.0
 
