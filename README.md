@@ -6,13 +6,15 @@ The plugin is installed in Codex, not in ComfyUI. ComfyUI remains the runtime se
 
 ## Status
 
-Current version: `0.3.0`
+Current version: `0.4.0`
 
 This release focuses on a practical developer workflow:
 
 - connect to a local or remote ComfyUI server
 - manage workflow JSON files from a Codex workspace
 - maintain a workspace-local project index at `.comfydex/comfydex.db`
+- build generated workflows from deterministic generation plans
+- validate generated workflows and classify submit policy before running
 - analyze workflow nodes, links, model references, and missing node types
 - import UI workflow JSON and convert it toward API prompt JSON
 - build first-pass workflows from templates and structured plans
@@ -94,12 +96,13 @@ The Skill explains how Codex should work with ComfyUI workflows, including the d
 - UI workflow JSON, exported for the ComfyUI visual editor
 - API prompt JSON, submitted to ComfyUI `/prompt`
 
-Version `0.3.0` can import UI workflow files and help convert them, but submission still requires validated API prompt JSON. It also adds a shared project index that future desktop and automation layers can reuse.
+Version `0.4.0` can import UI workflow files and help convert them, but submission still requires validated API prompt JSON. It also adds a shared project index and a workflow generation engine that returns validation, repair, and submit policy results.
 
 ## 0.3 Capability Groups
 
 | Group | What it adds | Primary tools |
 | --- | --- | --- |
+| Workflow generation | Plan, generate, validate, repair, and classify submit policy for generated API workflows. | `comfy_plan_workflow_generation`, `comfy_generate_workflow`, `comfy_evaluate_submit_policy` |
 | Project index | Build and inspect a local SQLite index for workflows, runs, outputs, batches, and index errors. | `comfy_project_status`, `comfy_reindex_project` |
 | UI workflow import | Classify, import, convert, and explain UI workflow conversion gaps. | `comfy_classify_workflow`, `comfy_import_ui_workflow`, `comfy_convert_ui_to_api` |
 | Workflow builder | Plan and build template-based API workflows from user intent. | `comfy_build_workflow_plan`, `comfy_explain_workflow_plan`, `comfy_build_workflow` |
@@ -176,6 +179,9 @@ Comfydex exposes these tools:
 | `comfy_build_workflow_plan` | Create a structured workflow build plan. |
 | `comfy_explain_workflow_plan` | Explain required inputs and assumptions in a build plan. |
 | `comfy_build_workflow` | Build and save a workflow from a plan. |
+| `comfy_plan_workflow_generation` | Create a scored generation plan from intent, parameters, template choice, and constraints. |
+| `comfy_generate_workflow` | Build, validate, repair, and save a generated workflow when submit policy allows. |
+| `comfy_evaluate_submit_policy` | Evaluate whether an existing workflow is allowed, requires confirmation, or is blocked. |
 | `comfy_scaffold_custom_node_package` | Create a workspace-local custom node package. |
 | `comfy_inspect_custom_node_package` | Inspect custom node package files and mappings. |
 | `comfy_validate_node_mappings` | Validate custom node mapping dictionaries. |
@@ -215,7 +221,17 @@ comfy_fetch_outputs
 comfy_read_run
 ```
 
-## 0.3 Usage Examples
+## 0.4 Usage Examples
+
+### Workflow generation
+
+```text
+comfy_plan_workflow_generation
+comfy_generate_workflow
+comfy_evaluate_submit_policy
+```
+
+Generated workflows expose validation, repairs, and submit policy. Submit only when policy is `allowed`; ask for confirmation when policy is `requires_confirmation`; do not submit when policy is `blocked`.
 
 ### Project index
 
@@ -387,6 +403,13 @@ python scripts/validate_plugin.py
 ```
 
 ## Release Notes
+
+### 0.4.0
+
+- Added deterministic workflow generation planning with scored template candidates.
+- Added generated workflow validation, safe repair records, and submit policy classification.
+- Added `comfy_plan_workflow_generation`, `comfy_generate_workflow`, and `comfy_evaluate_submit_policy`.
+- Preserved compatibility for existing workflow builder tools.
 
 ### 0.3.0
 

@@ -1,6 +1,6 @@
 ---
 name: comfyui-workflows
-description: Use when working with ComfyUI workflows from Codex, including inspecting workflow JSON, checking project index state, checking ComfyUI connection, submitting prompts, waiting for queue execution, fetching outputs, or diagnosing missing nodes and models through Comfydex MCP tools.
+description: Use when working with ComfyUI workflows from Codex, including inspecting workflow JSON, checking project index state, generating workflows, checking ComfyUI connection, submitting prompts, waiting for queue execution, fetching outputs, or diagnosing missing nodes and models through Comfydex MCP tools.
 ---
 
 # ComfyUI Workflows With Comfydex
@@ -22,21 +22,32 @@ For a normal run:
 
 1. Call `comfy_project_status`.
 2. Call `comfy_reindex_project` when project counts are stale or files were changed outside Comfydex.
-3. Call `comfy_check_connection`.
-4. Call `comfy_get_object_info` when node metadata is needed.
-5. Call `comfy_list_workflows`.
-6. Call `comfy_read_workflow` for the selected file.
-7. Call `comfy_analyze_workflow`.
-8. Call `comfy_submit_workflow`.
-9. Call `comfy_wait_for_run`.
-10. Call `comfy_fetch_outputs`.
-11. Call `comfy_read_run`.
+3. Call `comfy_plan_workflow_generation` before creating a new workflow.
+4. Call `comfy_generate_workflow` when required generation inputs are present.
+5. Call `comfy_evaluate_submit_policy` before submitting an existing or generated workflow.
+6. Call `comfy_check_connection`.
+7. Call `comfy_get_object_info` when node metadata is needed.
+8. Call `comfy_list_workflows`.
+9. Call `comfy_read_workflow` for the selected file.
+10. Call `comfy_analyze_workflow`.
+11. Call `comfy_submit_workflow` only when submit policy is `allowed`.
+12. Call `comfy_wait_for_run`.
+13. Call `comfy_fetch_outputs`.
+14. Call `comfy_read_run`.
 
 ## Project Index
 
 Use `comfy_project_status` to inspect the workspace paths, `.comfydex/comfydex.db`, schema version, index counts, and index error count.
 
 Use `comfy_reindex_project` after manual file changes or when project status looks stale. Reindexing rebuilds SQLite rows from compatibility records and does not delete workflow files, run records, batch records, or output files.
+
+## Workflow Generation
+
+Use `comfy_plan_workflow_generation` to turn intent and parameters into a scored generation plan. Resolve `missing_information` before generating.
+
+Use `comfy_generate_workflow` to build, validate, repair, and save a workflow. Inspect `repairs`, `gaps`, and `policy` before submitting.
+
+Use `comfy_evaluate_submit_policy` for existing workflows. Submit only when policy is `allowed`; ask for confirmation when policy is `requires_confirmation`; do not submit when policy is `blocked`.
 
 ## Workflow Editing Rules
 
