@@ -234,6 +234,42 @@ def replace_asset_rows(db: sqlite3.Connection, rows: list[dict[str, Any]]) -> No
     )
 
 
+def list_asset_rows(db: sqlite3.Connection) -> list[dict[str, Any]]:
+    rows = db.execute(
+        """
+        SELECT *
+        FROM asset_records
+        ORDER BY favorite DESC, rating DESC, modified_time DESC, filename ASC
+        """
+    ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def get_asset_row(db: sqlite3.Connection, asset_id: str) -> dict[str, Any] | None:
+    row = db.execute(
+        "SELECT * FROM asset_records WHERE asset_id = ?",
+        (asset_id,),
+    ).fetchone()
+    return None if row is None else dict(row)
+
+
+def update_asset_annotation(
+    db: sqlite3.Connection,
+    asset_id: str,
+    updates: dict[str, Any],
+) -> None:
+    allowed = {"tags_json", "rating", "favorite", "notes", "updated_at"}
+    keys = [key for key in updates if key in allowed]
+    if not keys:
+        return
+    assignments = ", ".join(f"{key} = ?" for key in keys)
+    values = [updates[key] for key in keys]
+    db.execute(
+        f"UPDATE asset_records SET {assignments} WHERE asset_id = ?",
+        (*values, asset_id),
+    )
+
+
 def replace_batch_rows(db: sqlite3.Connection, rows: list[dict[str, Any]]) -> None:
     db.execute("DELETE FROM batch_records")
     db.executemany(
