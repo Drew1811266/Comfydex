@@ -80,6 +80,7 @@ def test_usage_docs_cover_new_capabilities():
         "run-diagnostics.md": "comfy_diagnose_run",
         "project-index.md": "comfy_reindex_project",
         "workflow-generation.md": "comfy_generate_workflow",
+        "end-to-end-automation.md": "comfy_generate_run_fetch",
         "asset-library.md": "comfy_search_assets",
         "desktop-app.md": "Tauri",
     }
@@ -108,6 +109,7 @@ def test_readme_mentions_0_8_capabilities():
     assert "comfy_reindex_project" in text
     assert "comfy_plan_workflow_generation" in text
     assert "comfy_generate_workflow" in text
+    assert "comfy_generate_run_fetch" in text
     assert "comfy_evaluate_submit_policy" in text
     assert "comfy_generate_node_examples" in text
     assert "comfy_run_node_contract_tests" in text
@@ -120,6 +122,36 @@ def test_readme_mentions_0_8_capabilities():
     assert "comfy_export_asset_library_report" in text
     assert "comfy_compare_assets" in text
     assert ".comfydex/comfydex.db" in text
+
+
+def test_readme_mentions_0_9_automation():
+    text = (ROOT / "README.md").read_text(encoding="utf-8")
+
+    assert "0.9.0" in text
+    assert "End-To-End Automation And Hardening" in text
+    assert "comfy_generate_run_fetch" in text
+    assert "confirm_risky_actions" in text
+    assert "validate_release_package.py" in text
+
+
+def test_end_to_end_automation_docs_cover_confirmation_and_recovery():
+    usage = (ROOT / "docs" / "usage" / "end-to-end-automation.md").read_text(
+        encoding="utf-8"
+    )
+    skill = (ROOT / "skills" / "comfyui-workflows" / "SKILL.md").read_text(
+        encoding="utf-8"
+    )
+
+    for marker in (
+        "comfy_generate_run_fetch",
+        "confirm_risky_actions",
+        "wait_for_completion",
+        "fetch_outputs",
+        "object_info_unavailable",
+        "reindex",
+    ):
+        assert marker in usage
+        assert marker in skill
 
 
 def test_custom_node_docs_cover_complete_loop_tools():

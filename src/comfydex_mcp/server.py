@@ -278,6 +278,90 @@ def _same_workflow_path(left: Path, right: Path) -> bool:
     return left_text == right_text
 
 
+def _automation_next_actions(
+    *,
+    status: str,
+    policy: dict[str, Any] | None = None,
+    run_id: str | None = None,
+) -> list[str]:
+    actions: list[str] = []
+    if status == "requires_confirmation":
+        reasons = []
+        if isinstance(policy, dict):
+            raw_reasons = policy.get("reasons", [])
+            if isinstance(raw_reasons, list):
+                reasons = [str(reason) for reason in raw_reasons]
+        if "workflow_overwrite" in reasons:
+            actions.append(
+                "Set confirm_risky_actions=true after reviewing policy.reasons to overwrite the existing workflow."
+            )
+        else:
+            actions.append(
+                "Set confirm_risky_actions=true only after reviewing policy.reasons and generation.validation."
+            )
+    elif status == "submitted" and run_id:
+        actions.append(f"Run comfy_wait_for_run with run_id {run_id}.")
+        actions.append(f"Run comfy_fetch_outputs with run_id {run_id} after completion.")
+    elif status == "failed" and run_id:
+        actions.append(f"Run comfy_read_run with run_id {run_id}.")
+        actions.append(f"Run comfy_diagnose_run with run_id {run_id}.")
+    return actions
+
+
+def _read_run_if_available(runs_dir: Path, run_id: str | None) -> dict[str, Any] | None:
+    if not run_id:
+        return None
+    try:
+        return read_run(runs_dir, run_id)
+    except Exception:
+        return None
+
+
+def _try_reindex(ctx: ToolContext) -> tuple[dict[str, Any] | None, str | None]:
+    try:
+        return reindex_project(project_context_from_config(ctx.config)), None
+    except Exception as exc:
+        return None, str(exc)
+
+
+def _structural_object_info_from_plan(plan: dict[str, Any]) -> dict[str, Any]:
+    template = plan.get("template", {})
+    nodes = template.get("nodes", []) if isinstance(template, dict) else []
+    links = template.get("links", []) if isinstance(template, dict) else []
+    class_by_key: dict[str, str] = {}
+    output_slots_by_class: dict[str, int] = {}
+
+    if isinstance(nodes, list):
+        for node in nodes:
+            if not isinstance(node, dict):
+                continue
+            key = node.get("key")
+            class_type = node.get("class_type")
+            if isinstance(key, str) and isinstance(class_type, str):
+                class_by_key[key] = class_type
+                output_slots_by_class.setdefault(class_type, 1)
+
+    if isinstance(links, list):
+        for link in links:
+            if not isinstance(link, dict):
+                continue
+            source_class = class_by_key.get(str(link.get("from")))
+            output_slot = link.get("output_slot")
+            if source_class is not None and isinstance(output_slot, int):
+                output_slots_by_class[source_class] = max(
+                    output_slots_by_class.get(source_class, 1),
+                    output_slot + 1,
+                )
+
+    return {
+        class_type: {
+            "input": {"required": {}},
+            "output": ["ANY"] * max(output_slots, 1),
+        }
+        for class_type, output_slots in sorted(output_slots_by_class.items())
+    }
+
+
 async def _poll_history_until_terminal(
     *,
     client: ComfyClient,
@@ -777,6 +861,216 @@ async def comfy_evaluate_submit_policy(
         submit_ready=validation["status"] == "valid",
         constraints=constraints or {},
     )
+
+
+@mcp.tool()
+async def comfy_generate_run_fetch(
+    name: str,
+    intent: str,
+    parameters: dict[str, Any] | None = None,
+    template_id: str | None = None,
+    constraints: dict[str, Any] | None = None,
+    run_label: str | None = None,
+    confirm_risky_actions: bool = False,
+    wait_for_completion: bool = True,
+    fetch_outputs: bool = True,
+    download_outputs: bool = True,
+    use_object_info: bool = True,
+) -> dict[str, Any]:
+    ctx = tool_context()
+    target_path = safe_json_path(ctx.config.workflows_dir, name)
+    plan = plan_workflow_generation(intent, parameters, template_id, constraints)
+    object_info: dict[str, Any] = {}
+    policy_issues: list[str] = []
+    object_info_warning: dict[str, str] | None = None
+
+    if use_object_info:
+        try:
+            async with ComfyClient(
+                ctx.config.base_url,
+                ctx.config.headers,
+                ctx.config.request_timeout_seconds,
+            ) as client:
+                object_info = await client.get_object_info()
+        except Exception as exc:
+            object_info_warning = {
+                "reason": "object_info_unavailable",
+                "error": str(exc),
+            }
+            policy_issues.append("object_info_unavailable")
+            object_info = _structural_object_info_from_plan(plan)
+
+    generation = build_generated_workflow(
+        plan,
+        object_info,
+        target_exists=target_path.exists(),
+        allow_draft=False,
+    )
+    if policy_issues:
+        generation["policy"] = evaluate_submit_policy(
+            validation=generation["validation"],
+            submit_ready=bool(generation["submit_ready"]),
+            constraints=generation["plan"]["constraints"],
+            target_exists=target_path.exists(),
+            issues=policy_issues,
+        )
+    policy = generation["policy"]
+    response: dict[str, Any] = {
+        "status": "blocked",
+        "stage": "policy",
+        "workflow_name": name,
+        "policy": policy,
+        "generation": generation,
+        "next_actions": [],
+    }
+    if object_info_warning is not None:
+        response["object_info_warning"] = object_info_warning
+
+    if policy["decision"] == "blocked" or generation.get("workflow") is None:
+        response["status"] = "blocked"
+        response["next_actions"] = [
+            "Review generation.validation, generation.gaps, and policy.reasons before trying again."
+        ]
+        return response
+
+    if policy["decision"] == "requires_confirmation" and not confirm_risky_actions:
+        response["status"] = "requires_confirmation"
+        response["next_actions"] = _automation_next_actions(
+            status="requires_confirmation",
+            policy=policy,
+        )
+        return response
+
+    saved = save_workflow(
+        ctx.config.workflows_dir,
+        name,
+        generation["workflow"],
+        require_api=True,
+        source="generated",
+        validation_status=generation["status"],
+    )
+    response["stage"] = "save"
+    response["saved_workflow"] = saved.name
+    index_result, index_warning = _try_reindex(ctx)
+    if index_result is not None:
+        response["index"] = index_result
+    if index_warning is not None:
+        response["index_warning"] = index_warning
+
+    try:
+        submitted = await comfy_submit_workflow(
+            saved.name,
+            run_label=run_label or Path(name).stem,
+        )
+    except Exception as exc:
+        run_id = getattr(exc, "run_id", None)
+        run = _read_run_if_available(ctx.config.runs_dir, run_id)
+        response.update(
+            {
+                "status": "failed",
+                "stage": "submit",
+                "error": str(exc),
+                "run": run,
+                "next_actions": _automation_next_actions(
+                    status="failed",
+                    run_id=run_id if isinstance(run_id, str) else None,
+                ),
+            }
+        )
+        return response
+
+    response["run"] = submitted
+    run_id = submitted.get("run_id") if isinstance(submitted, dict) else None
+    if not isinstance(run_id, str) or not run_id:
+        response.update(
+            {
+                "status": "failed",
+                "stage": "submit",
+                "error": "comfy_submit_workflow returned no run_id",
+            }
+        )
+        return response
+
+    if not wait_for_completion:
+        response.update(
+            {
+                "status": "submitted",
+                "stage": "submit",
+                "next_actions": _automation_next_actions(
+                    status="submitted",
+                    run_id=run_id,
+                ),
+            }
+        )
+        return response
+
+    try:
+        waited = await comfy_wait_for_run(run_id)
+    except Exception as exc:
+        run = _read_run_if_available(ctx.config.runs_dir, run_id)
+        response.update(
+            {
+                "status": "failed",
+                "stage": "wait",
+                "error": str(exc),
+                "run": run,
+                "next_actions": _automation_next_actions(
+                    status="failed",
+                    run_id=run_id,
+                ),
+            }
+        )
+        return response
+
+    response["run"] = waited
+    run_status = waited.get("status") if isinstance(waited, dict) else None
+    if run_status != "completed":
+        response.update(
+            {
+                "status": "failed" if run_status == "failed" else "submitted",
+                "stage": "wait",
+                "next_actions": _automation_next_actions(
+                    status="failed" if run_status == "failed" else "submitted",
+                    run_id=run_id,
+                ),
+            }
+        )
+        return response
+
+    if fetch_outputs:
+        try:
+            response["outputs"] = await comfy_fetch_outputs(
+                run_id,
+                download=download_outputs,
+            )
+        except Exception as exc:
+            response.update(
+                {
+                    "status": "failed",
+                    "stage": "fetch",
+                    "error": str(exc),
+                    "run": _read_run_if_available(ctx.config.runs_dir, run_id) or waited,
+                    "next_actions": [
+                        f"Run comfy_fetch_outputs with run_id {run_id} after resolving the fetch error.",
+                        f"Run comfy_read_run with run_id {run_id}.",
+                    ],
+                }
+            )
+            return response
+
+    index_result, index_warning = _try_reindex(ctx)
+    if index_result is not None:
+        response["index"] = index_result
+    if index_warning is not None:
+        response["index_warning"] = index_warning
+    response.update(
+        {
+            "status": "completed",
+            "stage": "completed",
+            "next_actions": [],
+        }
+    )
+    return response
 
 
 @mcp.tool()
