@@ -116,6 +116,7 @@ def write_asset_sidecars(
                 }
             )
             continue
+        _record_sidecar_path(context, asset["asset_id"], path)
         written.append({"asset_id": asset["asset_id"], "path": str(path)})
 
     return {
@@ -253,6 +254,10 @@ def _normalize_filters(filters: dict[str, Any]) -> dict[str, Any]:
     tags = filters.get("tags")
     if tags is not None:
         tags = _normalize_tags(tags)
+    date_from = _normalize_date(filters.get("date_from"), "date_from")
+    date_to = _normalize_date(filters.get("date_to"), "date_to")
+    if date_from is not None and date_to is not None and date_from > date_to:
+        raise ValueError("date_from must be earlier than or equal to date_to")
     return {
         "query": _clean_text(filters.get("query"), "").casefold(),
         "run_id": _clean_text(filters.get("run_id"), ""),
@@ -262,6 +267,8 @@ def _normalize_filters(filters: dict[str, Any]) -> dict[str, Any]:
         "tags": tags,
         "favorite": favorite,
         "min_rating": min_rating,
+        "date_from": date_from,
+        "date_to": date_to,
         "limit": limit,
         "offset": offset,
     }
@@ -283,6 +290,13 @@ def _matches_filters(asset: dict[str, Any], filters: dict[str, Any]) -> bool:
     ):
         return False
     if filters["tags"] is not None and not set(filters["tags"]).issubset(asset["tags"]):
+        return False
+    if (
+        filters["date_from"] is not None
+        and asset["modified_time"] < filters["date_from"]
+    ):
+        return False
+    if filters["date_to"] is not None and asset["modified_time"] > filters["date_to"]:
         return False
     query = filters["query"]
     if query and query not in _searchable_text(asset):
@@ -347,6 +361,15 @@ def _sidecar_payload(asset: dict[str, Any]) -> dict[str, Any]:
         "favorite": asset["favorite"],
         "notes": asset["notes"],
     }
+
+
+def _record_sidecar_path(context: ProjectContext, asset_id: str, path: Path) -> None:
+    with open_database(context.database_path) as db:
+        update_asset_annotation(
+            db,
+            asset_id,
+            {"sidecar_path": str(path), "updated_at": _now()},
+        )
 
 
 def _write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
@@ -467,6 +490,21 @@ def _normalize_rating(value: Any) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= 5:
         raise ValueError("rating must be an integer from 1 to 5")
     return value
+
+
+def _normalize_date(value: Any, label: str) -> float | None:
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{label} must be an ISO timestamp")
+    text = value.strip().replace("Z", "+00:00")
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError as exc:
+        raise ValueError(f"{label} must be an ISO timestamp") from exc
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.timestamp()
 
 
 def _normalize_favorite(value: Any) -> bool:

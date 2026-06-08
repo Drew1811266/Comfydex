@@ -143,6 +143,29 @@ def test_search_assets_filters_query_tags_favorite_and_rating(tmp_path: Path):
     assert rated_result["assets"][0]["asset_id"] == cat_id
 
 
+def test_search_assets_filters_by_date_range(tmp_path: Path):
+    ctx = _indexed_context(tmp_path)
+
+    future = search_assets(ctx, {"date_from": "2999-01-01T00:00:00+00:00"})
+    past = search_assets(ctx, {"date_to": "2000-01-01T00:00:00+00:00"})
+
+    assert future["total"] == 0
+    assert past["total"] == 0
+
+
+def test_search_assets_rejects_inverted_date_range(tmp_path: Path):
+    ctx = _indexed_context(tmp_path)
+
+    with pytest.raises(ValueError, match="date"):
+        search_assets(
+            ctx,
+            {
+                "date_from": "2026-06-09T00:00:00+00:00",
+                "date_to": "2026-06-08T00:00:00+00:00",
+            },
+        )
+
+
 def test_search_assets_orders_by_favorite_rating_modified_and_filename(tmp_path: Path):
     ctx = _indexed_context(tmp_path)
     cat_id = _asset_id_for_filename(ctx, "cat.png")
@@ -235,6 +258,21 @@ def test_write_asset_sidecars_writes_deterministic_metadata(tmp_path: Path):
     assert payload["favorite"] is True
     assert "cinematic cat" in payload["prompt_text"]
     assert payload["model_references"] == ["sdxl.safetensors"]
+    with open_database(ctx.database_path) as db:
+        row = db.execute(
+            "SELECT sidecar_path FROM asset_records WHERE asset_id = ?",
+            (asset_id,),
+        ).fetchone()
+        assert row["sidecar_path"] == str(sidecar_path)
+
+    reindex_project(ctx)
+
+    with open_database(ctx.database_path) as db:
+        row = db.execute(
+            "SELECT sidecar_path FROM asset_records WHERE asset_id = ?",
+            (asset_id,),
+        ).fetchone()
+        assert row["sidecar_path"] == str(sidecar_path)
 
 
 def test_plan_asset_cleanup_is_dry_run_by_default(tmp_path: Path):

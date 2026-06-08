@@ -183,7 +183,8 @@ def replace_output_rows(db: sqlite3.Connection, rows: list[dict[str, Any]]) -> N
 def existing_asset_annotations(db: sqlite3.Connection) -> dict[str, dict[str, Any]]:
     rows = db.execute(
         """
-        SELECT asset_id, tags_json, rating, favorite, notes, updated_at
+        SELECT asset_id, tags_json, rating, favorite, notes, sidecar_path,
+               thumbnail_path, updated_at
         FROM asset_records
         """
     ).fetchall()
@@ -258,7 +259,15 @@ def update_asset_annotation(
     asset_id: str,
     updates: dict[str, Any],
 ) -> None:
-    allowed = {"tags_json", "rating", "favorite", "notes", "updated_at"}
+    allowed = {
+        "tags_json",
+        "rating",
+        "favorite",
+        "notes",
+        "sidecar_path",
+        "thumbnail_path",
+        "updated_at",
+    }
     keys = [key for key in updates if key in allowed]
     if not keys:
         return
