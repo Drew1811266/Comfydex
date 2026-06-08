@@ -6,6 +6,9 @@ __pycache__/
 .ruff_cache/
 build/
 dist/
+node_modules/
+desktop/dist/
+desktop/node_modules/
 .venv/
 venv/
 .worktrees

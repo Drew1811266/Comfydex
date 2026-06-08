@@ -1,0 +1,187 @@
+:root {
+  color: #e5e7eb;
+  background: #101418;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 960px;
+  min-height: 640px;
+  background: #101418;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+.app-shell {
+  display: grid;
+  grid-template-columns: 232px minmax(0, 1fr);
+  min-height: 100vh;
+}
+
+.sidebar {
+  border-right: 1px solid #2a3038;
+  background: #151a20;
+  padding: 16px 12px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 36px;
+  padding: 0 8px;
+  font-weight: 700;
+}
+
+.nav-item {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 10px;
+  min-height: 34px;
+  margin-top: 6px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: #aab3c0;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+
+.nav-item.active,
+.nav-item:hover {
+  border-color: #334155;
+  color: #f8fafc;
+  background: #202731;
+}
+
+.workspace {
+  min-width: 0;
+  background: #101418;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 58px;
+  padding: 10px 18px;
+  border-bottom: 1px solid #2a3038;
+}
+
+.eyebrow,
+.detail-band span,
+.metric span {
+  display: block;
+  color: #8d98a7;
+  font-size: 12px;
+}
+
+.connection {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #cbd5e1;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #22c55e;
+}
+
+.view {
+  padding: 18px;
+}
+
+.view-header {
+  margin-bottom: 14px;
+}
+
+h1 {
+  margin: 0;
+  font-size: 20px;
+  letter-spacing: 0;
+}
+
+p {
+  margin: 4px 0 0;
+  color: #9aa5b3;
+}
+
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.metric,
+.detail-band {
+  border: 1px solid #2a3038;
+  border-radius: 6px;
+  background: #171d24;
+  padding: 12px;
+}
+
+.metric strong {
+  display: block;
+  margin-top: 6px;
+  font-size: 20px;
+}
+
+.detail-band {
+  margin-top: 10px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  border: 1px solid #2a3038;
+  background: #151a20;
+}
+
+th,
+td {
+  height: 36px;
+  padding: 0 12px;
+  border-bottom: 1px solid #2a3038;
+  text-align: left;
+  white-space: nowrap;
+}
+
+th {
+  color: #9aa5b3;
+  font-weight: 600;
+}
+
+.settings-grid {
+  display: grid;
+  max-width: 720px;
+  gap: 12px;
+}
+
+label {
+  display: grid;
+  gap: 6px;
+  color: #9aa5b3;
+}
+
+input {
+  height: 34px;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  color: #e5e7eb;
+  background: #151a20;
+  padding: 0 10px;
+}

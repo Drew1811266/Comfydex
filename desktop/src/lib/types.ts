@@ -1,0 +1,51 @@
+export type ProjectCounts = {
+  workflows: number;
+  runs: number;
+  outputs: number;
+  assets: number;
+  batches: number;
+  errors: number;
+};
+
+export type ProjectStatus = {
+  workspace: string;
+  database_path: string;
+  schema_version: number;
+  counts: ProjectCounts;
+  last_reindexed_at: string | null;
+};
+
+export type WorkflowRow = {
+  name: string;
+  kind: string;
+  modified_time: number;
+  size: number;
+  valid_json: boolean;
+};
+
+export type RunRow = {
+  run_id: string;
+  workflow_name: string | null;
+  status: string;
+  updated_at: string | null;
+  output_count: number;
+};
+
+export type AssetRow = {
+  asset_id: string;
+  filename: string;
+  workflow_name: string | null;
+  status: string;
+  rating: number | null;
+  favorite: boolean;
+  tags: string[];
+};
+
+export type ConfigState = {
+  base_url: string;
+  workflows_dir: string;
+  runs_dir: string;
+  headers: Record<string, string>;
+  request_timeout_seconds: number;
+  websocket_timeout_seconds: number;
+};
