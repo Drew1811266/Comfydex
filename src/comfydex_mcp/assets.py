@@ -2,12 +2,16 @@ from __future__ import annotations
 
 import json
 import re
+import stat
+import tempfile
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from .core.database import migrate_project, open_database
 from .core.project import ProjectContext
 from .core.store import get_asset_row, list_asset_rows, update_asset_annotation
+from .paths import ensure_directory, is_redirected_path
 
 ASSET_ID_PATTERN = re.compile(r"[a-f0-9]{64}")
 TEXT_MAX_LENGTH = 1000
@@ -91,6 +95,146 @@ def update_asset_metadata(
     return _asset_from_row(row)
 
 
+def write_asset_sidecars(
+    context: ProjectContext,
+    asset_ids: list[str] | None = None,
+) -> dict[str, Any]:
+    assets = _selected_assets(context, asset_ids=asset_ids)
+    sidecar_dir = _sidecar_dir(context)
+    written: list[dict[str, str]] = []
+    errors: list[dict[str, str]] = []
+    for asset in assets:
+        path = sidecar_dir / f"{asset['asset_id']}.json"
+        try:
+            _write_json_atomic(path, _sidecar_payload(asset))
+        except OSError as exc:
+            errors.append(
+                {
+                    "asset_id": asset["asset_id"],
+                    "path": str(path),
+                    "message": f"{exc.__class__.__name__}: {exc}",
+                }
+            )
+            continue
+        written.append({"asset_id": asset["asset_id"], "path": str(path)})
+
+    return {
+        "status": "completed" if not errors else "completed_with_errors",
+        "written_count": len(written),
+        "written": written,
+        "errors": errors,
+    }
+
+
+def plan_asset_cleanup(
+    context: ProjectContext,
+    filters: dict[str, Any] | None = None,
+    asset_ids: list[str] | None = None,
+    confirm: bool = False,
+) -> dict[str, Any]:
+    assets = _selected_assets(context, filters=filters, asset_ids=asset_ids)
+    candidates: list[dict[str, Any]] = []
+    skipped: list[dict[str, Any]] = []
+    deleted: list[str] = []
+    base = context.runs_dir.resolve()
+
+    for asset in assets:
+        delete_path, reason = _safe_delete_path(Path(asset["path"]), base)
+        if delete_path is None:
+            skipped.append({**asset, "reason": reason})
+            continue
+        candidates.append(asset)
+        if not confirm:
+            continue
+        try:
+            delete_path.unlink()
+        except OSError:
+            skipped.append({**asset, "reason": "delete_failed"})
+            continue
+        deleted.append(str(delete_path.resolve()))
+
+    return {
+        "dry_run": not confirm,
+        "candidates": candidates,
+        "deleted": deleted,
+        "skipped": skipped,
+    }
+
+
+def export_asset_library_report(
+    context: ProjectContext,
+    filters: dict[str, Any] | None = None,
+) -> dict[str, str]:
+    result = search_assets(context, {**(filters or {}), "limit": MAX_LIMIT, "offset": 0})
+    assets = result["assets"]
+    favorite_count = sum(1 for asset in assets if asset["favorite"])
+    rated = [asset["rating"] for asset in assets if asset["rating"] is not None]
+    average_rating = sum(rated) / len(rated) if rated else 0
+    lines = [
+        "# Comfydex Asset Library Report",
+        "",
+        "## Summary",
+        "",
+        f"- Total assets: {result['total']}",
+        f"- Assets in report: {len(assets)}",
+        f"- Favorites: {favorite_count}",
+        f"- Average rating: {average_rating:.2f}" if rated else "- Average rating: none",
+        "",
+        "## Assets",
+        "",
+        "| Filename | Workflow | Status | Rating | Favorite | Tags |",
+        "| --- | --- | --- | --- | --- | --- |",
+    ]
+    for asset in assets:
+        lines.append(
+            "| "
+            + " | ".join(
+                [
+                    asset["filename"],
+                    asset.get("workflow_name") or "",
+                    asset["status"],
+                    str(asset["rating"] or ""),
+                    "favorite" if asset["favorite"] else "",
+                    ", ".join(asset["tags"]),
+                ]
+            )
+            + " |"
+        )
+    lines.append("")
+    markdown = "\n".join(lines)
+    report_dir = _report_dir(context)
+    path = report_dir / "asset-library-report.md"
+    _write_text_atomic(path, markdown)
+    return {"path": str(path), "markdown": markdown}
+
+
+def compare_assets(
+    context: ProjectContext,
+    left_asset_id: str,
+    right_asset_id: str,
+) -> dict[str, Any]:
+    left = get_asset(context, left_asset_id)
+    right = get_asset(context, right_asset_id)
+    fields = {
+        "status": (left["status"], right["status"]),
+        "workflow_name": (left.get("workflow_name"), right.get("workflow_name")),
+        "prompt_text": (left["prompt_text"], right["prompt_text"]),
+        "model_references": (left["model_references"], right["model_references"]),
+        "size_bytes": (left["size_bytes"], right["size_bytes"]),
+        "tags": (left["tags"], right["tags"]),
+        "rating": (left["rating"], right["rating"]),
+        "favorite": (left["favorite"], right["favorite"]),
+    }
+    return {
+        "left": left,
+        "right": right,
+        "differences": {
+            name: {"left": values[0], "right": values[1], "changed": values[0] != values[1]}
+            for name, values in fields.items()
+        },
+    }
+
+
 def _normalize_filters(filters: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(filters, dict):
         raise ValueError("filters must be a dictionary")
@@ -144,6 +288,115 @@ def _matches_filters(asset: dict[str, Any], filters: dict[str, Any]) -> bool:
     if query and query not in _searchable_text(asset):
         return False
     return True
+
+
+def _selected_assets(
+    context: ProjectContext,
+    *,
+    filters: dict[str, Any] | None = None,
+    asset_ids: list[str] | None = None,
+) -> list[dict[str, Any]]:
+    if asset_ids is not None:
+        if not isinstance(asset_ids, list):
+            raise ValueError("asset_ids must be a list")
+        return [get_asset(context, _safe_asset_id(asset_id)) for asset_id in asset_ids]
+    return search_assets(context, {**(filters or {}), "limit": MAX_LIMIT, "offset": 0})[
+        "assets"
+    ]
+
+
+def _sidecar_dir(context: ProjectContext) -> Path:
+    directory = ensure_directory(context.state_dir / "assets" / "sidecars")
+    _require_safe_child_dir(directory, context.state_dir)
+    return directory
+
+
+def _report_dir(context: ProjectContext) -> Path:
+    directory = ensure_directory(context.state_dir / "reports")
+    _require_safe_child_dir(directory, context.state_dir)
+    return directory
+
+
+def _require_safe_child_dir(path: Path, base: Path) -> None:
+    if is_redirected_path(path):
+        raise ValueError("asset library path must not be redirected")
+    try:
+        path.resolve().relative_to(base.resolve())
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise ValueError("asset library path must stay inside the project state directory") from exc
+
+
+def _sidecar_payload(asset: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "asset_id": asset["asset_id"],
+        "output_id": asset["output_id"],
+        "run_id": asset["run_id"],
+        "workflow_name": asset.get("workflow_name"),
+        "status": asset["status"],
+        "path": asset["path"],
+        "filename": asset["filename"],
+        "type": asset["type"],
+        "subfolder": asset["subfolder"],
+        "size_bytes": asset["size_bytes"],
+        "modified_time": asset["modified_time"],
+        "content_hash": asset["content_hash"],
+        "prompt_text": asset["prompt_text"],
+        "model_references": asset["model_references"],
+        "tags": asset["tags"],
+        "rating": asset["rating"],
+        "favorite": asset["favorite"],
+        "notes": asset["notes"],
+    }
+
+
+def _write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
+    _write_text_atomic(path, json.dumps(payload, indent=2, sort_keys=True) + "\n")
+
+
+def _write_text_atomic(path: Path, text: str) -> None:
+    tmp_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            "w",
+            delete=False,
+            dir=path.parent,
+            encoding="utf-8",
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+        ) as tmp:
+            tmp.write(text)
+            tmp_path = Path(tmp.name)
+        if is_redirected_path(path):
+            raise ValueError("asset library output path must not be redirected")
+        path.resolve().relative_to(path.parent.resolve())
+        tmp_path.replace(path)
+    finally:
+        if tmp_path is not None:
+            try:
+                tmp_path.unlink()
+            except FileNotFoundError:
+                pass
+
+
+def _safe_delete_path(path: Path, base: Path) -> tuple[Path | None, str | None]:
+    try:
+        resolved = path.resolve()
+        resolved.relative_to(base)
+    except (OSError, RuntimeError, ValueError):
+        return None, "escaped"
+    if is_redirected_path(path):
+        return None, "redirected"
+    try:
+        path_stat = path.stat(follow_symlinks=False)
+    except FileNotFoundError:
+        return None, "missing"
+    except OSError:
+        return None, "unreadable"
+    if not stat.S_ISREG(path_stat.st_mode):
+        return None, "not_file"
+    if is_redirected_path(path):
+        return None, "redirected"
+    return resolved, None
 
 
 def _searchable_text(asset: dict[str, Any]) -> str:

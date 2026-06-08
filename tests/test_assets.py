@@ -1,11 +1,18 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
 
 from comfydex_mcp.assets import search_assets, update_asset_metadata
+from comfydex_mcp.assets import (
+    compare_assets,
+    export_asset_library_report,
+    plan_asset_cleanup,
+    write_asset_sidecars,
+)
 from comfydex_mcp.config import ComfydexConfig
 from comfydex_mcp.core.database import open_database
 from comfydex_mcp.core.indexer import reindex_project
@@ -208,3 +215,80 @@ def test_search_assets_rejects_invalid_filters(tmp_path: Path, filters: dict):
 
     with pytest.raises(ValueError):
         search_assets(ctx, filters)
+
+
+def test_write_asset_sidecars_writes_deterministic_metadata(tmp_path: Path):
+    ctx = _indexed_context(tmp_path)
+    asset_id = _asset_id_for_filename(ctx, "cat.png")
+    update_asset_metadata(ctx, asset_id, tags=["cat"], rating=5, favorite=True)
+
+    result = write_asset_sidecars(ctx, asset_ids=[asset_id])
+
+    assert result["status"] == "completed"
+    assert result["written_count"] == 1
+    sidecar_path = Path(result["written"][0]["path"])
+    assert sidecar_path == ctx.state_dir / "assets" / "sidecars" / f"{asset_id}.json"
+    payload = json.loads(sidecar_path.read_text(encoding="utf-8"))
+    assert payload["asset_id"] == asset_id
+    assert payload["tags"] == ["cat"]
+    assert payload["rating"] == 5
+    assert payload["favorite"] is True
+    assert "cinematic cat" in payload["prompt_text"]
+    assert payload["model_references"] == ["sdxl.safetensors"]
+
+
+def test_plan_asset_cleanup_is_dry_run_by_default(tmp_path: Path):
+    ctx = _indexed_context(tmp_path)
+    asset_id = _asset_id_for_filename(ctx, "cat.png")
+    asset = search_assets(ctx, {"query": "cat.png"})["assets"][0]
+
+    result = plan_asset_cleanup(ctx, asset_ids=[asset_id])
+
+    assert result["dry_run"] is True
+    assert result["candidates"][0]["asset_id"] == asset_id
+    assert Path(asset["path"]).exists()
+    assert result["deleted"] == []
+
+
+def test_plan_asset_cleanup_confirmed_deletes_safe_file(tmp_path: Path):
+    ctx = _indexed_context(tmp_path)
+    asset_id = _asset_id_for_filename(ctx, "cat.png")
+    asset = search_assets(ctx, {"query": "cat.png"})["assets"][0]
+
+    result = plan_asset_cleanup(ctx, asset_ids=[asset_id], confirm=True)
+
+    assert result["dry_run"] is False
+    assert result["deleted"] == [asset["path"]]
+    assert not Path(asset["path"]).exists()
+
+
+def test_export_asset_library_report_writes_markdown(tmp_path: Path):
+    ctx = _indexed_context(tmp_path)
+    asset_id = _asset_id_for_filename(ctx, "cat.png")
+    update_asset_metadata(ctx, asset_id, tags=["cat"], rating=5, favorite=True)
+
+    result = export_asset_library_report(ctx, {"query": "cat"})
+
+    report_path = ctx.state_dir / "reports" / "asset-library-report.md"
+    assert result["path"] == str(report_path)
+    assert report_path.exists()
+    assert "# Comfydex Asset Library Report" in result["markdown"]
+    assert "cat.png" in result["markdown"]
+    assert "favorite" in result["markdown"]
+
+
+def test_compare_assets_reports_asset_differences(tmp_path: Path):
+    ctx = _indexed_context(tmp_path)
+    cat_id = _asset_id_for_filename(ctx, "cat.png")
+    dog_id = _asset_id_for_filename(ctx, "dog.png")
+    update_asset_metadata(ctx, cat_id, tags=["cat"], rating=5, favorite=True)
+    update_asset_metadata(ctx, dog_id, tags=["dog"], rating=3, favorite=False)
+
+    result = compare_assets(ctx, cat_id, dog_id)
+
+    assert result["left"]["asset_id"] == cat_id
+    assert result["right"]["asset_id"] == dog_id
+    assert result["differences"]["prompt_text"]["changed"] is True
+    assert result["differences"]["model_references"]["changed"] is True
+    assert result["differences"]["tags"]["left"] == ["cat"]
+    assert result["differences"]["rating"]["right"] == 3
