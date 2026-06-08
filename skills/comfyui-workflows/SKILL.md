@@ -62,6 +62,10 @@ Comfydex also includes a `desktop/` Tauri desktop app shell for local project br
 
 The desktop app uses the Python desktop bridge, so its data should match MCP project operations such as `comfy_project_status`, `comfy_reindex_project`, `comfy_list_workflows`, `comfy_list_runs`, and `comfy_search_assets`.
 
+The `0.8.0` desktop gallery can help the user review assets, compare outputs, generate asset reports, inspect cleanup dry-runs, and edit simple metadata. Treat this desktop gallery as a visual management surface, not as the source of workflow truth.
+
+The batch task view reads batch records and child run status. Submit new batches through `comfy_batch_submit`, inspect the batch task view afterward, and use `comfy_read_batch` when Codex needs the authoritative JSON record.
+
 Do not assume the desktop shell can edit ComfyUI workflow graphs, run ComfyUI itself, package Python offline, or replace Codex reasoning. Use MCP tools for authoritative workflow generation, validation, submission, queue waiting, output collection, diagnostics, and asset metadata updates.
 
 ## Workflow Generation

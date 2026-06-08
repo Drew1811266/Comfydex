@@ -88,10 +88,14 @@ def test_usage_docs_cover_new_capabilities():
         assert marker in text
 
 
-def test_readme_mentions_0_7_capabilities():
+def test_readme_mentions_0_8_capabilities():
     text = (ROOT / "README.md").read_text(encoding="utf-8")
 
-    assert "0.7.0" in text
+    assert "0.8.0" in text
+    assert "Gallery And Batch UI" in text
+    assert "asset gallery" in text
+    assert "batch task view" in text
+    assert "safe cleanup UI" in text
     assert "desktop/" in text
     assert "Tauri" in text
     assert "Python desktop bridge" in text
@@ -195,6 +199,30 @@ def test_desktop_app_docs_cover_tauri_shell():
     assert "desktop/" in readme
     assert "desktop app shell" in skill
     assert "Python desktop bridge" in skill
+
+
+def test_desktop_app_docs_cover_gallery_batch_ui():
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    usage = (ROOT / "docs" / "usage" / "desktop-app.md").read_text(
+        encoding="utf-8"
+    )
+    skill = (ROOT / "skills" / "comfyui-workflows" / "SKILL.md").read_text(
+        encoding="utf-8"
+    )
+
+    for marker in (
+        "Gallery",
+        "Compare",
+        "Cleanup",
+        "Generate report",
+        "Batches",
+        "Batch detail",
+        "Confirm cleanup",
+    ):
+        assert marker in usage
+    assert "Gallery And Batch UI" in readme
+    assert "desktop gallery" in skill
+    assert "batch task view" in skill
 
 
 def test_workflow_generation_doc_explains_submit_policy():

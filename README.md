@@ -6,7 +6,7 @@ The plugin is installed in Codex, not in ComfyUI. ComfyUI remains the runtime se
 
 ## Status
 
-Current version: `0.7.0`
+Current version: `0.8.0`
 
 This release focuses on a practical developer workflow:
 
@@ -15,6 +15,7 @@ This release focuses on a practical developer workflow:
 - maintain a workspace-local project index at `.comfydex/comfydex.db`
 - search, annotate, report, compare, and safely clean up generated assets
 - browse project status, workflows, runs, assets, and settings in a Windows-first Tauri desktop app shell
+- use Gallery And Batch UI surfaces for asset gallery review, comparison, reports, safe cleanup UI, and batch task view inspection
 - build generated workflows from deterministic generation plans
 - validate generated workflows and classify submit policy before running
 - analyze workflow nodes, links, model references, and missing node types
@@ -105,7 +106,7 @@ The Skill explains how Codex should work with ComfyUI workflows, including the d
 - UI workflow JSON, exported for the ComfyUI visual editor
 - API prompt JSON, submitted to ComfyUI `/prompt`
 
-Version `0.7.0` can import UI workflow files and help convert them, but submission still requires validated API prompt JSON. It also adds a shared project index, a workflow generation engine, a complete custom node loop, a local asset library for generated outputs, and a desktop app shell backed by a Python desktop bridge.
+Version `0.8.0` can import UI workflow files and help convert them, but submission still requires validated API prompt JSON. It also adds a shared project index, a workflow generation engine, a complete custom node loop, a local asset library for generated outputs, and a desktop app shell backed by a Python desktop bridge with Gallery And Batch UI surfaces.
 
 ## Capability Groups
 
@@ -120,7 +121,7 @@ Version `0.7.0` can import UI workflow files and help convert them, but submissi
 | Custom node assistant | Scaffold, inspect, validate, import-check, document, generate examples, run contract tests, and produce repair guidance. | `comfy_scaffold_custom_node_package`, `comfy_validate_node_class`, `comfy_check_node_imports`, `comfy_generate_node_examples`, `comfy_run_node_contract_tests`, `comfy_custom_node_repair_guidance` |
 | Run diagnostics | Diagnose, report, compare, and inspect run outputs. | `comfy_diagnose_run`, `comfy_export_run_report`, `comfy_compare_runs`, `comfy_list_outputs` |
 | Batch runs | Submit parameter variations and read batch records. | `comfy_batch_submit`, `comfy_read_batch` |
-| Desktop shell | Browse project status, workflows, runs, assets, and settings through the local Tauri app. | `desktop/`, Python desktop bridge |
+| Desktop shell | Browse project status, workflows, runs, assets, Gallery And Batch UI, reports, comparisons, cleanup plans, and settings through the local Tauri app. | `desktop/`, Python desktop bridge |
 
 ## Configuration
 
@@ -242,7 +243,7 @@ comfy_fetch_outputs
 comfy_read_run
 ```
 
-## 0.7 Usage Examples
+## 0.8 Usage Examples
 
 ### Desktop app shell
 
@@ -254,6 +255,8 @@ cargo check --manifest-path desktop\src-tauri\Cargo.toml
 ```
 
 The desktop shell is a local project workbench. It does not run ComfyUI, does not edit workflow graphs, and does not replace Codex. It uses the Python desktop bridge to reuse the same project index, config redaction, path safety, workflow listing, run listing, and asset search logic as the MCP server.
+
+The `Assets` view now includes asset gallery and table modes, metadata editing, comparison, safe cleanup UI, and asset report preview. The `Batches` view is a batch task view for inspecting batch records, child runs, and variation parameters created by MCP batch tools.
 
 ### Workflow generation
 
@@ -453,6 +456,13 @@ cargo check --manifest-path desktop\src-tauri\Cargo.toml
 ```
 
 ## Release Notes
+
+### 0.8.0
+
+- Added Gallery And Batch UI surfaces in the Tauri desktop app.
+- Upgraded the Assets view with asset gallery/table modes, favorite/rating/tag/notes controls, comparison, report generation, and safe cleanup UI.
+- Added a Batches navigation view with batch task view lists, Batch detail, Child runs, and Variation parameters.
+- Added desktop bridge and Tauri commands for asset metadata updates, cleanup planning, asset reports, asset comparison, batch listing, and batch reading.
 
 ### 0.7.0
 
