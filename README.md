@@ -6,7 +6,7 @@ The plugin is installed in Codex, not in ComfyUI. ComfyUI remains the runtime se
 
 ## Status
 
-Current version: `0.6.0`
+Current version: `0.7.0`
 
 This release focuses on a practical developer workflow:
 
@@ -14,6 +14,7 @@ This release focuses on a practical developer workflow:
 - manage workflow JSON files from a Codex workspace
 - maintain a workspace-local project index at `.comfydex/comfydex.db`
 - search, annotate, report, compare, and safely clean up generated assets
+- browse project status, workflows, runs, assets, and settings in a Windows-first Tauri desktop app shell
 - build generated workflows from deterministic generation plans
 - validate generated workflows and classify submit policy before running
 - analyze workflow nodes, links, model references, and missing node types
@@ -47,6 +48,7 @@ Codex is strong at reading code, editing structured files, following tool workfl
 ├── .codex-plugin/
 │   └── plugin.json              # Codex plugin manifest
 ├── .mcp.json                    # MCP server launch config
+├── desktop/                     # Tauri v2 + Vite + React desktop app shell
 ├── docs/
 │   └── usage/                   # Usage guides
 ├── examples/                    # Workflow, report, and custom node examples
@@ -67,6 +69,7 @@ Codex is strong at reading code, editing structured files, following tool workfl
 │       ├── conversion.py        # UI workflow import and API conversion
 │       ├── core/                # Shared project context, SQLite index, and migrations
 │       ├── diagnostics.py       # Run diagnosis and comparison
+│       ├── desktop_bridge.py    # JSON CLI bridge used by the desktop app
 │       ├── node_contracts.py    # Custom node examples, contracts, and repair guidance
 │       ├── outputs.py           # Output listing and cleanup
 │       ├── paths.py             # Path safety helpers
@@ -81,7 +84,7 @@ Codex is strong at reading code, editing structured files, following tool workfl
 
 ## Runtime Model
 
-Comfydex has three layers.
+Comfydex has four layers.
 
 ### Codex Plugin
 
@@ -91,6 +94,10 @@ The plugin manifest declares the plugin metadata, Skill directory, and MCP serve
 
 The MCP server exposes `comfy_*` tools to Codex. These tools manage configuration, workflow files, ComfyUI API calls, WebSocket waiting, run records, and output downloads.
 
+### Tauri Desktop App
+
+The `desktop/` app is a Windows-first Tauri shell for local project browsing. It stores only the selected workspace path in the Tauri app config directory, then calls the Python desktop bridge for shared project operations such as `project_status`, `list_workflows`, `list_runs`, and `search_assets`.
+
 ### ComfyUI Workflow Skill
 
 The Skill explains how Codex should work with ComfyUI workflows, including the difference between:
@@ -98,7 +105,7 @@ The Skill explains how Codex should work with ComfyUI workflows, including the d
 - UI workflow JSON, exported for the ComfyUI visual editor
 - API prompt JSON, submitted to ComfyUI `/prompt`
 
-Version `0.6.0` can import UI workflow files and help convert them, but submission still requires validated API prompt JSON. It also adds a shared project index, a workflow generation engine, a complete custom node loop, and a local asset library for generated outputs.
+Version `0.7.0` can import UI workflow files and help convert them, but submission still requires validated API prompt JSON. It also adds a shared project index, a workflow generation engine, a complete custom node loop, a local asset library for generated outputs, and a desktop app shell backed by a Python desktop bridge.
 
 ## Capability Groups
 
@@ -113,6 +120,7 @@ Version `0.6.0` can import UI workflow files and help convert them, but submissi
 | Custom node assistant | Scaffold, inspect, validate, import-check, document, generate examples, run contract tests, and produce repair guidance. | `comfy_scaffold_custom_node_package`, `comfy_validate_node_class`, `comfy_check_node_imports`, `comfy_generate_node_examples`, `comfy_run_node_contract_tests`, `comfy_custom_node_repair_guidance` |
 | Run diagnostics | Diagnose, report, compare, and inspect run outputs. | `comfy_diagnose_run`, `comfy_export_run_report`, `comfy_compare_runs`, `comfy_list_outputs` |
 | Batch runs | Submit parameter variations and read batch records. | `comfy_batch_submit`, `comfy_read_batch` |
+| Desktop shell | Browse project status, workflows, runs, assets, and settings through the local Tauri app. | `desktop/`, Python desktop bridge |
 
 ## Configuration
 
@@ -234,7 +242,18 @@ comfy_fetch_outputs
 comfy_read_run
 ```
 
-## 0.5 Usage Examples
+## 0.7 Usage Examples
+
+### Desktop app shell
+
+```powershell
+npm --prefix desktop install
+npm --prefix desktop run typecheck
+npm --prefix desktop run build
+cargo check --manifest-path desktop\src-tauri\Cargo.toml
+```
+
+The desktop shell is a local project workbench. It does not run ComfyUI, does not edit workflow graphs, and does not replace Codex. It uses the Python desktop bridge to reuse the same project index, config redaction, path safety, workflow listing, run listing, and asset search logic as the MCP server.
 
 ### Workflow generation
 
@@ -425,7 +444,23 @@ Validate the Codex plugin manifest:
 python scripts/validate_plugin.py
 ```
 
+Validate the desktop app shell:
+
+```powershell
+npm --prefix desktop run typecheck
+npm --prefix desktop run build
+cargo check --manifest-path desktop\src-tauri\Cargo.toml
+```
+
 ## Release Notes
+
+### 0.7.0
+
+- Added a Windows-first Tauri desktop app shell under `desktop/`.
+- Added the Python desktop bridge CLI used by Tauri commands.
+- Added dashboard, workflow, run, asset, and settings workbench views with browser fallback data.
+- Added Tauri commands for workspace selection, project status, reindex, config, connection checks, workflow listing, run listing, and asset search.
+- Added desktop build checks with TypeScript, Vite, and Rust `cargo check`.
 
 ### 0.6.0
 
@@ -500,6 +535,9 @@ python -m pytest -q
 python scripts/validate_plugin.py
 python -m json.tool .codex-plugin/plugin.json > $null
 python -m json.tool .mcp.json > $null
+npm --prefix desktop run typecheck
+npm --prefix desktop run build
+cargo check --manifest-path desktop\src-tauri\Cargo.toml
 ```
 
 ## License
