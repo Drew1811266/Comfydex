@@ -11,7 +11,7 @@ from ..outputs import list_outputs
 from ..paths import ensure_directory
 from ..runs import read_run, validate_run_id
 from ..workflows import read_workflow
-from .database import connect_database, migrate_project
+from .database import migrate_project, open_database
 from .project import ProjectContext
 from .schema import SCHEMA_VERSION
 from .store import (
@@ -83,6 +83,22 @@ def _output_rows(context: ProjectContext) -> list[dict[str, Any]]:
             }
         )
     return rows
+
+
+def _stored_output_rows(db, valid_run_ids: set[str]) -> list[dict[str, Any]]:
+    rows = db.execute(
+        """
+        SELECT output_id, run_id, path, filename, type, subfolder, size_bytes,
+               modified_time, downloaded_path, indexed_at
+        FROM output_records
+        ORDER BY run_id, path
+        """
+    ).fetchall()
+    return [
+        dict(row)
+        for row in rows
+        if str(row["run_id"]) in valid_run_ids
+    ]
 
 
 def _record_scan_error(
@@ -190,7 +206,7 @@ def _safe_batch_rows(context: ProjectContext, db) -> list[dict[str, Any]]:
         if not record_path.is_file():
             continue
         try:
-            rows.extend(_batch_rows_for_dir(context, batch_dir, record_path))
+            rows.extend(_batch_rows_for_dir(context, batch_dir, record_path, db))
         except (OSError, RuntimeError, ValueError, json.JSONDecodeError) as exc:
             _record_scan_error(db, "batch", batch_dir.name, record_path, exc)
     return rows
@@ -200,15 +216,36 @@ def _batch_rows_for_dir(
     context: ProjectContext,
     batch_dir: Path,
     record_path: Path,
+    db,
 ) -> list[dict[str, Any]]:
     record = read_batch_record(context.runs_dir, batch_dir.name)
+    batch_id = _as_text(record.get("batch_id"), batch_dir.name)
     runs = record.get("runs")
-    run_items = [run for run in runs if isinstance(run, dict)] if isinstance(runs, list) else []
+    if isinstance(runs, list):
+        malformed_count = sum(1 for run in runs if not isinstance(run, dict))
+        if malformed_count:
+            record_index_error(
+                db,
+                "batch",
+                batch_id,
+                record_path,
+                f"batch record has {malformed_count} malformed run entries",
+            )
+        run_items = [run for run in runs if isinstance(run, dict)]
+    else:
+        record_index_error(
+            db,
+            "batch",
+            batch_id,
+            record_path,
+            "batch record runs must be a list",
+        )
+        run_items = []
     completed = [run for run in run_items if run.get("status") == "completed"]
     failed = [run for run in run_items if run.get("status") == "failed"]
     return [
         {
-            "batch_id": _as_text(record.get("batch_id"), batch_dir.name),
+            "batch_id": batch_id,
             "path": str(record_path.resolve()),
             "label": _as_text(record.get("label"), "batch"),
             "workflow_name": _as_text(record.get("workflow_name"), ""),
@@ -232,18 +269,22 @@ def reindex_project(
     include_outputs: bool = True,
 ) -> dict[str, Any]:
     migration = migrate_project(context)
-    with connect_database(context.database_path) as db:
+    with open_database(context.database_path) as db:
         clear_index_errors(db)
         workflow_rows = _safe_workflow_rows(context, db)
         run_rows = _safe_run_rows(context, db)
-        output_rows = _output_rows(context) if include_outputs else []
+        valid_run_ids = {str(row["run_id"]) for row in run_rows}
+        output_rows = (
+            _output_rows(context)
+            if include_outputs
+            else _stored_output_rows(db, valid_run_ids)
+        )
         batch_rows = _safe_batch_rows(context, db)
 
         replace_output_rows(db, [])
         replace_workflow_rows(db, workflow_rows)
         replace_run_rows(db, run_rows)
-        if include_outputs:
-            replace_output_rows(db, output_rows)
+        replace_output_rows(db, output_rows)
         replace_batch_rows(db, batch_rows)
         set_metadata(db, "last_reindexed_at", _now())
 

@@ -31,11 +31,11 @@ def project_context_from_config(config: ComfydexConfig) -> ProjectContext:
 
 
 def project_status(context: ProjectContext) -> dict[str, object]:
-    from .database import connect_database, migrate_project
+    from .database import migrate_project, open_database
     from .store import counts, metadata_value
 
     migrate_project(context)
-    with connect_database(context.database_path) as db:
+    with open_database(context.database_path) as db:
         current_counts = counts(db)
         last_reindexed_at = metadata_value(db, "last_reindexed_at")
 

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -21,6 +23,19 @@ def connect_database(database_path: Path) -> sqlite3.Connection:
     return connection
 
 
+@contextmanager
+def open_database(database_path: Path) -> Iterator[sqlite3.Connection]:
+    connection = connect_database(database_path)
+    try:
+        yield connection
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
 def _ensure_migration_table(db: sqlite3.Connection) -> None:
     db.execute(
         """
@@ -33,6 +48,19 @@ def _ensure_migration_table(db: sqlite3.Connection) -> None:
     )
 
 
+def _migration_statements(migration: dict[str, Any]) -> list[str]:
+    statements = migration.get("statements")
+    if isinstance(statements, list) and all(
+        isinstance(statement, str) for statement in statements
+    ):
+        return [statement for statement in statements if statement.strip()]
+    return [
+        statement.strip()
+        for statement in str(migration["sql"]).split(";")
+        if statement.strip()
+    ]
+
+
 def migrate_project(context: ProjectContext) -> dict[str, Any]:
     ensure_directory(context.state_dir)
     if is_redirected_path(context.state_dir):
@@ -40,33 +68,43 @@ def migrate_project(context: ProjectContext) -> dict[str, Any]:
     context.database_path.relative_to(context.state_dir)
 
     applied: list[dict[str, Any]] = []
-    with connect_database(context.database_path) as db:
-        _ensure_migration_table(db)
-        for migration in MIGRATIONS:
-            row = db.execute(
-                "SELECT version FROM schema_migrations WHERE version = ?",
-                (migration["version"],),
-            ).fetchone()
-            if row is not None:
-                continue
-            db.executescript(str(migration["sql"]))
+    with open_database(context.database_path) as db:
+        db.execute("BEGIN")
+        try:
+            _ensure_migration_table(db)
+            for migration in MIGRATIONS:
+                row = db.execute(
+                    "SELECT version FROM schema_migrations WHERE version = ?",
+                    (migration["version"],),
+                ).fetchone()
+                if row is not None:
+                    continue
+                for statement in _migration_statements(migration):
+                    db.execute(statement)
+                db.execute(
+                    """
+                    INSERT INTO schema_migrations(version, name, applied_at)
+                    VALUES (?, ?, ?)
+                    """,
+                    (migration["version"], migration["name"], _now()),
+                )
+                applied.append(
+                    {"version": migration["version"], "name": migration["name"]}
+                )
             db.execute(
-                "INSERT INTO schema_migrations(version, name, applied_at) VALUES (?, ?, ?)",
-                (migration["version"], migration["name"], _now()),
+                """
+                INSERT INTO project_metadata(key, value, updated_at)
+                VALUES ('schema_version', ?, ?)
+                ON CONFLICT(key) DO UPDATE SET
+                  value = excluded.value,
+                  updated_at = excluded.updated_at
+                """,
+                (str(SCHEMA_VERSION), _now()),
             )
-            applied.append(
-                {"version": migration["version"], "name": migration["name"]}
-            )
-        db.execute(
-            """
-            INSERT INTO project_metadata(key, value, updated_at)
-            VALUES ('schema_version', ?, ?)
-            ON CONFLICT(key) DO UPDATE SET
-              value = excluded.value,
-              updated_at = excluded.updated_at
-            """,
-            (str(SCHEMA_VERSION), _now()),
-        )
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise
 
     return {
         "database_path": str(context.database_path),

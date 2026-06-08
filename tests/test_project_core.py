@@ -1,5 +1,7 @@
 from pathlib import Path
+from contextlib import closing
 from datetime import datetime, timezone
+import json
 import sqlite3
 
 from comfydex_mcp.batches import create_batch_record, update_batch_run
@@ -58,7 +60,7 @@ def test_migrate_project_creates_schema_and_is_idempotent(tmp_path: Path):
     assert second["applied_migrations"] == []
     assert ctx.database_path.is_file()
 
-    with sqlite3.connect(ctx.database_path) as db:
+    with closing(sqlite3.connect(ctx.database_path)) as db:
         tables = {
             row[0]
             for row in db.execute(
@@ -75,6 +77,16 @@ def test_migrate_project_creates_schema_and_is_idempotent(tmp_path: Path):
         "batch_records",
         "index_errors",
     } <= tables
+
+
+def test_project_database_connections_close_after_status_and_reindex(tmp_path: Path):
+    ctx = project_context_from_config(_config(tmp_path))
+
+    project_status(ctx)
+    reindex_project(ctx)
+    ctx.database_path.unlink()
+
+    assert not ctx.database_path.exists()
 
 
 def test_project_status_reports_zero_counts_before_reindex(tmp_path: Path):
@@ -179,3 +191,63 @@ def test_reindex_project_removes_stale_rows_when_source_files_are_deleted(
 
     assert first["counts"]["workflows"] == 1
     assert second["counts"]["workflows"] == 0
+
+
+def test_reindex_project_can_skip_output_scan_without_clearing_existing_outputs(
+    tmp_path: Path,
+):
+    cfg = _config(tmp_path)
+    run = create_run(
+        cfg.runs_dir,
+        "text2img.json",
+        API_WORKFLOW,
+        cfg.base_url,
+        "prompt-1",
+        now=datetime(2026, 6, 8, tzinfo=timezone.utc),
+    )
+    output_path = cfg.runs_dir / run["run_id"] / "outputs" / "output" / "image.png"
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text("image", encoding="utf-8")
+    ctx = project_context_from_config(cfg)
+
+    first = reindex_project(ctx)
+    second = reindex_project(ctx, include_outputs=False)
+
+    assert first["counts"]["outputs"] == 1
+    assert second["counts"]["outputs"] == 1
+
+
+def test_reindex_project_records_malformed_batch_run_entries(tmp_path: Path):
+    cfg = _config(tmp_path)
+    batch = create_batch_record(
+        cfg.runs_dir,
+        "Batch",
+        "text2img.json",
+        [{"node_id": "3", "inputs": {"seed": 1}}],
+        now=datetime(2026, 6, 8, tzinfo=timezone.utc),
+    )
+    update_batch_run(cfg.runs_dir, batch["batch_id"], 0, "run-a", "completed")
+    batch_path = cfg.runs_dir / ".batches" / batch["batch_id"] / "batch.json"
+    payload = {
+        **batch,
+        "status": "completed",
+        "runs": [
+            {"index": 0, "parameters": {}, "status": "completed", "run_id": "run-a"},
+            "malformed",
+        ],
+    }
+    batch_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+
+    ctx = project_context_from_config(cfg)
+    report = reindex_project(ctx)
+
+    assert report["status"] == "completed_with_errors"
+    assert report["counts"]["batches"] == 1
+    assert report["counts"]["errors"] == 1
+    assert report["errors"][0]["source_type"] == "batch"
+    with closing(sqlite3.connect(ctx.database_path)) as db:
+        row = db.execute(
+            "SELECT run_count, completed_count, failed_count FROM batch_records"
+        ).fetchone()
+
+    assert row == (1, 1, 0)
