@@ -52,6 +52,16 @@ class ComfyClient:
                 "error": str(exc) or error_type,
             }
 
+    async def get_json(self, path: str) -> dict[str, Any] | list[Any]:
+        response = await self.client.get(path)
+        response.raise_for_status()
+        return response.json()
+
+    async def post_json(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
+        response = await self.client.post(path, json=payload)
+        response.raise_for_status()
+        return response.json()
+
     async def get_object_info(self) -> dict[str, Any]:
         response = await self.client.get("/object_info")
         response.raise_for_status()
