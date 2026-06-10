@@ -515,3 +515,30 @@ async def test_verify_live_bridge_skip_push_returns_status_and_reload_results(
     assert result["reload_client"]["ok"] is True
     assert result["reload_backend"]["ok"] is True
     assert result["push_workflow"] is None
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_verify_live_bridge_with_workflow_requires_acknowledgement(
+    tmp_path: Path,
+):
+    _mock_ready_status_routes()
+    respx.post("http://127.0.0.1:8188/comfydex/live/reload_client").mock(
+        return_value=httpx.Response(200, json={"ok": True, "version": "verify"})
+    )
+    respx.post("http://127.0.0.1:8188/comfydex/live/reload_backend").mock(
+        return_value=httpx.Response(200, json={"ok": True, "generation": 3})
+    )
+    respx.post("http://127.0.0.1:8188/comfydex/live/load_workflow").mock(
+        return_value=httpx.Response(200, json={"ok": True, "name": "No ack"})
+    )
+
+    result = await _live_bridge().verify_live_bridge(
+        _config(tmp_path),
+        workflow=UI_WORKFLOW,
+        name="No ack",
+    )
+
+    assert result["ok"] is False
+    assert result["push_workflow"]["ok"] is True
+    assert result["push_workflow"]["acknowledged"] is False

@@ -195,7 +195,13 @@ async def verify_live_bridge(
         bool(status.get("ready"))
         and bool(reload_client.get("ok"))
         and bool(reload_backend.get("ok"))
-        and (push_workflow is None or bool(push_workflow.get("ok")))
+        and (
+            push_workflow is None
+            or (
+                bool(push_workflow.get("ok"))
+                and push_workflow.get("acknowledged") is True
+            )
+        )
     )
     return {
         "ok": ok,
