@@ -37,16 +37,33 @@ DIAGNOSTIC_MESSAGES = {
 async def get_live_bridge_status(config: ComfydexConfig) -> dict[str, Any]:
     async with _client(config) as client:
         system_call = await _get_json_with_status(client, "/system_stats")
+        server = _normalize_server(system_call)
+        if not server["reachable"]:
+            return _normalized_status(config, server, {"ok": False}, {}, None)
         bridge_call = await _get_json_with_status(client, BRIDGE_STATUS_PATH)
         extensions_call = await _get_json_with_status(client, EXTENSIONS_PATH)
 
-    bridge_payload = _dict_payload(bridge_call.get("payload"))
+    return _normalized_status(
+        config,
+        server,
+        bridge_call,
+        _dict_payload(bridge_call.get("payload")),
+        extensions_call.get("payload"),
+    )
+
+
+def _normalized_status(
+    config: ComfydexConfig,
+    server: dict[str, Any],
+    bridge_call: dict[str, Any],
+    bridge_payload: dict[str, Any],
+    extensions_payload: Any,
+) -> dict[str, Any]:
     bridge = _normalize_bridge(bridge_call, bridge_payload)
     frontend = _normalize_frontend(
         bridge_payload.get("frontend"),
-        extensions_call.get("payload"),
+        extensions_payload,
     )
-    server = _normalize_server(system_call)
 
     diagnostics = _status_diagnostics(server, bridge_call, bridge_payload, frontend)
     ready = (
@@ -108,7 +125,10 @@ async def push_live_workflow(
         "activate": activate,
         "force": force,
     }
-    async with _client(config) as client:
+    client = _client(config)
+    await client.__aenter__()
+    result: dict[str, Any] | None = None
+    try:
         post_result = await _post_json_result(client, LOAD_WORKFLOW_PATH, payload)
         request_id = _request_id(post_result)
         if not wait_for_ack or not request_id:
@@ -117,11 +137,17 @@ async def push_live_workflow(
             result.setdefault("diagnostics", _diagnostics_from_payload(result))
             return result
 
-        return await _wait_for_workflow_ack(
+        result = await _wait_for_workflow_ack(
             client,
             post_result,
             request_id,
             ack_timeout_seconds,
+        )
+        return result
+    finally:
+        await _close_push_client(
+            client,
+            bounded=_is_workflow_ack_timeout(result),
         )
 
 
@@ -185,6 +211,20 @@ def _client(config: ComfydexConfig) -> ComfyClient:
         config.headers,
         config.request_timeout_seconds,
     )
+
+
+async def _close_push_client(client: ComfyClient, *, bounded: bool) -> None:
+    if not bounded:
+        await client.__aexit__(None, None, None)
+        return
+
+    task = asyncio.create_task(client.__aexit__(None, None, None))
+    done, pending = await asyncio.wait({task}, timeout=0.05)
+    if pending:
+        task.cancel()
+        task.add_done_callback(_consume_task_exception)
+        return
+    task.result()
 
 
 async def _get_json_with_status(
@@ -262,8 +302,10 @@ def _normalize_bridge(
             )
         ),
         "name": bridge_name,
-        "version": _string_or_none(
-            bridge_dict.get("version", bridge_payload.get("version"))
+        "version": _first_string(
+            bridge_dict.get("version"),
+            bridge_payload.get("version"),
+            bridge_payload.get("bridge_version"),
         ),
         "generation": _int_or_none(
             bridge_dict.get("generation", bridge_payload.get("generation"))
@@ -383,30 +425,75 @@ async def _wait_for_workflow_ack(
     poll_delay = min(0.1, max(0.001, ack_timeout_seconds / 10))
 
     while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return _ack_timeout_result(post_result)
+
         try:
-            status_payload = await client.get_json(BRIDGE_STATUS_PATH)
+            status_payload = await _get_json_before_deadline(
+                client,
+                BRIDGE_STATUS_PATH,
+                remaining,
+            )
+        except TimeoutError:
+            return _ack_timeout_result(post_result)
         except httpx.HTTPError:
             status_payload = {}
 
         last_result = _last_workflow_result(status_payload)
         if last_result and _request_id(last_result) == request_id:
+            if last_result.get("ok") is not True:
+                if last_result.get("ok") is False:
+                    diagnostics = _diagnostics_from_payload(last_result)
+                    result = dict(post_result)
+                    result["ok"] = False
+                    result["acknowledged"] = True
+                    result["last_workflow_result"] = last_result
+                    result["diagnostics"] = diagnostics
+                    return result
+                continue
             diagnostics = _diagnostics_from_payload(last_result)
             result = dict(post_result)
-            result["ok"] = bool(post_result.get("ok")) and last_result.get("ok") is not False
+            result["ok"] = bool(post_result.get("ok"))
             result["acknowledged"] = True
             result["last_workflow_result"] = last_result
             result["diagnostics"] = diagnostics
             return result
 
         remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            result = dict(post_result)
-            result["ok"] = False
-            result["acknowledged"] = False
-            result["diagnostics"] = [_diagnostic("workflow_ack_timeout")]
-            return result
-
         await asyncio.sleep(min(poll_delay, remaining))
+
+
+async def _get_json_before_deadline(
+    client: ComfyClient,
+    path: str,
+    timeout: float,
+) -> dict[str, Any] | list[Any]:
+    if timeout <= 0:
+        raise TimeoutError
+
+    task = asyncio.create_task(client.get_json(path))
+    done, pending = await asyncio.wait({task}, timeout=timeout)
+    if pending:
+        task.cancel()
+        task.add_done_callback(_consume_task_exception)
+        raise TimeoutError
+    return task.result()
+
+
+def _consume_task_exception(task: asyncio.Task[Any]) -> None:
+    try:
+        task.exception()
+    except (asyncio.CancelledError, Exception):
+        pass
+
+
+def _ack_timeout_result(post_result: dict[str, Any]) -> dict[str, Any]:
+    result = dict(post_result)
+    result["ok"] = False
+    result["acknowledged"] = False
+    result["diagnostics"] = [_diagnostic("workflow_ack_timeout")]
+    return result
 
 
 def _last_workflow_result(status_payload: Any) -> dict[str, Any] | None:
@@ -447,6 +534,19 @@ def _diagnostics_from_payload(payload: dict[str, Any]) -> list[dict[str, Any]]:
     return []
 
 
+def _is_workflow_ack_timeout(result: dict[str, Any] | None) -> bool:
+    if not isinstance(result, dict):
+        return False
+    diagnostics = result.get("diagnostics")
+    if not isinstance(diagnostics, list):
+        return False
+    return any(
+        isinstance(diagnostic, dict)
+        and diagnostic.get("code") == "workflow_ack_timeout"
+        for diagnostic in diagnostics
+    )
+
+
 def _diagnostic(code: str, **details: Any) -> dict[str, Any]:
     diagnostic: dict[str, Any] = {
         "code": code,
@@ -458,12 +558,15 @@ def _diagnostic(code: str, **details: Any) -> dict[str, Any]:
         if value is not None and value != ""
     }
     if clean_details:
-        diagnostic["details"] = clean_details
+        diagnostic["evidence"] = clean_details
     return diagnostic
 
 
 def _is_ui_workflow(workflow: dict[str, Any]) -> bool:
-    return isinstance(workflow.get("nodes"), list)
+    return isinstance(workflow.get("nodes"), list) and isinstance(
+        workflow.get("links"),
+        list,
+    )
 
 
 def _contains_bridge_extension(payload: Any) -> bool:
@@ -486,6 +589,13 @@ def _dict_payload(payload: Any) -> dict[str, Any]:
 
 def _string_or_none(value: Any) -> str | None:
     return value if isinstance(value, str) else None
+
+
+def _first_string(*values: Any) -> str | None:
+    for value in values:
+        if isinstance(value, str):
+            return value
+    return None
 
 
 def _int_or_none(value: Any) -> int | None:
