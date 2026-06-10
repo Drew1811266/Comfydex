@@ -80,26 +80,26 @@ async function loadWorkflowIntoCanvas({ app, api, notify }, payload) {
     return;
   }
 
-  if (isCurrentWorkflowDirty(app) && !force) {
-    const message = "Current ComfyUI canvas has unsaved changes.";
-    notify(
-      "Refused to load workflow because the current canvas is unsaved.",
-      "error",
-    );
-    await postWorkflowResult(
-      { api, notify },
-      {
-        request_id,
-        ok: false,
-        error: "unsaved_canvas",
-        message,
-        name,
-      },
-    );
-    return;
-  }
-
   try {
+    if (isCurrentWorkflowDirty(app) && !force) {
+      const message = "Current ComfyUI canvas has unsaved changes.";
+      notify(
+        "Refused to load workflow because the current canvas is unsaved.",
+        "error",
+      );
+      await postWorkflowResult(
+        { api, notify },
+        {
+          request_id,
+          ok: false,
+          error: "unsaved_canvas",
+          message,
+          name,
+        },
+      );
+      return;
+    }
+
     if (typeof app.loadGraphData === "function") {
       await app.loadGraphData(workflow, true, true, name);
     } else if (app.graph?.configure) {

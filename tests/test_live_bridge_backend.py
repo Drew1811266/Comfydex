@@ -200,6 +200,29 @@ def test_frontend_heartbeat_updates_status_state():
     assert frontend["last_seen_age_ms"] >= 0
 
 
+def test_frontend_status_marks_heartbeat_stale_after_threshold(monkeypatch):
+    bridge = LiveBridgeBackend(FakePromptServer())
+    times = [100.0, 100.0, 116.0]
+
+    def fake_monotonic():
+        if len(times) > 1:
+            return times.pop(0)
+        return times[0]
+
+    monkeypatch.setattr(
+        "custom_nodes.comfydex_live_bridge.backend.time.monotonic",
+        fake_monotonic,
+    )
+
+    run(bridge.frontend_status({"version": "bootstrap", "client_id": "client-1"}))
+    status_payload, status_code = run(bridge.status({}))
+
+    assert status_code == 200
+    assert status_payload["frontend"]["connected"] is False
+    assert status_payload["frontend"]["stale"] is True
+    assert status_payload["frontend"]["last_seen_age_ms"] == 16000
+
+
 def test_workflow_result_stores_latest_acknowledgement_and_validates_request_id():
     bridge = LiveBridgeBackend(FakePromptServer())
 
@@ -228,4 +251,47 @@ def test_workflow_result_stores_latest_acknowledgement_and_validates_request_id(
         "name": "preview",
         "error": "unsaved_canvas",
         "message": "Current ComfyUI canvas has unsaved changes.",
+    }
+
+
+def test_workflow_result_rejects_missing_or_non_boolean_ok():
+    bridge = LiveBridgeBackend(FakePromptServer())
+
+    missing_payload, missing_status = run(bridge.workflow_result({"request_id": "live-1"}))
+    string_payload, string_status = run(
+        bridge.workflow_result({"request_id": "live-1", "ok": "false"})
+    )
+
+    assert missing_status == 400
+    assert missing_payload == {
+        "ok": False,
+        "error": "workflow_result_ok_must_be_boolean",
+    }
+    assert string_status == 400
+    assert string_payload == {
+        "ok": False,
+        "error": "workflow_result_ok_must_be_boolean",
+    }
+    assert bridge.last_workflow_result is None
+
+
+def test_workflow_result_ignores_non_string_optional_fields():
+    bridge = LiveBridgeBackend(FakePromptServer())
+
+    payload, status = run(
+        bridge.workflow_result(
+            {
+                "request_id": "live-1",
+                "ok": True,
+                "name": {"bad": "name"},
+                "error": ["bad"],
+                "message": 123,
+            }
+        )
+    )
+
+    assert status == 200
+    assert payload["last_workflow_result"] == {
+        "request_id": "live-1",
+        "ok": True,
     }

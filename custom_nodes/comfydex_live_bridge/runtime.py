@@ -63,13 +63,18 @@ async def workflow_result(bridge, payload):
     if not isinstance(request_id, str) or not request_id.strip():
         return {"ok": False, "error": "request_id_required"}, 400
 
+    ok = payload.get("ok")
+    if not isinstance(ok, bool):
+        return {"ok": False, "error": "workflow_result_ok_must_be_boolean"}, 400
+
     result = {
         "request_id": request_id,
-        "ok": payload.get("ok") is True,
+        "ok": ok,
     }
     for key in ("name", "error", "message"):
-        if key in payload:
-            result[key] = payload.get(key)
+        value = payload.get(key)
+        if isinstance(value, str):
+            result[key] = value
 
     bridge.last_workflow_result = result
     return {"ok": True, "last_workflow_result": result}, 200

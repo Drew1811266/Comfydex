@@ -47,3 +47,19 @@ def test_client_posts_heartbeat_and_workflow_results():
     assert "setInterval" in source
     assert "clearInterval" in source
     assert "dispose" in source
+
+
+def test_client_dirty_check_runs_inside_ack_failure_path():
+    source = read(CLIENT)
+    function_source = source[
+        source.index("async function loadWorkflowIntoCanvas") : source.index(
+            "export async function setup"
+        )
+    ]
+
+    assert function_source.index("try {") < function_source.index(
+        "isCurrentWorkflowDirty(app)"
+    )
+    assert "catch (error)" in function_source
+    assert 'error: "load_failed"' in function_source
+    assert "await postWorkflowResult" in function_source
