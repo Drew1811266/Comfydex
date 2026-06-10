@@ -273,6 +273,25 @@ def test_workflow_result_rejects_unknown_request_id():
     assert bridge.last_workflow_result is None
 
 
+def test_workflow_result_consumes_request_id_after_acknowledgement():
+    bridge = LiveBridgeBackend(FakePromptServer())
+    run(bridge.load_workflow({"workflow": {"nodes": [], "links": []}}))
+
+    first_payload, first_status = run(
+        bridge.workflow_result({"request_id": "live-1", "ok": True})
+    )
+    second_payload, second_status = run(
+        bridge.workflow_result({"request_id": "live-1", "ok": False})
+    )
+
+    assert first_status == 200
+    assert first_payload["ok"] is True
+    assert second_status == 400
+    assert second_payload == {"ok": False, "error": "request_id_unknown"}
+    assert bridge.pending_workflow_request_ids == set()
+    assert bridge.last_workflow_result == {"request_id": "live-1", "ok": True}
+
+
 def test_workflow_result_rejects_missing_or_non_boolean_ok():
     bridge = LiveBridgeBackend(FakePromptServer())
     run(bridge.load_workflow({"workflow": {"nodes": [], "links": []}}))

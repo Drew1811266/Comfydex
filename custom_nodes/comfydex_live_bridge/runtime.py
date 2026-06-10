@@ -79,4 +79,5 @@ async def workflow_result(bridge, payload):
             result[key] = value
 
     bridge.last_workflow_result = result
+    bridge.pending_workflow_request_ids.discard(request_id)
     return {"ok": True, "last_workflow_result": result}, 200
