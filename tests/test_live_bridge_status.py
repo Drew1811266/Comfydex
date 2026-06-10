@@ -366,7 +366,7 @@ async def test_push_live_workflow_requires_ack_ok_true(tmp_path: Path):
             json={"ok": True, "request_id": "request-1", "name": "Pending"},
         )
     )
-    respx.get("http://127.0.0.1:8188/comfydex/live/status").mock(
+    route = respx.get("http://127.0.0.1:8188/comfydex/live/status").mock(
         return_value=httpx.Response(
             200,
             json={"ok": True, "last_workflow_result": {"request_id": "request-1"}},
@@ -377,12 +377,13 @@ async def test_push_live_workflow_requires_ack_ok_true(tmp_path: Path):
         _config(tmp_path),
         UI_WORKFLOW,
         name="Pending",
-        ack_timeout_seconds=0.01,
+        ack_timeout_seconds=0.2,
     )
 
     assert result["ok"] is False
     assert result["acknowledged"] is False
     assert result["diagnostics"][0]["code"] == "workflow_ack_timeout"
+    assert route.call_count <= 10
 
 
 @pytest.mark.asyncio

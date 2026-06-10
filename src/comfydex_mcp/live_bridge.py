@@ -452,14 +452,14 @@ async def _wait_for_workflow_ack(
                     result["last_workflow_result"] = last_result
                     result["diagnostics"] = diagnostics
                     return result
-                continue
-            diagnostics = _diagnostics_from_payload(last_result)
-            result = dict(post_result)
-            result["ok"] = bool(post_result.get("ok"))
-            result["acknowledged"] = True
-            result["last_workflow_result"] = last_result
-            result["diagnostics"] = diagnostics
-            return result
+            else:
+                diagnostics = _diagnostics_from_payload(last_result)
+                result = dict(post_result)
+                result["ok"] = bool(post_result.get("ok"))
+                result["acknowledged"] = True
+                result["last_workflow_result"] = last_result
+                result["diagnostics"] = diagnostics
+                return result
 
         remaining = deadline - time.monotonic()
         await asyncio.sleep(min(poll_delay, remaining))
