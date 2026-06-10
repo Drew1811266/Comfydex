@@ -68,6 +68,7 @@ def _normalized_status(
     diagnostics = _status_diagnostics(server, bridge_call, bridge_payload, frontend)
     ready = (
         server["reachable"]
+        and bridge_call.get("ok") is True
         and bridge_payload.get("ok") is True
         and frontend["listed"]
         and frontend["connected"]
@@ -499,15 +500,9 @@ def _ack_timeout_result(post_result: dict[str, Any]) -> dict[str, Any]:
 def _last_workflow_result(status_payload: Any) -> dict[str, Any] | None:
     if not isinstance(status_payload, dict):
         return None
-    for key in ("last_workflow_result", "workflow_result", "last_result"):
-        value = status_payload.get(key)
-        if isinstance(value, dict):
-            return value
-    frontend = status_payload.get("frontend")
-    if isinstance(frontend, dict):
-        value = frontend.get("last_workflow_result")
-        if isinstance(value, dict):
-            return value
+    value = status_payload.get("last_workflow_result")
+    if isinstance(value, dict):
+        return value
     return None
 
 

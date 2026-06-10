@@ -145,6 +145,38 @@ async def test_live_bridge_status_stops_after_system_stats_timeout(tmp_path: Pat
 
 @pytest.mark.asyncio
 @respx.mock
+async def test_live_bridge_status_never_ready_when_bridge_status_http_fails(
+    tmp_path: Path,
+):
+    respx.get("http://127.0.0.1:8188/system_stats").mock(
+        return_value=httpx.Response(200, json={"system": {"os": "nt"}})
+    )
+    respx.get("http://127.0.0.1:8188/comfydex/live/status").mock(
+        return_value=httpx.Response(
+            500,
+            json={
+                "ok": True,
+                "bridge": "comfydex_live_bridge",
+                "frontend": {"connected": True, "stale": False},
+            },
+        )
+    )
+    respx.get("http://127.0.0.1:8188/extensions").mock(
+        return_value=httpx.Response(
+            200,
+            json=["custom_nodes/comfydex_live_bridge/web/comfydex_live_bridge.js"],
+        )
+    )
+
+    result = await _live_bridge().get_live_bridge_status(_config(tmp_path))
+
+    assert result["ready"] is False
+    assert result["can_push"] is False
+    assert result["diagnostics"][0]["code"] == "bridge_status_not_ok"
+
+
+@pytest.mark.asyncio
+@respx.mock
 async def test_live_bridge_status_reports_missing_bridge_route_as_restart_needed(
     tmp_path: Path,
 ):
@@ -345,6 +377,34 @@ async def test_push_live_workflow_requires_ack_ok_true(tmp_path: Path):
         _config(tmp_path),
         UI_WORKFLOW,
         name="Pending",
+        ack_timeout_seconds=0.01,
+    )
+
+    assert result["ok"] is False
+    assert result["acknowledged"] is False
+    assert result["diagnostics"][0]["code"] == "workflow_ack_timeout"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_push_live_workflow_ignores_ack_aliases(tmp_path: Path):
+    respx.post("http://127.0.0.1:8188/comfydex/live/load_workflow").mock(
+        return_value=httpx.Response(
+            200,
+            json={"ok": True, "request_id": "request-1", "name": "Alias"},
+        )
+    )
+    respx.get("http://127.0.0.1:8188/comfydex/live/status").mock(
+        return_value=httpx.Response(
+            200,
+            json={"ok": True, "workflow_result": {"ok": True, "request_id": "request-1"}},
+        )
+    )
+
+    result = await _live_bridge().push_live_workflow(
+        _config(tmp_path),
+        UI_WORKFLOW,
+        name="Alias",
         ack_timeout_seconds=0.01,
     )
 
