@@ -53,13 +53,16 @@ class LiveBridgeBackend:
             "last_error": None,
         }
         self.last_workflow_result = None
+        self.pending_workflow_request_ids = set()
         self.workflow_request_counter = 0
         self.runtime_module_name = runtime_module_name or f"{__package__}.runtime"
         self.runtime = importlib.import_module(self.runtime_module_name)
 
     def next_workflow_request_id(self):
         self.workflow_request_counter += 1
-        return f"live-{self.workflow_request_counter}"
+        request_id = f"live-{self.workflow_request_counter}"
+        self.pending_workflow_request_ids.add(request_id)
+        return request_id
 
     def record_frontend_status(self, payload):
         self.frontend.update(

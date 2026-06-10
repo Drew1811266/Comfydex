@@ -62,6 +62,8 @@ async def workflow_result(bridge, payload):
     request_id = payload.get("request_id")
     if not isinstance(request_id, str) or not request_id.strip():
         return {"ok": False, "error": "request_id_required"}, 400
+    if request_id not in bridge.pending_workflow_request_ids:
+        return {"ok": False, "error": "request_id_unknown"}, 400
 
     ok = payload.get("ok")
     if not isinstance(ok, bool):

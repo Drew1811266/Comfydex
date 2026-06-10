@@ -225,6 +225,7 @@ def test_frontend_status_marks_heartbeat_stale_after_threshold(monkeypatch):
 
 def test_workflow_result_stores_latest_acknowledgement_and_validates_request_id():
     bridge = LiveBridgeBackend(FakePromptServer())
+    run(bridge.load_workflow({"workflow": {"nodes": [], "links": []}}))
 
     bad_payload, bad_status = run(bridge.workflow_result({"request_id": ""}))
     good_payload, good_status = run(
@@ -254,8 +255,27 @@ def test_workflow_result_stores_latest_acknowledgement_and_validates_request_id(
     }
 
 
+def test_workflow_result_rejects_unknown_request_id():
+    bridge = LiveBridgeBackend(FakePromptServer())
+    run(bridge.load_workflow({"workflow": {"nodes": [], "links": []}}))
+
+    malformed_payload, malformed_status = run(
+        bridge.workflow_result({"request_id": "not-live-id", "ok": True})
+    )
+    unknown_payload, unknown_status = run(
+        bridge.workflow_result({"request_id": "live-99", "ok": True})
+    )
+
+    assert malformed_status == 400
+    assert malformed_payload == {"ok": False, "error": "request_id_unknown"}
+    assert unknown_status == 400
+    assert unknown_payload == {"ok": False, "error": "request_id_unknown"}
+    assert bridge.last_workflow_result is None
+
+
 def test_workflow_result_rejects_missing_or_non_boolean_ok():
     bridge = LiveBridgeBackend(FakePromptServer())
+    run(bridge.load_workflow({"workflow": {"nodes": [], "links": []}}))
 
     missing_payload, missing_status = run(bridge.workflow_result({"request_id": "live-1"}))
     string_payload, string_status = run(
@@ -277,6 +297,7 @@ def test_workflow_result_rejects_missing_or_non_boolean_ok():
 
 def test_workflow_result_ignores_non_string_optional_fields():
     bridge = LiveBridgeBackend(FakePromptServer())
+    run(bridge.load_workflow({"workflow": {"nodes": [], "links": []}}))
 
     payload, status = run(
         bridge.workflow_result(
