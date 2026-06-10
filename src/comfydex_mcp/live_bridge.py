@@ -132,7 +132,7 @@ async def push_live_workflow(
     try:
         post_result = await _post_json_result(client, LOAD_WORKFLOW_PATH, payload)
         request_id = _request_id(post_result)
-        if not wait_for_ack or not request_id:
+        if not post_result.get("ok") or not wait_for_ack or not request_id:
             result = dict(post_result)
             result["acknowledged"] = False
             result.setdefault("diagnostics", _diagnostics_from_payload(result))
@@ -402,7 +402,7 @@ async def _post_json_result(
             if isinstance(response_payload, dict)
             else {"error": str(exc) or exc.__class__.__name__}
         )
-        normalized.setdefault("ok", False)
+        normalized["ok"] = False
         normalized["status_code"] = exc.response.status_code
     except httpx.HTTPError as exc:
         normalized = {

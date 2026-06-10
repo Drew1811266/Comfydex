@@ -296,6 +296,39 @@ async def test_push_live_workflow_rejects_ui_workflow_without_links(tmp_path: Pa
 
 @pytest.mark.asyncio
 @respx.mock
+async def test_push_live_workflow_non_successful_post_cannot_succeed(
+    tmp_path: Path,
+):
+    respx.post("http://127.0.0.1:8188/comfydex/live/load_workflow").mock(
+        return_value=httpx.Response(
+            500,
+            json={"ok": True, "request_id": "request-1", "error": "server_error"},
+        )
+    )
+    status_route = respx.get("http://127.0.0.1:8188/comfydex/live/status").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "ok": True,
+                "last_workflow_result": {"ok": True, "request_id": "request-1"},
+            },
+        )
+    )
+
+    result = await _live_bridge().push_live_workflow(
+        _config(tmp_path),
+        UI_WORKFLOW,
+        name="Server error",
+    )
+
+    assert result["ok"] is False
+    assert result["acknowledged"] is False
+    assert result["status_code"] == 500
+    assert status_route.called is False
+
+
+@pytest.mark.asyncio
+@respx.mock
 async def test_push_live_workflow_reports_timeout_when_ack_never_matches(
     tmp_path: Path,
 ):
@@ -438,6 +471,25 @@ async def test_reload_live_bridge_client_uses_supplied_and_generated_versions(
     assert isinstance(generated["version"], str)
     assert generated["version"]
     assert generated_payload == {"version": generated["version"]}
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_reload_live_bridge_client_forces_http_error_body_to_not_ok(
+    tmp_path: Path,
+):
+    respx.post("http://127.0.0.1:8188/comfydex/live/reload_client").mock(
+        return_value=httpx.Response(500, json={"ok": True, "error": "server_error"})
+    )
+
+    result = await _live_bridge().reload_live_bridge_client(
+        _config(tmp_path),
+        version="manual-version",
+    )
+
+    assert result["ok"] is False
+    assert result["status_code"] == 500
+    assert result["version"] == "manual-version"
 
 
 @pytest.mark.asyncio
