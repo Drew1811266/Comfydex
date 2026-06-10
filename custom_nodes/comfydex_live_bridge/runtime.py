@@ -62,6 +62,7 @@ async def workflow_result(bridge, payload):
     request_id = payload.get("request_id")
     if not isinstance(request_id, str) or not request_id.strip():
         return {"ok": False, "error": "request_id_required"}, 400
+    bridge.prune_pending_workflow_requests()
     if request_id not in bridge.pending_workflow_request_ids:
         return {"ok": False, "error": "request_id_unknown"}, 400
 
@@ -79,5 +80,5 @@ async def workflow_result(bridge, payload):
             result[key] = value
 
     bridge.last_workflow_result = result
-    bridge.pending_workflow_request_ids.discard(request_id)
+    bridge.pending_workflow_request_ids.pop(request_id, None)
     return {"ok": True, "last_workflow_result": result}, 200

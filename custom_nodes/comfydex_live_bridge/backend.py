@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 ROUTE_PREFIX = "/comfydex/live"
 BRIDGE_VERSION = "1.2.0"
 FRONTEND_STALE_SECONDS = 15
+WORKFLOW_REQUEST_TTL_SECONDS = 15
 BRIDGE_ROUTES = [
     "status",
     "load_workflow",
@@ -53,16 +54,28 @@ class LiveBridgeBackend:
             "last_error": None,
         }
         self.last_workflow_result = None
-        self.pending_workflow_request_ids = set()
+        self.workflow_request_ttl_seconds = WORKFLOW_REQUEST_TTL_SECONDS
+        self.pending_workflow_request_ids = {}
         self.workflow_request_counter = 0
         self.runtime_module_name = runtime_module_name or f"{__package__}.runtime"
         self.runtime = importlib.import_module(self.runtime_module_name)
 
     def next_workflow_request_id(self):
+        self.prune_pending_workflow_requests()
         self.workflow_request_counter += 1
         request_id = f"live-{self.workflow_request_counter}"
-        self.pending_workflow_request_ids.add(request_id)
+        self.pending_workflow_request_ids[request_id] = time.monotonic()
         return request_id
+
+    def prune_pending_workflow_requests(self):
+        now = time.monotonic()
+        expired = [
+            request_id
+            for request_id, created_at in self.pending_workflow_request_ids.items()
+            if now - created_at > self.workflow_request_ttl_seconds
+        ]
+        for request_id in expired:
+            self.pending_workflow_request_ids.pop(request_id, None)
 
     def record_frontend_status(self, payload):
         self.frontend.update(

@@ -288,8 +288,38 @@ def test_workflow_result_consumes_request_id_after_acknowledgement():
     assert first_payload["ok"] is True
     assert second_status == 400
     assert second_payload == {"ok": False, "error": "request_id_unknown"}
-    assert bridge.pending_workflow_request_ids == set()
+    assert bridge.pending_workflow_request_ids == {}
     assert bridge.last_workflow_result == {"request_id": "live-1", "ok": True}
+
+
+def test_workflow_request_ids_expire_without_acknowledgement(monkeypatch):
+    bridge = LiveBridgeBackend(FakePromptServer())
+    times = [100.0, 101.0, 101.0, 116.1, 116.1, 116.1]
+
+    def fake_monotonic():
+        if len(times) > 1:
+            return times.pop(0)
+        return times[0]
+
+    monkeypatch.setattr(
+        "custom_nodes.comfydex_live_bridge.backend.time.monotonic",
+        fake_monotonic,
+    )
+
+    run(bridge.load_workflow({"workflow": {"nodes": [], "links": []}}))
+    run(bridge.load_workflow({"workflow": {"nodes": [], "links": []}}))
+    expired_payload, expired_status = run(
+        bridge.workflow_result({"request_id": "live-1", "ok": True})
+    )
+    fresh_payload, fresh_status = run(
+        bridge.workflow_result({"request_id": "live-2", "ok": True})
+    )
+
+    assert expired_status == 400
+    assert expired_payload == {"ok": False, "error": "request_id_unknown"}
+    assert fresh_status == 200
+    assert fresh_payload["last_workflow_result"] == {"request_id": "live-2", "ok": True}
+    assert bridge.pending_workflow_request_ids == {}
 
 
 def test_workflow_result_rejects_missing_or_non_boolean_ok():
