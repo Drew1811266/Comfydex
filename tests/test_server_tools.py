@@ -1728,6 +1728,51 @@ async def test_wait_for_run_marks_fallback_outputs_completed(monkeypatch, tmp_pa
 
 
 @pytest.mark.asyncio
+async def test_wait_for_run_uses_existing_completed_history_before_websocket(
+    monkeypatch,
+    tmp_path: Path,
+):
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+    run = create_run(
+        tmp_path / "runs",
+        "wf.json",
+        API_WORKFLOW,
+        "http://127.0.0.1:8188",
+        "p1",
+        "client-1",
+    )
+
+    class CompletedHistoryClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            pass
+
+        async def get_queue(self):
+            return {"queue_running": [], "queue_pending": []}
+
+        async def get_history(self, prompt_id):
+            return {"p1": {"outputs": {"9": {"images": []}}}}
+
+    async def fail_if_waiting_on_websocket(**kwargs):
+        raise AssertionError("completed history should skip websocket waiting")
+
+    monkeypatch.setattr(server, "ComfyClient", CompletedHistoryClient)
+    monkeypatch.setattr(server, "wait_for_prompt", fail_if_waiting_on_websocket)
+
+    result = await server.comfy_wait_for_run(run["run_id"])
+
+    assert result["status"] == "completed"
+    assert result["wait_result"]["fallback_used"] is True
+    assert result["wait_result"]["terminal_status"] == "completed"
+    assert read_run(tmp_path / "runs", run["run_id"])["status"] == "completed"
+
+
+@pytest.mark.asyncio
 async def test_wait_for_run_polls_fallback_until_outputs_completed(monkeypatch, tmp_path: Path):
     monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
     run = create_run(

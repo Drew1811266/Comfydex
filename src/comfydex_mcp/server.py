@@ -1556,15 +1556,31 @@ async def comfy_wait_for_run(run_id: str) -> dict[str, Any]:
             }
 
     try:
-        result = await wait_for_prompt(
-            base_url=ctx.config.base_url,
-            prompt_id=prompt_id,
-            client_id=client_id,
-            headers=ctx.config.headers,
-            timeout_seconds=ctx.config.websocket_timeout_seconds,
-            on_event=on_event,
-            fallback=fallback,
-        )
+        result: dict[str, Any] | None = None
+        try:
+            initial_fallback = await fallback()
+        except Exception:
+            initial_fallback = None
+        if initial_fallback is not None:
+            initial_status = _history_status(initial_fallback.get("history", {}), prompt_id)
+            if initial_status in {"completed", "failed"}:
+                result = {
+                    "completed": initial_status == "completed",
+                    "fallback_used": True,
+                    "terminal_status": initial_status,
+                    "fallback": initial_fallback,
+                    "preflight": True,
+                }
+        if result is None:
+            result = await wait_for_prompt(
+                base_url=ctx.config.base_url,
+                prompt_id=prompt_id,
+                client_id=client_id,
+                headers=ctx.config.headers,
+                timeout_seconds=ctx.config.websocket_timeout_seconds,
+                on_event=on_event,
+                fallback=fallback,
+            )
         fallback_status = _fallback_history_status(result, prompt_id)
         if result.get("fallback_used") and fallback_status is None:
             async with ComfyClient(

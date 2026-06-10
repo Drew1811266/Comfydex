@@ -6,7 +6,7 @@ The plugin is installed in Codex, not in ComfyUI. ComfyUI remains the runtime se
 
 ## Status
 
-Current version: `1.0.0`
+Current version: `1.1.0`
 
 This Usable Developer Release focuses on a practical local ComfyUI workflow:
 
@@ -26,6 +26,7 @@ This Usable Developer Release focuses on a practical local ComfyUI workflow:
 - submit API prompt JSON to ComfyUI
 - watch execution through WebSocket events
 - fall back to HTTP queue/history polling when WebSocket waiting fails
+- install a ComfyUI-side Live Bridge that can push workflows directly into the desktop canvas after one bootstrap restart
 - persist local run records
 - diagnose runs, export run reports, compare experiments, and manage outputs
 - submit simple batch runs with parameter variations
@@ -53,6 +54,7 @@ Codex is strong at reading code, editing structured files, following tool workfl
 │   └── plugin.json              # Codex plugin manifest
 ├── .mcp.json                    # MCP server launch config
 ├── desktop/                     # Tauri v2 + Vite + React desktop app shell
+├── custom_nodes/                # Optional ComfyUI-side Live Bridge bootstrap
 ├── docs/
 │   ├── release/                 # Install, release, and safety review docs
 │   └── usage/                   # Usage guides
@@ -64,7 +66,10 @@ Codex is strong at reading code, editing structured files, following tool workfl
 │       └── SKILL.md             # Codex workflow guidance
 ├── scripts/
 │   ├── install_windows.ps1      # Windows local install helper
+│   ├── install_live_bridge.ps1  # Install the ComfyUI Live Bridge custom node
+│   ├── live_bridge.ps1          # Local bridge status, reload, and push helper
 │   ├── smoke_check.py           # Manual ComfyUI connection check
+│   ├── verify_live_bridge.ps1   # Post-restart Live Bridge verification
 │   └── validate_release_package.py # Release package consistency check
 ├── src/
 │   └── comfydex_mcp/
@@ -112,7 +117,7 @@ The Skill explains how Codex should work with ComfyUI workflows, including the d
 - UI workflow JSON, exported for the ComfyUI visual editor
 - API prompt JSON, submitted to ComfyUI `/prompt`
 
-Version `1.0.0` can import UI workflow files and help convert them, but submission still requires validated API prompt JSON. It also provides the shared project index, workflow generation engine, complete custom node loop, local asset library for generated outputs, desktop app shell backed by a Python desktop bridge with Gallery And Batch UI surfaces, safe end-to-end automation, Windows install helper, release checklist, security/path review, and release package validation.
+Version `1.1.0` can import UI workflow files and help convert them, but submission still requires validated API prompt JSON. It also provides the shared project index, workflow generation engine, complete custom node loop, local asset library for generated outputs, desktop app shell backed by a Python desktop bridge with Gallery And Batch UI surfaces, safe end-to-end automation, Windows install helper, release checklist, security/path review, release package validation, and the optional ComfyUI-side Live Bridge for direct desktop canvas workflow loading.
 
 ## Capability Groups
 
@@ -495,6 +500,15 @@ cargo check --manifest-path desktop\src-tauri\Cargo.toml
 ```
 
 ## Release Notes
+
+### 1.1.0 - Live Bridge Release
+
+- Added `custom_nodes/comfydex_live_bridge`, a ComfyUI-side bridge with stable bootstrap routes and reloadable runtime logic.
+- Added a frontend loader/client split so bridge client code can be reloaded without restarting ComfyUI after the initial custom node bootstrap is loaded.
+- Added safe live workflow push behavior with a `force` flag for replacing unsaved desktop canvas state intentionally.
+- Added `scripts/install_live_bridge.ps1`, `scripts/live_bridge.ps1`, and `scripts/verify_live_bridge.ps1` for installation, local status/reload/push operations, and post-restart P6 verification.
+- Added tests for the bridge backend, frontend contract, safety behavior, install script, local command script, and P6 verification script.
+- Improved `comfy_wait_for_run` so completed history can be detected before waiting on the WebSocket.
 
 ### 1.0.0 - Usable Developer Release
 
