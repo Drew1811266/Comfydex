@@ -28,15 +28,22 @@ def test_status_payload_identifies_bridge_and_routes():
     assert status == 200
     assert payload["ok"] is True
     assert payload["bridge"] == "comfydex_live_bridge"
+    assert payload["bridge_version"] == "1.2.0"
+    assert payload["generation"] == 0
     assert payload["routes"] == [
         "status",
         "load_workflow",
         "reload_client",
         "reload_backend",
+        "frontend_status",
+        "workflow_result",
     ]
+    assert payload["frontend"]["connected"] is False
+    assert payload["frontend"]["stale"] is True
+    assert payload["last_workflow_result"] is None
 
 
-def test_load_workflow_sends_canvas_event():
+def test_load_workflow_returns_request_id_and_sends_it_in_canvas_event():
     server = FakePromptServer()
     bridge = LiveBridgeBackend(server)
     workflow = {"nodes": [], "links": []}
@@ -55,6 +62,7 @@ def test_load_workflow_sends_canvas_event():
     assert status == 200
     assert payload == {
         "ok": True,
+        "request_id": "live-1",
         "name": "Unit Test Workflow",
         "activate": True,
         "force": True,
@@ -64,6 +72,7 @@ def test_load_workflow_sends_canvas_event():
             "comfydex_live_load_workflow",
             {
                 "workflow": workflow,
+                "request_id": "live-1",
                 "name": "Unit Test Workflow",
                 "activate": True,
                 "force": True,
@@ -163,3 +172,60 @@ def test_rpc_dispatches_known_actions_and_rejects_unknown_actions():
     assert ok_payload == {"ok": True, "version": "rpc-v1"}
     assert bad_status == 404
     assert bad_payload == {"ok": False, "error": "unknown_action", "action": "missing"}
+
+
+def test_frontend_heartbeat_updates_status_state():
+    bridge = LiveBridgeBackend(FakePromptServer())
+
+    payload, status = run(
+        bridge.frontend_status(
+            {
+                "version": "bootstrap",
+                "client_id": "client-1",
+                "last_error": None,
+            }
+        )
+    )
+    status_payload, status_code = run(bridge.status({}))
+
+    assert status == 200
+    assert payload["ok"] is True
+    assert status_code == 200
+    frontend = status_payload["frontend"]
+    assert frontend["connected"] is True
+    assert frontend["stale"] is False
+    assert frontend["version"] == "bootstrap"
+    assert frontend["client_id"] == "client-1"
+    assert frontend["last_seen_at"]
+    assert frontend["last_seen_age_ms"] >= 0
+
+
+def test_workflow_result_stores_latest_acknowledgement_and_validates_request_id():
+    bridge = LiveBridgeBackend(FakePromptServer())
+
+    bad_payload, bad_status = run(bridge.workflow_result({"request_id": ""}))
+    good_payload, good_status = run(
+        bridge.workflow_result(
+            {
+                "request_id": "live-1",
+                "ok": False,
+                "name": "preview",
+                "error": "unsaved_canvas",
+                "message": "Current ComfyUI canvas has unsaved changes.",
+                "extra": "ignored",
+            }
+        )
+    )
+    status_payload, _status = run(bridge.status({}))
+
+    assert bad_status == 400
+    assert bad_payload == {"ok": False, "error": "request_id_required"}
+    assert good_status == 200
+    assert good_payload["ok"] is True
+    assert status_payload["last_workflow_result"] == {
+        "request_id": "live-1",
+        "ok": False,
+        "name": "preview",
+        "error": "unsaved_canvas",
+        "message": "Current ComfyUI canvas has unsaved changes.",
+    }

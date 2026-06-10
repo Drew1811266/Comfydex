@@ -33,7 +33,9 @@ def test_load_workflow_defaults_force_to_false_in_response_and_event():
 
     assert status == 200
     assert payload["force"] is False
+    assert payload["request_id"] == "live-1"
     assert server.sent[0][1]["force"] is False
+    assert server.sent[0][1]["request_id"] == "live-1"
 
 
 def test_load_workflow_rejects_non_object_workflow_without_sending_event():

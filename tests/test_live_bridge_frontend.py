@@ -35,3 +35,15 @@ def test_client_exports_setup_and_dispose_contract():
     assert "dispose()" in source
     assert "api.addEventListener(\"comfydex_live_load_workflow\"" in source
     assert "removeEventListener" in source
+
+
+def test_client_posts_heartbeat_and_workflow_results():
+    source = read(CLIENT)
+
+    assert "/comfydex/live/frontend_status" in source
+    assert "/comfydex/live/workflow_result" in source
+    assert "request_id" in source
+    assert "unsaved_canvas" in source
+    assert "setInterval" in source
+    assert "clearInterval" in source
+    assert "dispose" in source
