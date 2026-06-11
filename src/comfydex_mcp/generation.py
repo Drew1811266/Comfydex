@@ -4,6 +4,7 @@ import json
 from copy import deepcopy
 from typing import Any
 
+from .node_semantics import get_node_semantics
 from .templates import get_workflow_template, list_workflow_templates
 
 DEFAULT_CONSTRAINTS = {
@@ -174,11 +175,30 @@ def plan_workflow_generation(
         "candidate_templates": candidates[:3],
         "template": template,
         "required_nodes": deepcopy(template["required_nodes"]),
+        "semantic_coverage": _semantic_coverage_for_template(template),
         "parameters": merged_parameters,
         "constraints": normalize_constraints(constraints),
         "assumptions": deepcopy(template["assumptions"]),
         "missing_information": missing_information,
         "issues": [],
+    }
+
+
+def _semantic_coverage_for_template(template: dict[str, Any]) -> dict[str, Any]:
+    required_nodes = template.get("required_nodes", [])
+    supported: list[str] = []
+    unsupported: list[str] = []
+    for node_type in required_nodes:
+        if not isinstance(node_type, str):
+            continue
+        if get_node_semantics(node_type) is None:
+            unsupported.append(node_type)
+        else:
+            supported.append(node_type)
+    return {
+        "status": "supported" if not unsupported else "partial",
+        "supported_node_types": supported,
+        "unsupported_node_types": unsupported,
     }
 
 

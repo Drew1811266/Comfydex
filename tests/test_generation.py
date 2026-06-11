@@ -118,6 +118,40 @@ def test_plan_workflow_generation_reports_missing_required_information():
     assert "positive_prompt" in plan["missing_information"]
 
 
+def test_plan_workflow_generation_includes_semantic_coverage():
+    plan = plan_workflow_generation(
+        "make a text to image workflow",
+        parameters={
+            "checkpoint_name": "model.safetensors",
+            "positive_prompt": "a studio portrait",
+        },
+    )
+
+    semantic = plan["semantic_coverage"]
+    assert "CheckpointLoaderSimple" in semantic["supported_node_types"]
+    assert "KSampler" in semantic["supported_node_types"]
+    assert semantic["unsupported_node_types"] == []
+    assert semantic["status"] == "supported"
+
+
+def test_plan_workflow_generation_reports_unsupported_template_nodes(monkeypatch):
+    monkeypatch.setattr(
+        "comfydex_mcp.generation.get_node_semantics",
+        lambda node_type: None if node_type == "KSampler" else {"node_type": node_type},
+    )
+
+    plan = plan_workflow_generation(
+        "make a text to image workflow",
+        parameters={
+            "checkpoint_name": "model.safetensors",
+            "positive_prompt": "a studio portrait",
+        },
+    )
+
+    assert "KSampler" in plan["semantic_coverage"]["unsupported_node_types"]
+    assert plan["semantic_coverage"]["status"] == "partial"
+
+
 def test_normalize_constraints_uses_safe_defaults():
     assert normalize_constraints({}) == DEFAULT_CONSTRAINTS
 

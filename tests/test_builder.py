@@ -122,6 +122,16 @@ def test_build_missing_required_parameter_does_not_claim_submit_ready():
     assert "checkpoint_name" in result["missing_information"]
 
 
+def test_build_workflow_result_preserves_semantic_coverage():
+    result = build_workflow_from_template(
+        "basic-text-to-image",
+        {"checkpoint_name": "model.safetensors", "positive_prompt": "a lake"},
+        TEXT_TO_IMAGE_OBJECT_INFO,
+    )
+
+    assert result["plan"]["semantic_coverage"]["status"] == "supported"
+
+
 def test_build_missing_required_object_info_does_not_claim_submit_ready():
     object_info = dict(TEXT_TO_IMAGE_OBJECT_INFO)
     object_info.pop("KSampler")
