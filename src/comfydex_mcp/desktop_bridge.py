@@ -16,6 +16,13 @@ from .assets import (
     update_asset_metadata,
 )
 from .batches import read_batch_record
+from .capabilities import (
+    append_install_audit,
+    create_install_plan,
+    read_install_audit,
+    resolve_capabilities,
+    scan_model_inventory,
+)
 from .comfy_client import ComfyClient
 from .config import ComfydexConfig, load_config, redact_config, save_config
 from .core import project_context_from_config, project_status, reindex_project
@@ -90,6 +97,20 @@ def _dispatch(
         return redact_config(updated)
     if operation == "check_connection":
         return asyncio.run(_check_connection(config))
+    if operation == "model_inventory":
+        return scan_model_inventory(_model_roots(config.workspace, payload))
+    if operation == "capability_report":
+        return asyncio.run(_capability_report(config, payload))
+    if operation == "create_install_plan":
+        return create_install_plan(_capability_report_payload(payload))
+    if operation == "record_install_audit":
+        return append_install_audit(
+            config.workspace,
+            _install_plan_payload(payload),
+            str(payload.get("decision", "recorded")),
+        )
+    if operation == "read_install_audit":
+        return read_install_audit(config.workspace, int(payload.get("limit", 20)))
     if operation == "live_bridge_status":
         return asyncio.run(get_live_bridge_status(config))
     if operation == "live_bridge_reload_client":
@@ -190,6 +211,65 @@ def _optional_string(value: Any) -> str | None:
         return None
     text = str(value)
     return text if text else None
+
+
+def _model_roots(workspace: Path, payload: dict[str, Any]) -> list[Path]:
+    values = payload.get("model_roots")
+    if values is None:
+        return [(workspace / "models").resolve()]
+    if not isinstance(values, list):
+        raise ValueError("model_roots must be a list")
+    roots: list[Path] = []
+    for value in values:
+        raw = Path(str(value)).expanduser()
+        roots.append(raw.resolve() if raw.is_absolute() else (workspace / raw).resolve())
+    return roots
+
+
+async def _capability_report(
+    config: ComfydexConfig,
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    intent = str(payload.get("intent") or "").strip()
+    if not intent:
+        raise ValueError("intent is required")
+    parameters = _optional_dict(payload.get("parameters"), "parameters")
+    model_inventory = scan_model_inventory(_model_roots(config.workspace, payload))
+    async with ComfyClient(
+        config.base_url,
+        config.headers,
+        config.request_timeout_seconds,
+    ) as client:
+        object_info = await client.get_object_info()
+    return resolve_capabilities(
+        intent,
+        parameters,
+        object_info,
+        model_inventory,
+        template_id=_optional_string(payload.get("template_id")),
+    )
+
+
+def _capability_report_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    value = payload.get("capability_report", payload)
+    if not isinstance(value, dict):
+        raise ValueError("capability_report must be an object")
+    return value
+
+
+def _install_plan_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    value = payload.get("install_plan")
+    if not isinstance(value, dict):
+        raise ValueError("install_plan must be an object")
+    return value
+
+
+def _optional_dict(value: Any, name: str) -> dict[str, Any] | None:
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise ValueError(f"{name} must be an object")
+    return value
 
 
 def _updated_config(

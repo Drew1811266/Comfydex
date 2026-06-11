@@ -335,6 +335,115 @@ async def test_comfy_search_node_semantics_tool_is_registered_with_mcp():
 
 
 @pytest.mark.asyncio
+async def test_comfy_model_inventory_tool_scans_workspace_models(
+    monkeypatch,
+    tmp_path: Path,
+):
+    _write_config(tmp_path)
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+    checkpoint = tmp_path / "models" / "checkpoints" / "sdxl.safetensors"
+    checkpoint.parent.mkdir(parents=True)
+    checkpoint.write_text("model", encoding="utf-8")
+
+    result = await server.comfy_model_inventory()
+
+    assert result["model_count"] == 1
+    assert result["by_type"]["checkpoint"][0]["filename"] == "sdxl.safetensors"
+
+
+@pytest.mark.asyncio
+async def test_comfy_resolve_capabilities_tool_uses_object_info_and_model_inventory(
+    monkeypatch,
+    tmp_path: Path,
+):
+    _write_config(tmp_path)
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+    checkpoint = tmp_path / "models" / "checkpoints" / "sdxl.safetensors"
+    checkpoint.parent.mkdir(parents=True)
+    checkpoint.write_text("model", encoding="utf-8")
+    monkeypatch.setattr(
+        server,
+        "ComfyClient",
+        object_info_client(TEXT_TO_IMAGE_OBJECT_INFO),
+    )
+
+    result = await server.comfy_resolve_capabilities(
+        "text to image",
+        parameters={
+            "checkpoint_name": "sdxl.safetensors",
+            "positive_prompt": "a lake",
+        },
+    )
+
+    assert result["status"] == "ready"
+    assert result["can_run_now"] is True
+    assert result["model_inventory"]["model_count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_comfy_create_install_plan_tool_returns_conservative_plan():
+    result = await server.comfy_create_install_plan(
+        {
+            "missing_models": [
+                {
+                    "parameter": "checkpoint_name",
+                    "filename": "missing.safetensors",
+                    "model_type": "checkpoint",
+                    "reason": "missing_model",
+                }
+            ],
+            "missing_nodes": [
+                {"node_type": "CustomSampler", "reason": "missing_object_info"}
+            ],
+        }
+    )
+
+    assert result["status"] == "requires_confirmation"
+    assert result["automatic"] is False
+    assert result["actions"][0]["kind"] == "model"
+    assert result["actions"][1]["kind"] == "custom_node"
+    assert result["actions"][1]["restart_required"] is True
+
+
+@pytest.mark.asyncio
+async def test_comfy_install_audit_tools_roundtrip(monkeypatch, tmp_path: Path):
+    _write_config(tmp_path)
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+    plan = {
+        "status": "requires_confirmation",
+        "actions": [{"kind": "model", "filename": "missing.safetensors"}],
+    }
+
+    written = await server.comfy_record_install_audit(plan, "rejected")
+    read = await server.comfy_read_install_audit()
+
+    assert written["decision"] == "rejected"
+    assert read["entries"][0]["plan"] == plan
+
+
+@pytest.mark.asyncio
+async def test_comfy_create_install_plan_tool_is_registered_with_mcp():
+    _content, structured = await server.mcp.call_tool(
+        "comfy_create_install_plan",
+        {
+            "capability_report": {
+                "missing_models": [
+                    {
+                        "parameter": "checkpoint_name",
+                        "filename": "missing.safetensors",
+                        "model_type": "checkpoint",
+                    }
+                ],
+                "missing_nodes": [],
+            }
+        },
+    )
+
+    assert structured["requires_confirmation"] is True
+    assert structured["actions"][0]["kind"] == "model"
+
+
+@pytest.mark.asyncio
 async def test_comfy_custom_node_tools_use_package_name(
     monkeypatch,
     tmp_path: Path,

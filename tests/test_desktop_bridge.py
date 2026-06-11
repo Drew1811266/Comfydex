@@ -29,6 +29,31 @@ API_WORKFLOW = {
     "5": {"class_type": "SaveImage", "inputs": {"images": ["4", 0]}},
 }
 UI_WORKFLOW = {"nodes": [{"id": 1, "type": "SaveImage"}], "links": []}
+TEXT_TO_IMAGE_OBJECT_INFO = {
+    "CheckpointLoaderSimple": {"input": {"required": {"ckpt_name": ("STRING",)}}},
+    "CLIPTextEncode": {"input": {"required": {"text": ("STRING",), "clip": ("CLIP",)}}},
+    "EmptyLatentImage": {"input": {"required": {}}},
+    "KSampler": {"input": {"required": {}}},
+    "VAEDecode": {"input": {"required": {}}},
+    "SaveImage": {"input": {"required": {}}},
+}
+
+
+def object_info_client(object_info: dict):
+    class ObjectInfoClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            pass
+
+        async def get_object_info(self):
+            return object_info
+
+    return ObjectInfoClient
 
 
 def _config(tmp_path: Path) -> ComfydexConfig:
@@ -291,6 +316,96 @@ def test_bridge_live_bridge_verify_operations(monkeypatch, tmp_path: Path):
         ("http://127.0.0.1:8188", None, {"force": False}),
         ("http://127.0.0.1:8188", UI_WORKFLOW, {"name": "ui.json", "force": True}),
     ]
+
+
+def test_bridge_model_inventory_scans_workspace_models(tmp_path: Path):
+    _write_workspace(tmp_path)
+    checkpoint = tmp_path / "models" / "checkpoints" / "sdxl.safetensors"
+    checkpoint.parent.mkdir(parents=True)
+    checkpoint.write_text("model", encoding="utf-8")
+
+    result = run_bridge_operation("model_inventory", tmp_path)
+
+    assert result["ok"] is True
+    assert result["data"]["model_count"] == 1
+    assert result["data"]["by_type"]["checkpoint"][0]["filename"] == "sdxl.safetensors"
+
+
+def test_bridge_capability_report_uses_payload_and_config(monkeypatch, tmp_path: Path):
+    _write_workspace(tmp_path)
+    checkpoint = tmp_path / "models" / "checkpoints" / "sdxl.safetensors"
+    checkpoint.parent.mkdir(parents=True)
+    checkpoint.write_text("model", encoding="utf-8")
+    monkeypatch.setattr(
+        desktop_bridge,
+        "ComfyClient",
+        object_info_client(TEXT_TO_IMAGE_OBJECT_INFO),
+    )
+
+    result = run_bridge_operation(
+        "capability_report",
+        tmp_path,
+        {
+            "intent": "text to image",
+            "parameters": {
+                "checkpoint_name": "sdxl.safetensors",
+                "positive_prompt": "a lake",
+            },
+        },
+    )
+
+    assert result["ok"] is True
+    assert result["data"]["status"] == "ready"
+    assert result["data"]["can_run_now"] is True
+
+
+def test_bridge_create_install_plan_returns_conservative_actions(tmp_path: Path):
+    _write_workspace(tmp_path)
+
+    result = run_bridge_operation(
+        "create_install_plan",
+        tmp_path,
+        {
+            "capability_report": {
+                "missing_models": [
+                    {
+                        "parameter": "checkpoint_name",
+                        "filename": "missing.safetensors",
+                        "model_type": "checkpoint",
+                    }
+                ],
+                "missing_nodes": [
+                    {"node_type": "CustomSampler", "reason": "missing_object_info"}
+                ],
+            }
+        },
+    )
+
+    assert result["ok"] is True
+    assert result["data"]["status"] == "requires_confirmation"
+    assert result["data"]["automatic"] is False
+    assert result["data"]["actions"][0]["kind"] == "model"
+    assert result["data"]["actions"][1]["kind"] == "custom_node"
+
+
+def test_bridge_install_audit_roundtrip(tmp_path: Path):
+    _write_workspace(tmp_path)
+    plan = {
+        "status": "requires_confirmation",
+        "actions": [{"kind": "model", "filename": "missing.safetensors"}],
+    }
+
+    written = run_bridge_operation(
+        "record_install_audit",
+        tmp_path,
+        {"install_plan": plan, "decision": "rejected"},
+    )
+    read = run_bridge_operation("read_install_audit", tmp_path)
+
+    assert written["ok"] is True
+    assert read["ok"] is True
+    assert written["data"]["decision"] == "rejected"
+    assert read["data"]["entries"][0]["plan"] == plan
 
 
 def test_bridge_updates_asset_metadata(tmp_path: Path):

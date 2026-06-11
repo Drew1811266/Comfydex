@@ -31,6 +31,13 @@ from .batches import (
     update_batch_run,
     variation_to_operations,
 )
+from .capabilities import (
+    append_install_audit,
+    create_install_plan,
+    read_install_audit,
+    resolve_capabilities,
+    scan_model_inventory,
+)
 from .comfy_client import ComfyClient, extract_output_refs
 from .config import ComfydexConfig, load_config, redact_config, save_config
 from .conversion import (
@@ -136,6 +143,16 @@ def _resolve_config_dir(workspace: Path, value: str | None, current: Path) -> Pa
     if raw.is_absolute():
         return raw.resolve()
     return (workspace / raw).resolve()
+
+
+def _resolve_model_roots(workspace: Path, model_roots: list[str] | None) -> list[Path]:
+    if model_roots is None:
+        return [(workspace / "models").resolve()]
+    roots: list[Path] = []
+    for value in model_roots:
+        raw = Path(str(value)).expanduser()
+        roots.append(raw.resolve() if raw.is_absolute() else (workspace / raw).resolve())
+    return roots
 
 
 def _require_prompt_id(submit_response: Any) -> str:
@@ -717,6 +734,62 @@ async def comfy_get_object_info() -> dict[str, Any]:
         ctx.config.request_timeout_seconds,
     ) as client:
         return await client.get_object_info()
+
+
+@mcp.tool()
+async def comfy_model_inventory(
+    model_roots: list[str] | None = None,
+) -> dict[str, Any]:
+    ctx = tool_context()
+    return scan_model_inventory(_resolve_model_roots(ctx.workspace, model_roots))
+
+
+@mcp.tool()
+async def comfy_resolve_capabilities(
+    intent: str,
+    parameters: dict[str, Any] | None = None,
+    template_id: str | None = None,
+    model_roots: list[str] | None = None,
+) -> dict[str, Any]:
+    ctx = tool_context()
+    model_inventory = scan_model_inventory(
+        _resolve_model_roots(ctx.workspace, model_roots)
+    )
+    async with ComfyClient(
+        ctx.config.base_url,
+        ctx.config.headers,
+        ctx.config.request_timeout_seconds,
+    ) as client:
+        object_info = await client.get_object_info()
+    return resolve_capabilities(
+        intent,
+        parameters,
+        object_info,
+        model_inventory,
+        template_id=template_id,
+    )
+
+
+@mcp.tool()
+async def comfy_create_install_plan(
+    capability_report: dict[str, Any],
+) -> dict[str, Any]:
+    return create_install_plan(capability_report)
+
+
+@mcp.tool()
+async def comfy_record_install_audit(
+    install_plan: dict[str, Any],
+    decision: str,
+) -> dict[str, Any]:
+    ctx = tool_context()
+    return append_install_audit(ctx.workspace, install_plan, decision)
+
+
+@mcp.tool()
+async def comfy_read_install_audit(limit: int = 20) -> dict[str, Any]:
+    ctx = tool_context()
+    return read_install_audit(ctx.workspace, limit)
 
 
 @mcp.tool()
