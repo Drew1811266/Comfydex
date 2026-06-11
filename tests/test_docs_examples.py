@@ -391,6 +391,50 @@ def test_release_checklist_1_3_covers_registry_release_gates():
         assert marker in checklist
 
 
+def test_capability_resolver_docs_cover_install_planner():
+    usage = (ROOT / "docs" / "usage" / "capability-resolver.md").read_text(
+        encoding="utf-8"
+    )
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+
+    for marker in (
+        "Capability Resolver",
+        "model inventory",
+        "node inventory",
+        "object_info",
+        "conservative install plan",
+        "audit log",
+        "no silent downloads",
+        "comfy_model_inventory",
+        "comfy_resolve_capabilities",
+        "comfy_create_install_plan",
+        "comfy_record_install_audit",
+        "desktop Install Plan",
+    ):
+        assert marker in usage
+        assert marker in readme
+
+
+def test_release_checklist_1_4_covers_capability_release_gates():
+    checklist = (ROOT / "docs" / "release" / "1.4-release-checklist.md").read_text(
+        encoding="utf-8"
+    )
+
+    for marker in (
+        "python -m pytest -q",
+        "npm run typecheck",
+        "npm run build",
+        "cargo check",
+        "comfy_resolve_capabilities",
+        "conservative install plan",
+        "audit log",
+        "no silent downloads",
+        "desktop Install Plan",
+        "version files report `1.4.0`",
+    ):
+        assert marker in checklist
+
+
 def test_workflow_generation_doc_explains_submit_policy():
     text = (ROOT / "docs" / "usage" / "workflow-generation.md").read_text(
         encoding="utf-8"

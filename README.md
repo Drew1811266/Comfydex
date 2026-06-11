@@ -6,9 +6,9 @@ The plugin is installed in Codex, not in ComfyUI. ComfyUI remains the runtime se
 
 ## Status
 
-Current version: `1.3.0`
+Current version: `1.4.0`
 
-This 1.3 Node Semantic Registry Release focuses on a practical local ComfyUI workflow:
+This 1.4 Capability Resolver Release focuses on a practical local ComfyUI workflow:
 
 - connect to a local or remote ComfyUI server
 - manage workflow JSON files from a Codex workspace
@@ -22,6 +22,10 @@ This 1.3 Node Semantic Registry Release focuses on a practical local ComfyUI wor
 - analyze workflow nodes, links, model references, and missing node types
 - explain supported native and high-frequency functional nodes through the Node Semantic Registry
 - refuse unsupported unknown nodes honestly instead of pretending they are first-class workflow building blocks
+- scan a local model inventory before relying on named checkpoint, LoRA, ControlNet, upscale, or VAE assets
+- resolve local workflow capability with node inventory from live ComfyUI `object_info`
+- create a conservative install plan with no silent downloads or automatic custom node installation
+- review the desktop Install Plan panel and record accepted/rejected decisions in the audit log
 - import UI workflow JSON and convert it toward API prompt JSON
 - build first-pass workflows from templates and structured plans
 - scaffold, inspect, validate, import-check, document, contract-test, and repair-guide custom node packages
@@ -80,6 +84,7 @@ Codex is strong at reading code, editing structured files, following tool workfl
 │       ├── analyzer.py          # Workflow graph and node analysis
 │       ├── batches.py           # Batch record and variation helpers
 │       ├── builder.py           # Workflow builder planning and assembly
+│       ├── capabilities.py      # Capability Resolver, model inventory, install plans
 │       ├── comfy_client.py      # ComfyUI HTTP client
 │       ├── config.py            # Workspace config loading and redaction
 │       ├── conversion.py        # UI workflow import and API conversion
@@ -121,7 +126,7 @@ The Skill explains how Codex should work with ComfyUI workflows, including the d
 - UI workflow JSON, exported for the ComfyUI visual editor
 - API prompt JSON, submitted to ComfyUI `/prompt`
 
-Version `1.3.0` can import UI workflow files and help convert them, but submission still requires validated API prompt JSON. It also provides the shared project index, workflow generation engine, Node Semantic Registry, complete custom node loop, local asset library for generated outputs, desktop app shell backed by a Python desktop bridge with Gallery And Batch UI surfaces, safe end-to-end automation, Windows install helper, release checklist, security/path review, release package validation, and a productized ComfyUI-side Live Bridge for direct desktop canvas workflow loading.
+Version `1.4.0` can import UI workflow files and help convert them, but submission still requires validated API prompt JSON. It also provides the shared project index, workflow generation engine, Node Semantic Registry, Capability Resolver, complete custom node loop, local asset library for generated outputs, desktop app shell backed by a Python desktop bridge with Gallery And Batch UI surfaces and desktop Install Plan review, safe end-to-end automation, Windows install helper, release checklist, security/path review, release package validation, and a productized ComfyUI-side Live Bridge for direct desktop canvas workflow loading.
 
 Unknown nodes are not treated as first-class supported nodes.
 
@@ -136,6 +141,7 @@ Unknown nodes are not treated as first-class supported nodes.
 | UI workflow import | Classify, import, convert, and explain UI workflow conversion gaps. | `comfy_classify_workflow`, `comfy_import_ui_workflow`, `comfy_convert_ui_to_api` |
 | Workflow builder | Plan and build template-based API workflows from user intent. | `comfy_build_workflow_plan`, `comfy_explain_workflow_plan`, `comfy_build_workflow` |
 | Node Semantic Registry | Explain supported native and high-frequency functional nodes, search node semantics, and validate semantic coverage against ComfyUI `object_info`. | `comfy_list_node_semantics`, `comfy_explain_node_semantics`, `comfy_search_node_semantics`, `comfy_validate_node_semantics` |
+| Capability Resolver | Compare a requested plan against model inventory, node inventory from live `object_info`, a conservative install plan, and the workspace audit log. | `comfy_model_inventory`, `comfy_resolve_capabilities`, `comfy_create_install_plan`, `comfy_record_install_audit` |
 | Validation | Validate API workflows and generated workflows against object metadata. | `comfy_validate_api_workflow`, `comfy_validate_workflow_against_object_info` |
 | Custom node assistant | Scaffold, inspect, validate, import-check, document, generate examples, run contract tests, and produce repair guidance. | `comfy_scaffold_custom_node_package`, `comfy_validate_node_class`, `comfy_check_node_imports`, `comfy_generate_node_examples`, `comfy_run_node_contract_tests`, `comfy_custom_node_repair_guidance` |
 | Run diagnostics | Diagnose, report, compare, and inspect run outputs. | `comfy_diagnose_run`, `comfy_export_run_report`, `comfy_compare_runs`, `comfy_list_outputs` |
@@ -196,6 +202,11 @@ Comfydex exposes these tools:
 | `comfy_export_asset_library_report` | Write a deterministic markdown asset library report. |
 | `comfy_compare_assets` | Compare two assets by metadata, prompts, models, file size, and annotations. |
 | `comfy_get_object_info` | Read ComfyUI `/object_info` node metadata. |
+| `comfy_model_inventory` | Scan local model inventory roots and infer model types from paths and filenames. |
+| `comfy_resolve_capabilities` | Build a Capability Resolver report from workflow intent, model inventory, and node inventory from live `object_info`. |
+| `comfy_create_install_plan` | Create a conservative install plan for missing models and nodes. |
+| `comfy_record_install_audit` | Append an accepted or rejected install plan decision to the workspace audit log. |
+| `comfy_read_install_audit` | Read recent workspace audit log entries. |
 | `comfy_list_node_semantics` | List first-class Node Semantic Registry entries. |
 | `comfy_explain_node_semantics` | Explain one supported node or refuse an unknown node honestly. |
 | `comfy_search_node_semantics` | Search supported node semantics by node type, display name, category, purpose, or parameter strategy. |
@@ -527,6 +538,14 @@ Desktop Live Bridge status terms:
 Use Reload client from Settings when the frontend client needs to reconnect. Use Reload backend after changing bridge Python/runtime files and restarting ComfyUI is not required for the backend reload path.
 
 ## Release Notes
+
+### 1.4.0 - Capability Resolver And Install Planner
+
+- Added local model inventory scanning for checkpoint, LoRA, ControlNet, upscale, VAE, IP-Adapter, and unknown model files.
+- Added `comfy_model_inventory`, `comfy_resolve_capabilities`, `comfy_create_install_plan`, `comfy_record_install_audit`, and `comfy_read_install_audit`.
+- Added capability reports that compare workflow generation plans against live ComfyUI `object_info` node inventory and local model inventory.
+- Added conservative install plan and audit log support with no silent downloads and no automatic custom node installation.
+- Added the desktop Install Plan panel for reviewing missing models, missing nodes, manual actions, and recent audit log decisions.
 
 ### 1.3.0 - Node Semantic Registry Foundations
 

@@ -1,6 +1,6 @@
 {
   "name": "comfydex",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "Connect Codex to a usable local ComfyUI developer toolchain for workflows, safe automation, runs, assets, desktop review, and custom nodes.",
   "author": {
     "name": "Local developer"

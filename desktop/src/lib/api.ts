@@ -203,7 +203,7 @@ function isBridgeEnvelope<T>(value: T | BridgeEnvelope<T>): value is BridgeEnvel
 }
 
 export function getAppInfo(): Promise<AppInfo> {
-  return call("app_info", { name: "Comfydex", version: "1.0.0" });
+  return call("app_info", { name: "Comfydex", version: "1.4.0" });
 }
 
 export function setWorkspace(path: string): Promise<ProjectStatus> {

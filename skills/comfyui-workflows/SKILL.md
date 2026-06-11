@@ -16,7 +16,7 @@ ComfyUI has two common workflow JSON shapes:
 
 Comfydex can classify, import, and convert UI workflow JSON, but `comfy_submit_workflow` requires validated API prompt JSON.
 
-Comfydex `1.0.0` is a Windows-first local developer toolchain. Use MCP tools for workflow generation, validation, safe submission, queue waiting, output fetching, diagnostics, asset management, custom node validation, and project indexing. Use `scripts/install_windows.ps1` and `docs/release/windows-install.md` for local install verification when the user asks how to install or validate the 1.0 release.
+Comfydex `1.4.0` is a Windows-first local developer toolchain. Use MCP tools for workflow generation, capability resolution, validation, safe submission, queue waiting, output fetching, diagnostics, asset management, custom node validation, and project indexing. Use `scripts/install_windows.ps1` and `docs/release/windows-install.md` for local install verification when the user asks how to install or validate the local release.
 
 ## Standard Tool Order
 
@@ -31,13 +31,21 @@ For a normal run:
 7. Call `comfy_evaluate_submit_policy` before submitting an existing or generated workflow.
 8. Call `comfy_check_connection`.
 9. Call `comfy_get_object_info` when node metadata is needed.
-10. Call `comfy_list_workflows`.
-11. Call `comfy_read_workflow` for the selected file.
-12. Call `comfy_analyze_workflow`.
-13. Call `comfy_submit_workflow` only when submit policy is `allowed`.
-14. Call `comfy_wait_for_run`.
-15. Call `comfy_fetch_outputs`.
-16. Call `comfy_read_run`.
+10. Call `comfy_model_inventory` and `comfy_resolve_capabilities` before relying on named local models or installed custom nodes.
+11. Call `comfy_create_install_plan` when capability resolution reports missing requirements; record the user's accepted/rejected decision with `comfy_record_install_audit`.
+12. Call `comfy_list_workflows`.
+13. Call `comfy_read_workflow` for the selected file.
+14. Call `comfy_analyze_workflow`.
+15. Call `comfy_submit_workflow` only when submit policy is `allowed`.
+16. Call `comfy_wait_for_run`.
+17. Call `comfy_fetch_outputs`.
+18. Call `comfy_read_run`.
+
+## Capability Resolver
+
+Use `comfy_model_inventory` to inspect local model files. Use `comfy_resolve_capabilities` to compare a requested workflow plan with live ComfyUI `object_info` and the local model inventory.
+
+If required models or nodes are missing, use `comfy_create_install_plan` to create a conservative manual review plan. The plan does not download models, install custom nodes, or mutate ComfyUI. Use `comfy_record_install_audit` and `comfy_read_install_audit` to record and review accepted or rejected decisions.
 
 ## Project Index
 
