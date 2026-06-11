@@ -1,8 +1,8 @@
 param(
-    [ValidateSet("status", "push-workflow", "reload-client", "reload-backend")]
+    [ValidateSet("status", "push-workflow", "reload-client", "reload-backend", "verify")]
     [string]$Command = "status",
 
-    [string]$BaseUrl = "http://127.0.0.1:8000",
+    [string]$BaseUrl = "http://127.0.0.1:8188",
 
     [string]$WorkflowPath = "",
 
@@ -10,7 +10,11 @@ param(
 
     [string]$Version = "",
 
-    [switch]$Force
+    [switch]$Force,
+
+    [switch]$WaitForAck,
+
+    [switch]$SkipPush
 )
 
 $ErrorActionPreference = "Stop"
@@ -38,6 +42,39 @@ function Invoke-LiveBridgePost {
         -Body $json
 }
 
+function Wait-LiveWorkflowAck {
+    param(
+        [string]$RequestId,
+        [int]$TimeoutSeconds = 5
+    )
+
+    $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+    while ([DateTime]::UtcNow -lt $deadline) {
+        $status = Invoke-RestMethod -Uri (Join-UrlPath -Root $BaseUrl -Path "/comfydex/live/status") -Method Get
+        $lastResult = $status.last_workflow_result
+        if ($null -ne $lastResult -and $lastResult.request_id -eq $RequestId) {
+            return @{
+                ok = ($lastResult.ok -eq $true)
+                acknowledged = $true
+                last_workflow_result = $lastResult
+            }
+        }
+        Start-Sleep -Milliseconds 250
+    }
+
+    return @{
+        ok = $false
+        acknowledged = $false
+        diagnostics = @(
+            @{
+                code = "workflow_ack_timeout"
+                message = "Timed out waiting for the frontend workflow acknowledgement."
+                request_id = $RequestId
+            }
+        )
+    }
+}
+
 switch ($Command) {
     "status" {
         $result = Invoke-RestMethod -Uri (Join-UrlPath -Root $BaseUrl -Path "/comfydex/live/status") -Method Get
@@ -60,6 +97,18 @@ switch ($Command) {
             name = $workflowName
             activate = $true
             force = $Force.IsPresent
+            wait_for_ack = $WaitForAck.IsPresent
+        }
+        if ($WaitForAck.IsPresent -and $null -ne $result.request_id) {
+            $ack = Wait-LiveWorkflowAck -RequestId ([string]$result.request_id)
+            $result.ok = $ack.ok
+            $result | Add-Member -NotePropertyName acknowledged -NotePropertyValue $ack.acknowledged -Force
+            if ($null -ne $ack.last_workflow_result) {
+                $result | Add-Member -NotePropertyName last_workflow_result -NotePropertyValue $ack.last_workflow_result -Force
+            }
+            if ($null -ne $ack.diagnostics) {
+                $result | Add-Member -NotePropertyName diagnostics -NotePropertyValue $ack.diagnostics -Force
+            }
         }
     }
     "reload-client" {
@@ -75,6 +124,25 @@ switch ($Command) {
     }
     "reload-backend" {
         $result = Invoke-LiveBridgePost -Path "/comfydex/live/reload_backend" -Body @{}
+    }
+    "verify" {
+        $verifyScript = Join-Path $PSScriptRoot "verify_live_bridge.ps1"
+        $verifyArgs = @("-BaseUrl", $BaseUrl)
+        if (-not [string]::IsNullOrWhiteSpace($WorkflowPath)) {
+            $verifyArgs += @("-WorkflowPath", $WorkflowPath)
+        }
+        if (-not [string]::IsNullOrWhiteSpace($Name)) {
+            $verifyArgs += @("-Name", $Name)
+        }
+        if ($Force.IsPresent) {
+            $verifyArgs += "-Force"
+        }
+        if ($SkipPush.IsPresent) {
+            $verifyArgs += "-SkipPush"
+        }
+
+        & $verifyScript @verifyArgs
+        exit $LASTEXITCODE
     }
 }
 
