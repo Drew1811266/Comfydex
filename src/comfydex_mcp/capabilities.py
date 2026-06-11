@@ -3,8 +3,18 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from .generation import plan_workflow_generation
+from .node_semantics import match_semantics_to_object_info
+
 
 MODEL_EXTENSIONS = {".safetensors", ".ckpt", ".pt", ".pth", ".bin"}
+MODEL_PARAMETER_TYPES = {
+    "checkpoint_name": "checkpoint",
+    "lora_name": "lora",
+    "controlnet_name": "controlnet",
+    "upscale_model_name": "upscale",
+    "vae_name": "vae",
+}
 
 
 def infer_model_type(path: Path) -> str:
@@ -67,3 +77,86 @@ def scan_model_inventory(model_roots: list[Path]) -> dict[str, Any]:
         "models": sorted(models, key=lambda model: (model["model_type"], model["filename"])),
         "by_type": by_type,
     }
+
+
+def node_inventory_from_object_info(object_info: Any) -> dict[str, Any]:
+    node_types = sorted(key for key in object_info if isinstance(key, str)) if isinstance(object_info, dict) else []
+    return {
+        "node_count": len(node_types),
+        "node_types": node_types,
+        "semantic_match": match_semantics_to_object_info(object_info),
+    }
+
+
+def resolve_capabilities(
+    intent: str,
+    parameters: dict[str, Any] | None,
+    object_info: dict[str, Any],
+    model_inventory: dict[str, Any],
+    *,
+    template_id: str | None = None,
+) -> dict[str, Any]:
+    plan = plan_workflow_generation(intent, parameters, template_id)
+    node_inventory = node_inventory_from_object_info(object_info)
+    missing_nodes = _missing_required_nodes(plan, object_info)
+    missing_models = _missing_required_models(plan, model_inventory)
+    missing_information = list(plan.get("missing_information", []))
+    can_run_now = not missing_nodes and not missing_models and not missing_information
+
+    return {
+        "status": "ready" if can_run_now else "missing_requirements",
+        "can_run_now": can_run_now,
+        "plan": plan,
+        "node_inventory": node_inventory,
+        "model_inventory": model_inventory,
+        "missing_nodes": missing_nodes,
+        "missing_models": missing_models,
+        "missing_information": missing_information,
+    }
+
+
+def _missing_required_nodes(
+    plan: dict[str, Any],
+    object_info: dict[str, Any],
+) -> list[dict[str, str]]:
+    return [
+        {"node_type": node_type, "reason": "missing_object_info"}
+        for node_type in plan.get("required_nodes", [])
+        if isinstance(node_type, str) and node_type not in object_info
+    ]
+
+
+def _missing_required_models(
+    plan: dict[str, Any],
+    model_inventory: dict[str, Any],
+) -> list[dict[str, str]]:
+    parameters = plan.get("parameters", {})
+    missing: list[dict[str, str]] = []
+    for parameter, model_type in MODEL_PARAMETER_TYPES.items():
+        filename = parameters.get(parameter) if isinstance(parameters, dict) else None
+        if not isinstance(filename, str) or not filename.strip():
+            continue
+        if not _inventory_has_model(model_inventory, model_type, filename):
+            missing.append(
+                {
+                    "parameter": parameter,
+                    "filename": filename,
+                    "model_type": model_type,
+                    "reason": "missing_model",
+                }
+            )
+    return missing
+
+
+def _inventory_has_model(
+    model_inventory: dict[str, Any],
+    model_type: str,
+    filename: str,
+) -> bool:
+    expected = filename.casefold()
+    by_type = model_inventory.get("by_type", {})
+    candidates = by_type.get(model_type, []) if isinstance(by_type, dict) else []
+    for item in candidates:
+        if isinstance(item, dict) and str(item.get("filename", "")).casefold() == expected:
+            return True
+    return False

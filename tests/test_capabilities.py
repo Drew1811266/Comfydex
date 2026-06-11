@@ -1,6 +1,21 @@
 from pathlib import Path
 
-from comfydex_mcp.capabilities import infer_model_type, scan_model_inventory
+from comfydex_mcp.capabilities import (
+    infer_model_type,
+    node_inventory_from_object_info,
+    resolve_capabilities,
+    scan_model_inventory,
+)
+
+
+TEXT_TO_IMAGE_OBJECT_INFO = {
+    "CheckpointLoaderSimple": {"input": {"required": {"ckpt_name": ("STRING",)}}},
+    "CLIPTextEncode": {"input": {"required": {"text": ("STRING",), "clip": ("CLIP",)}}},
+    "EmptyLatentImage": {"input": {"required": {}}},
+    "KSampler": {"input": {"required": {}}},
+    "VAEDecode": {"input": {"required": {}}},
+    "SaveImage": {"input": {"required": {}}},
+}
 
 
 def test_infer_model_type_from_parent_folder_and_filename():
@@ -40,3 +55,64 @@ def test_scan_model_inventory_skips_missing_roots(tmp_path):
     assert result["model_count"] == 0
     assert result["by_type"] == {}
     assert result["missing_roots"] == [str((tmp_path / "missing").resolve())]
+
+
+def test_node_inventory_from_object_info_includes_semantic_match():
+    result = node_inventory_from_object_info(
+        {
+            "KSampler": {"input": {"required": {}}},
+            "UnknownCustomNode": {"input": {"required": {}}},
+        }
+    )
+
+    assert result["node_count"] == 2
+    assert result["node_types"] == ["KSampler", "UnknownCustomNode"]
+    assert result["semantic_match"]["supported_node_types"] == ["KSampler"]
+    assert result["semantic_match"]["unknown_node_types"] == ["UnknownCustomNode"]
+
+
+def test_resolve_capabilities_returns_ready_when_nodes_and_models_exist():
+    model_inventory = {
+        "models": [{"filename": "sdxl.safetensors", "model_type": "checkpoint"}],
+        "by_type": {"checkpoint": [{"filename": "sdxl.safetensors"}]},
+    }
+
+    report = resolve_capabilities(
+        "text to image",
+        {"checkpoint_name": "sdxl.safetensors", "positive_prompt": "a lake"},
+        TEXT_TO_IMAGE_OBJECT_INFO,
+        model_inventory,
+    )
+
+    assert report["status"] == "ready"
+    assert report["can_run_now"] is True
+    assert report["missing_nodes"] == []
+    assert report["missing_models"] == []
+    assert report["plan"]["semantic_coverage"]["status"] == "supported"
+
+
+def test_resolve_capabilities_reports_missing_models_and_nodes():
+    object_info = dict(TEXT_TO_IMAGE_OBJECT_INFO)
+    object_info.pop("KSampler")
+    model_inventory = {"models": [], "by_type": {}}
+
+    report = resolve_capabilities(
+        "text to image",
+        {"checkpoint_name": "missing.safetensors", "positive_prompt": "a lake"},
+        object_info,
+        model_inventory,
+    )
+
+    assert report["status"] == "missing_requirements"
+    assert report["can_run_now"] is False
+    assert report["missing_nodes"] == [
+        {"node_type": "KSampler", "reason": "missing_object_info"}
+    ]
+    assert report["missing_models"] == [
+        {
+            "parameter": "checkpoint_name",
+            "filename": "missing.safetensors",
+            "model_type": "checkpoint",
+            "reason": "missing_model",
+        }
+    ]
