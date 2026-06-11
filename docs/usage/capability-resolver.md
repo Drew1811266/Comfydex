@@ -62,7 +62,15 @@ Use `comfy_create_install_plan` with a capability report. The conservative insta
 
 Missing models create manual model actions. Missing nodes create manual custom node actions with `restart_required: true`. Every action has `requires_confirmation: true` and `automatic: false`.
 
-Comfydex 1.4 has no silent downloads and no automatic custom node installation.
+Comfydex performs no silent downloads, no automatic downloads, and no automatic custom node installation.
+
+## Recipe-Aware Capability Checks
+
+The Scenario Recipe Registry can call the same resolver through `comfy_resolve_recipe_capabilities`. This is useful when Codex has already selected recipe candidates and a selected recipe id from `comfy_suggest_workflow_recipes` or `comfy_plan_workflow_generation`.
+
+Recipe-aware capability checks use the recipe's required nodes, required model types, and mapped template to produce a normal capability report. The report still depends on live ComfyUI `object_info` and the local model inventory, and it still does not download models or install custom nodes. Use recipe-aware capability checks when recipe candidates should be validated before workflow generation.
+
+Use this path when the user says "make a LoRA portrait", "upscale this image", or "use ControlNet pose" and Codex needs to explain whether the local ComfyUI environment can run the selected recipe now.
 
 ## Audit Log
 

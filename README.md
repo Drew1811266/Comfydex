@@ -6,9 +6,9 @@ The plugin is installed in Codex, not in ComfyUI. ComfyUI remains the runtime se
 
 ## Status
 
-Current version: `1.4.0`
+Current version: `1.5.0`
 
-This 1.4 Capability Resolver Release focuses on a practical local ComfyUI workflow:
+This 1.5 Scenario Recipe Registry Release focuses on a practical local ComfyUI workflow:
 
 - connect to a local or remote ComfyUI server
 - manage workflow JSON files from a Codex workspace
@@ -18,13 +18,16 @@ This 1.4 Capability Resolver Release focuses on a practical local ComfyUI workfl
 - use Gallery And Batch UI surfaces for asset gallery review, comparison, reports, safe cleanup UI, and batch task view inspection
 - run safe one-call generate-run-fetch automation for low-risk single-run requests
 - build generated workflows from deterministic generation plans
+- choose built-in workflow scenarios through the Scenario Recipe Registry
+- expose recipe candidates and the selected recipe id in generated workflow plans
+- run recipe-aware capability checks before relying on local models or custom nodes
 - validate generated workflows and classify submit policy before running
 - analyze workflow nodes, links, model references, and missing node types
 - explain supported native and high-frequency functional nodes through the Node Semantic Registry
 - refuse unsupported unknown nodes honestly instead of pretending they are first-class workflow building blocks
 - scan a local model inventory before relying on named checkpoint, LoRA, ControlNet, upscale, or VAE assets
 - resolve local workflow capability with node inventory from live ComfyUI `object_info`
-- create a conservative install plan with no silent downloads or automatic custom node installation
+- create a conservative install plan with no silent downloads, no automatic downloads, and no automatic custom node installation
 - review the desktop Install Plan panel and record accepted/rejected decisions in the audit log
 - import UI workflow JSON and convert it toward API prompt JSON
 - build first-pass workflows from templates and structured plans
@@ -94,6 +97,7 @@ Codex is strong at reading code, editing structured files, following tool workfl
 │       ├── node_contracts.py    # Custom node examples, contracts, and repair guidance
 │       ├── outputs.py           # Output listing and cleanup
 │       ├── paths.py             # Path safety helpers
+│       ├── recipes.py           # Scenario Recipe Registry and recipe scoring
 │       ├── reports.py           # Markdown run reports
 │       ├── runs.py              # Run record persistence
 │       ├── server.py            # FastMCP tool server
@@ -126,7 +130,7 @@ The Skill explains how Codex should work with ComfyUI workflows, including the d
 - UI workflow JSON, exported for the ComfyUI visual editor
 - API prompt JSON, submitted to ComfyUI `/prompt`
 
-Version `1.4.0` can import UI workflow files and help convert them, but submission still requires validated API prompt JSON. It also provides the shared project index, workflow generation engine, Node Semantic Registry, Capability Resolver, complete custom node loop, local asset library for generated outputs, desktop app shell backed by a Python desktop bridge with Gallery And Batch UI surfaces and desktop Install Plan review, safe end-to-end automation, Windows install helper, release checklist, security/path review, release package validation, and a productized ComfyUI-side Live Bridge for direct desktop canvas workflow loading.
+Version `1.5.0` can import UI workflow files and help convert them, but submission still requires validated API prompt JSON. It also provides the shared project index, workflow generation engine, Scenario Recipe Registry, Node Semantic Registry, Capability Resolver, complete custom node loop, local asset library for generated outputs, desktop app shell backed by a Python desktop bridge with Gallery And Batch UI surfaces and desktop Install Plan review, safe end-to-end automation, Windows install helper, release checklist, security/path review, release package validation, and a productized ComfyUI-side Live Bridge for direct desktop canvas workflow loading.
 
 Unknown nodes are not treated as first-class supported nodes.
 
@@ -135,6 +139,7 @@ Unknown nodes are not treated as first-class supported nodes.
 | Group | What it adds | Primary tools |
 | --- | --- | --- |
 | Workflow generation | Plan, generate, validate, repair, and classify submit policy for generated API workflows. | `comfy_plan_workflow_generation`, `comfy_generate_workflow`, `comfy_evaluate_submit_policy` |
+| Scenario Recipe Registry | Map natural-language scenarios to recipe candidates, selected recipe id, templates, required inputs, required models, and recipe-aware capability checks. | `comfy_list_workflow_recipes`, `comfy_suggest_workflow_recipes`, `comfy_resolve_recipe_capabilities` |
 | End-to-end automation | Generate, save, submit, wait, fetch outputs, and reindex for low-risk single-run requests. | `comfy_generate_run_fetch` |
 | Project index | Build and inspect a local SQLite index for workflows, runs, outputs, batches, and index errors. | `comfy_project_status`, `comfy_reindex_project` |
 | Asset library | Reindex, search, annotate, sidecar, clean up, report, and compare generated output assets. | `comfy_reindex_assets`, `comfy_search_assets`, `comfy_update_asset_metadata`, `comfy_plan_asset_cleanup` |
@@ -207,6 +212,11 @@ Comfydex exposes these tools:
 | `comfy_create_install_plan` | Create a conservative install plan for missing models and nodes. |
 | `comfy_record_install_audit` | Append an accepted or rejected install plan decision to the workspace audit log. |
 | `comfy_read_install_audit` | Read recent workspace audit log entries. |
+| `comfy_list_workflow_recipes` | List built-in Scenario Recipe Registry entries. |
+| `comfy_search_workflow_recipes` | Search recipes by intent phrase, tag, node, model type, and example text. |
+| `comfy_explain_workflow_recipe` | Explain one recipe, including template id, required inputs, nodes, model types, examples, and safety notes. |
+| `comfy_suggest_workflow_recipes` | Return scored recipe candidates for natural-language intent and parameters. |
+| `comfy_resolve_recipe_capabilities` | Run recipe-aware capability checks with live `object_info` and local model inventory. |
 | `comfy_list_node_semantics` | List first-class Node Semantic Registry entries. |
 | `comfy_explain_node_semantics` | Explain one supported node or refuse an unknown node honestly. |
 | `comfy_search_node_semantics` | Search supported node semantics by node type, display name, category, purpose, or parameter strategy. |
@@ -320,6 +330,18 @@ comfy_evaluate_submit_policy
 ```
 
 Generated workflows expose validation, repairs, and submit policy. Submit only when policy is `allowed`; ask for confirmation when policy is `requires_confirmation`; do not submit when policy is `blocked`.
+
+### Scenario recipes
+
+```text
+comfy_suggest_workflow_recipes
+comfy_resolve_recipe_capabilities
+comfy_plan_workflow_generation
+```
+
+The Scenario Recipe Registry returns recipe candidates for user intent such as text-to-image, LoRA text-to-image, image-to-image, image upscale, and ControlNet pose. Generation plans expose the selected recipe id alongside `selected_template_id`, so Codex can explain why it chose a template before building.
+
+Use `comfy_resolve_recipe_capabilities` for recipe-aware capability checks when a recipe depends on local model files or installed custom nodes. The registry performs no automatic downloads and does not install custom nodes.
 
 ### Project index
 
@@ -441,6 +463,7 @@ Comfydex intentionally keeps the implementation bounded:
 - custom node scaffolding defaults to workspace-local `custom_nodes/`
 - output downloads are restricted to the corresponding run output directory
 - output cleanup is dry-run by default and requires `confirm=True` for deletion
+- recipe plans and install plans perform no automatic downloads
 - path traversal is rejected
 - header values are redacted in config responses
 - Comfydex does not modify ComfyUI installation files
@@ -538,6 +561,14 @@ Desktop Live Bridge status terms:
 Use Reload client from Settings when the frontend client needs to reconnect. Use Reload backend after changing bridge Python/runtime files and restarting ComfyUI is not required for the backend reload path.
 
 ## Release Notes
+
+### 1.5.0 - Scenario Recipe Registry
+
+- Added the Scenario Recipe Registry for text-to-image, SDXL, LoRA, image-to-image, upscale, and ControlNet pose scenarios.
+- Added `comfy_list_workflow_recipes`, `comfy_search_workflow_recipes`, `comfy_explain_workflow_recipe`, `comfy_suggest_workflow_recipes`, and `comfy_resolve_recipe_capabilities`.
+- Added recipe candidates and selected recipe id context to generated workflow plans.
+- Added recipe-aware capability checks that combine recipe requirements, live ComfyUI `object_info`, and local model inventory.
+- Kept the release bounded to explanation and planning: no automatic downloads, no automatic custom node installation, and no user-authored recipe persistence.
 
 ### 1.4.0 - Capability Resolver And Install Planner
 

@@ -435,6 +435,54 @@ def test_release_checklist_1_4_covers_capability_release_gates():
         assert marker in checklist
 
 
+def test_scenario_recipe_docs_cover_recipe_aware_planning():
+    usage = (ROOT / "docs" / "usage" / "scenario-recipes.md").read_text(
+        encoding="utf-8"
+    )
+    capability = (ROOT / "docs" / "usage" / "capability-resolver.md").read_text(
+        encoding="utf-8"
+    )
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    skill = (ROOT / "skills" / "comfyui-workflows" / "SKILL.md").read_text(
+        encoding="utf-8"
+    )
+
+    for marker in (
+        "Scenario Recipe Registry",
+        "recipe candidates",
+        "selected recipe id",
+        "comfy_suggest_workflow_recipes",
+        "comfy_resolve_recipe_capabilities",
+        "recipe-aware capability checks",
+        "no automatic downloads",
+    ):
+        assert marker in usage
+        assert marker in capability
+        assert marker in readme
+        assert marker in skill
+
+
+def test_release_checklist_1_5_covers_recipe_release_gates():
+    checklist = (ROOT / "docs" / "release" / "1.5-release-checklist.md").read_text(
+        encoding="utf-8"
+    )
+
+    for marker in (
+        "python -m pytest -q",
+        "recipe registry tests",
+        "MCP recipe tools",
+        "desktop bridge recipe operations",
+        "recipe-aware planning",
+        "recipe-aware capability checks",
+        "no automatic downloads",
+        "npm run typecheck",
+        "npm run build",
+        "cargo check",
+        "version files report `1.5.0`",
+    ):
+        assert marker in checklist
+
+
 def test_workflow_generation_doc_explains_submit_policy():
     text = (ROOT / "docs" / "usage" / "workflow-generation.md").read_text(
         encoding="utf-8"

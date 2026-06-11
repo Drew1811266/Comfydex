@@ -16,7 +16,7 @@ ComfyUI has two common workflow JSON shapes:
 
 Comfydex can classify, import, and convert UI workflow JSON, but `comfy_submit_workflow` requires validated API prompt JSON.
 
-Comfydex `1.4.0` is a Windows-first local developer toolchain. Use MCP tools for workflow generation, capability resolution, validation, safe submission, queue waiting, output fetching, diagnostics, asset management, custom node validation, and project indexing. Use `scripts/install_windows.ps1` and `docs/release/windows-install.md` for local install verification when the user asks how to install or validate the local release.
+Comfydex `1.5.0` is a Windows-first local developer toolchain. Use MCP tools for workflow generation, the Scenario Recipe Registry, capability resolution, validation, safe submission, queue waiting, output fetching, diagnostics, asset management, custom node validation, and project indexing. Use `scripts/install_windows.ps1` and `docs/release/windows-install.md` for local install verification when the user asks how to install or validate the local release.
 
 ## Standard Tool Order
 
@@ -26,26 +26,36 @@ For a normal run:
 2. Call `comfy_reindex_project` when project counts are stale or files were changed outside Comfydex.
 3. Call `comfy_reindex_assets` when output assets should be searchable or sidecars are needed.
 4. For low-risk one-call generation, call `comfy_generate_run_fetch`.
-5. Otherwise, call `comfy_plan_workflow_generation` before creating a new workflow.
-6. Call `comfy_generate_workflow` when required generation inputs are present.
-7. Call `comfy_evaluate_submit_policy` before submitting an existing or generated workflow.
-8. Call `comfy_check_connection`.
-9. Call `comfy_get_object_info` when node metadata is needed.
-10. Call `comfy_model_inventory` and `comfy_resolve_capabilities` before relying on named local models or installed custom nodes.
-11. Call `comfy_create_install_plan` when capability resolution reports missing requirements; record the user's accepted/rejected decision with `comfy_record_install_audit`.
-12. Call `comfy_list_workflows`.
-13. Call `comfy_read_workflow` for the selected file.
-14. Call `comfy_analyze_workflow`.
-15. Call `comfy_submit_workflow` only when submit policy is `allowed`.
-16. Call `comfy_wait_for_run`.
-17. Call `comfy_fetch_outputs`.
-18. Call `comfy_read_run`.
+5. Otherwise, call `comfy_suggest_workflow_recipes` to inspect recipe candidates when the user describes a scenario.
+6. Call `comfy_resolve_recipe_capabilities` for recipe-aware capability checks before relying on named local models or installed custom nodes.
+7. Call `comfy_plan_workflow_generation` before creating a new workflow and inspect the selected recipe id.
+8. Call `comfy_generate_workflow` when required generation inputs are present.
+9. Call `comfy_evaluate_submit_policy` before submitting an existing or generated workflow.
+10. Call `comfy_check_connection`.
+11. Call `comfy_get_object_info` when node metadata is needed.
+12. Call `comfy_model_inventory` and `comfy_resolve_capabilities` before relying on named local models or installed custom nodes outside a recipe path.
+13. Call `comfy_create_install_plan` when capability resolution reports missing requirements; record the user's accepted/rejected decision with `comfy_record_install_audit`.
+14. Call `comfy_list_workflows`.
+15. Call `comfy_read_workflow` for the selected file.
+16. Call `comfy_analyze_workflow`.
+17. Call `comfy_submit_workflow` only when submit policy is `allowed`.
+18. Call `comfy_wait_for_run`.
+19. Call `comfy_fetch_outputs`.
+20. Call `comfy_read_run`.
+
+## Scenario Recipe Registry
+
+Use `comfy_list_workflow_recipes`, `comfy_search_workflow_recipes`, and `comfy_suggest_workflow_recipes` when the user asks for a natural workflow scenario such as text-to-image, LoRA, image-to-image, upscale, or ControlNet pose.
+
+Recipe tools return recipe candidates. A generation plan can include a selected recipe id next to the selected template. Use those fields to explain the plan before building or submitting.
+
+Use `comfy_resolve_recipe_capabilities` for recipe-aware capability checks. The recipe path performs no automatic downloads, does not install custom nodes, and does not mutate ComfyUI.
 
 ## Capability Resolver
 
 Use `comfy_model_inventory` to inspect local model files. Use `comfy_resolve_capabilities` to compare a requested workflow plan with live ComfyUI `object_info` and the local model inventory.
 
-If required models or nodes are missing, use `comfy_create_install_plan` to create a conservative manual review plan. The plan does not download models, install custom nodes, or mutate ComfyUI. Use `comfy_record_install_audit` and `comfy_read_install_audit` to record and review accepted or rejected decisions.
+If required models or nodes are missing, use `comfy_create_install_plan` to create a conservative manual review plan. The plan does not download models, install custom nodes, or mutate ComfyUI; there are no automatic downloads. Use `comfy_record_install_audit` and `comfy_read_install_audit` to record and review accepted or rejected decisions.
 
 ## Project Index
 
@@ -81,7 +91,7 @@ Do not assume the desktop shell can edit ComfyUI workflow graphs, run ComfyUI it
 
 ## Workflow Generation
 
-Use `comfy_plan_workflow_generation` to turn intent and parameters into a scored generation plan. Resolve `missing_information` before generating.
+Use `comfy_plan_workflow_generation` to turn intent and parameters into a scored generation plan. Inspect recipe candidates, the selected recipe id, and `missing_information` before generating.
 
 Use `comfy_generate_workflow` to build, validate, repair, and save a workflow. Inspect `repairs`, `gaps`, and `policy` before submitting.
 
