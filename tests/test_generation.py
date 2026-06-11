@@ -1,6 +1,7 @@
 from comfydex_mcp.generation import (
     DEFAULT_CONSTRAINTS,
     build_generated_workflow,
+    candidate_templates,
     evaluate_submit_policy,
     normalize_constraints,
     plan_workflow_generation,
@@ -132,6 +133,37 @@ def test_plan_workflow_generation_includes_semantic_coverage():
     assert "KSampler" in semantic["supported_node_types"]
     assert semantic["unsupported_node_types"] == []
     assert semantic["status"] == "supported"
+
+
+def test_plan_workflow_generation_includes_recipe_context():
+    plan = plan_workflow_generation(
+        "use a lora style for a portrait",
+        {
+            "lora_name": "style.safetensors",
+            "checkpoint_name": "sdxl.safetensors",
+            "positive_prompt": "portrait",
+        },
+    )
+
+    assert plan["selected_recipe_id"] == "text-to-image-lora"
+    assert plan["recipe_candidates"][0]["recipe_id"] == "text-to-image-lora"
+    assert plan["selected_template_id"] == "lora-text-to-image"
+
+
+def test_candidate_templates_keeps_explicit_template_id_authoritative():
+    candidates = candidate_templates(
+        "upscale this image",
+        {"image": "input.png"},
+        template_id="basic-text-to-image",
+    )
+
+    assert candidates == [
+        {
+            "template_id": "basic-text-to-image",
+            "score": 1000,
+            "reasons": ["explicit template_id"],
+        }
+    ]
 
 
 def test_plan_workflow_generation_reports_unsupported_template_nodes(monkeypatch):

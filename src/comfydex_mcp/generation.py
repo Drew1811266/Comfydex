@@ -5,6 +5,7 @@ from copy import deepcopy
 from typing import Any
 
 from .node_semantics import get_node_semantics
+from .recipes import suggest_workflow_recipes
 from .templates import get_workflow_template, list_workflow_templates
 
 DEFAULT_CONSTRAINTS = {
@@ -127,6 +128,19 @@ def candidate_templates(
     template_id: str | None = None,
 ) -> list[dict[str, Any]]:
     normalized_parameters = normalize_parameters(parameters)
+    candidates, _recipe_candidates = _candidate_templates_with_recipes(
+        intent,
+        normalized_parameters,
+        template_id,
+    )
+    return candidates
+
+
+def _candidate_templates_with_recipes(
+    intent: str,
+    normalized_parameters: dict[str, Any],
+    template_id: str | None = None,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     if template_id is not None:
         get_workflow_template(template_id)
         return [
@@ -135,17 +149,24 @@ def candidate_templates(
                 "score": 1000,
                 "reasons": ["explicit template_id"],
             }
-        ]
+        ], []
 
     normalized_intent = intent.casefold()
+    templates = list_workflow_templates()
+    recipe_candidates = suggest_workflow_recipes(
+        intent,
+        normalized_parameters,
+        limit=len(templates),
+    )
     candidates = [
         _score_template(template, normalized_intent, normalized_parameters)
-        for template in list_workflow_templates()
+        for template in templates
     ]
+    _boost_candidates_from_recipes(candidates, recipe_candidates)
     return sorted(
         candidates,
         key=lambda candidate: (-candidate["score"], candidate["template_id"]),
-    )
+    ), recipe_candidates
 
 
 def plan_workflow_generation(
@@ -154,10 +175,14 @@ def plan_workflow_generation(
     template_id: str | None = None,
     constraints: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    candidates = candidate_templates(intent, parameters, template_id)
+    normalized_parameters = normalize_parameters(parameters)
+    candidates, recipe_candidates = _candidate_templates_with_recipes(
+        intent,
+        normalized_parameters,
+        template_id,
+    )
     selected_template_id = str(candidates[0]["template_id"])
     template = get_workflow_template(selected_template_id)
-    normalized_parameters = normalize_parameters(parameters)
     merged_parameters = {
         **deepcopy(template["parameters"]),
         **normalized_parameters,
@@ -172,7 +197,12 @@ def plan_workflow_generation(
         "intent": intent,
         "mode": _mode_from_template_id(selected_template_id),
         "selected_template_id": selected_template_id,
+        "selected_recipe_id": _selected_recipe_id(
+            recipe_candidates,
+            selected_template_id,
+        ),
         "candidate_templates": candidates[:3],
+        "recipe_candidates": recipe_candidates[:3],
         "template": template,
         "required_nodes": deepcopy(template["required_nodes"]),
         "semantic_coverage": _semantic_coverage_for_template(template),
@@ -182,6 +212,31 @@ def plan_workflow_generation(
         "missing_information": missing_information,
         "issues": [],
     }
+
+
+def _boost_candidates_from_recipes(
+    candidates: list[dict[str, Any]],
+    recipe_candidates: list[dict[str, Any]],
+) -> None:
+    for candidate in candidates:
+        template_id = str(candidate["template_id"])
+        for recipe_candidate in recipe_candidates:
+            if str(recipe_candidate["template_id"]) != template_id:
+                continue
+            candidate["score"] += int(recipe_candidate["score"])
+            candidate["reasons"].append(
+                f"recipe {recipe_candidate['recipe_id']} suggests template"
+            )
+
+
+def _selected_recipe_id(
+    recipe_candidates: list[dict[str, Any]],
+    selected_template_id: str,
+) -> str | None:
+    for recipe_candidate in recipe_candidates:
+        if str(recipe_candidate["template_id"]) == selected_template_id:
+            return str(recipe_candidate["recipe_id"])
+    return None
 
 
 def _semantic_coverage_for_template(template: dict[str, Any]) -> dict[str, Any]:
