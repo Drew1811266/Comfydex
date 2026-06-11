@@ -34,6 +34,12 @@ from .live_bridge import (
     verify_live_bridge,
 )
 from .paths import is_redirected_path
+from .recipes import (
+    list_workflow_recipes,
+    resolve_recipe_capabilities,
+    search_workflow_recipes,
+    suggest_workflow_recipes,
+)
 from .runs import list_runs
 from .workflows import list_workflows, read_workflow
 
@@ -111,6 +117,28 @@ def _dispatch(
         )
     if operation == "read_install_audit":
         return read_install_audit(config.workspace, int(payload.get("limit", 20)))
+    if operation == "list_workflow_recipes":
+        recipes = list_workflow_recipes()
+        return {"recipe_count": len(recipes), "recipes": recipes}
+    if operation == "search_workflow_recipes":
+        query = str(payload.get("query", ""))
+        recipes = search_workflow_recipes(query)
+        return {"query": query, "recipe_count": len(recipes), "recipes": recipes}
+    if operation == "suggest_workflow_recipes":
+        intent = str(payload.get("intent", ""))
+        suggestions = suggest_workflow_recipes(
+            intent,
+            _optional_dict(payload.get("parameters"), "parameters"),
+            recipe_id=_optional_string(payload.get("recipe_id")),
+            limit=int(payload.get("limit", 3)),
+        )
+        return {
+            "intent": intent,
+            "suggestion_count": len(suggestions),
+            "suggestions": suggestions,
+        }
+    if operation == "resolve_recipe_capabilities":
+        return asyncio.run(_resolve_recipe_capabilities(config, payload))
     if operation == "live_bridge_status":
         return asyncio.run(get_live_bridge_status(config))
     if operation == "live_bridge_reload_client":
@@ -247,6 +275,29 @@ async def _capability_report(
         object_info,
         model_inventory,
         template_id=_optional_string(payload.get("template_id")),
+    )
+
+
+async def _resolve_recipe_capabilities(
+    config: ComfydexConfig,
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    recipe_id = str(payload.get("recipe_id") or "").strip()
+    if not recipe_id:
+        raise ValueError("recipe_id is required")
+    parameters = _optional_dict(payload.get("parameters"), "parameters")
+    model_inventory = scan_model_inventory(_model_roots(config.workspace, payload))
+    async with ComfyClient(
+        config.base_url,
+        config.headers,
+        config.request_timeout_seconds,
+    ) as client:
+        object_info = await client.get_object_info()
+    return resolve_recipe_capabilities(
+        recipe_id,
+        parameters,
+        object_info,
+        model_inventory,
     )
 
 

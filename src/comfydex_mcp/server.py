@@ -83,6 +83,13 @@ from .outputs import cleanup_outputs, list_outputs as list_run_outputs
 from .node_scaffold import scaffold_custom_node_package, safe_custom_nodes_dir
 from .patching import patch_workflow
 from .paths import is_redirected_path, safe_json_path, safe_output_path, safe_package_dir
+from .recipes import (
+    get_workflow_recipe,
+    list_workflow_recipes,
+    resolve_recipe_capabilities,
+    search_workflow_recipes,
+    suggest_workflow_recipes,
+)
 from .reports import export_run_report
 from .runs import (
     append_event,
@@ -790,6 +797,70 @@ async def comfy_record_install_audit(
 async def comfy_read_install_audit(limit: int = 20) -> dict[str, Any]:
     ctx = tool_context()
     return read_install_audit(ctx.workspace, limit)
+
+
+@mcp.tool()
+async def comfy_list_workflow_recipes() -> dict[str, Any]:
+    recipes = list_workflow_recipes()
+    return {"recipe_count": len(recipes), "recipes": recipes}
+
+
+@mcp.tool()
+async def comfy_search_workflow_recipes(query: str) -> dict[str, Any]:
+    recipes = search_workflow_recipes(query)
+    return {"query": query, "recipe_count": len(recipes), "recipes": recipes}
+
+
+@mcp.tool()
+async def comfy_explain_workflow_recipe(recipe_id: str) -> dict[str, Any]:
+    recipe = get_workflow_recipe(recipe_id)
+    if recipe is None:
+        return {"status": "unsupported", "recipe_id": recipe_id}
+    return {"status": "supported", "recipe": recipe}
+
+
+@mcp.tool()
+async def comfy_suggest_workflow_recipes(
+    intent: str,
+    parameters: dict[str, Any] | None = None,
+    recipe_id: str | None = None,
+    limit: int = 3,
+) -> dict[str, Any]:
+    suggestions = suggest_workflow_recipes(
+        intent,
+        parameters,
+        recipe_id=recipe_id,
+        limit=limit,
+    )
+    return {
+        "intent": intent,
+        "suggestion_count": len(suggestions),
+        "suggestions": suggestions,
+    }
+
+
+@mcp.tool()
+async def comfy_resolve_recipe_capabilities(
+    recipe_id: str,
+    parameters: dict[str, Any] | None = None,
+    model_roots: list[str] | None = None,
+) -> dict[str, Any]:
+    ctx = tool_context()
+    model_inventory = scan_model_inventory(
+        _resolve_model_roots(ctx.workspace, model_roots)
+    )
+    async with ComfyClient(
+        ctx.config.base_url,
+        ctx.config.headers,
+        ctx.config.request_timeout_seconds,
+    ) as client:
+        object_info = await client.get_object_info()
+    return resolve_recipe_capabilities(
+        recipe_id,
+        parameters,
+        object_info,
+        model_inventory,
+    )
 
 
 @mcp.tool()

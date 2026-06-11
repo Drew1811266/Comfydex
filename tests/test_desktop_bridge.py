@@ -408,6 +408,61 @@ def test_bridge_install_audit_roundtrip(tmp_path: Path):
     assert read["data"]["entries"][0]["plan"] == plan
 
 
+def test_bridge_workflow_recipe_operations(tmp_path: Path):
+    _write_workspace(tmp_path)
+
+    listed = run_bridge_operation("list_workflow_recipes", tmp_path)
+    searched = run_bridge_operation(
+        "search_workflow_recipes",
+        tmp_path,
+        {"query": "pose controlnet"},
+    )
+    suggested = run_bridge_operation(
+        "suggest_workflow_recipes",
+        tmp_path,
+        {
+            "intent": "make a portrait with a lora style",
+            "parameters": {"lora_name": "style.safetensors"},
+        },
+    )
+
+    assert listed["ok"] is True
+    assert listed["data"]["recipe_count"] >= 5
+    assert searched["data"]["recipes"][0]["recipe_id"] == "controlnet-pose"
+    assert suggested["data"]["suggestions"][0]["recipe_id"] == "text-to-image-lora"
+
+
+def test_bridge_resolve_recipe_capabilities_uses_payload_and_config(
+    monkeypatch,
+    tmp_path: Path,
+):
+    _write_workspace(tmp_path)
+    checkpoint = tmp_path / "models" / "checkpoints" / "sdxl.safetensors"
+    checkpoint.parent.mkdir(parents=True)
+    checkpoint.write_text("model", encoding="utf-8")
+    monkeypatch.setattr(
+        desktop_bridge,
+        "ComfyClient",
+        object_info_client(TEXT_TO_IMAGE_OBJECT_INFO),
+    )
+
+    result = run_bridge_operation(
+        "resolve_recipe_capabilities",
+        tmp_path,
+        {
+            "recipe_id": "text-to-image-basic",
+            "parameters": {
+                "checkpoint_name": "sdxl.safetensors",
+                "positive_prompt": "a lake",
+            },
+        },
+    )
+
+    assert result["ok"] is True
+    assert result["data"]["status"] == "ready"
+    assert result["data"]["recipe"]["recipe_id"] == "text-to-image-basic"
+
+
 def test_bridge_updates_asset_metadata(tmp_path: Path):
     _write_workspace(tmp_path)
     asset_id = _asset_ids(tmp_path)[0]

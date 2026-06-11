@@ -444,6 +444,71 @@ async def test_comfy_create_install_plan_tool_is_registered_with_mcp():
 
 
 @pytest.mark.asyncio
+async def test_comfy_workflow_recipe_tools_return_registry_entries():
+    listed = await server.comfy_list_workflow_recipes()
+    searched = await server.comfy_search_workflow_recipes("pose controlnet")
+    explained = await server.comfy_explain_workflow_recipe("text-to-image-lora")
+    missing = await server.comfy_explain_workflow_recipe("missing")
+
+    assert listed["recipe_count"] >= 5
+    assert any(recipe["recipe_id"] == "text-to-image-basic" for recipe in listed["recipes"])
+    assert searched["recipes"][0]["recipe_id"] == "controlnet-pose"
+    assert explained["status"] == "supported"
+    assert explained["recipe"]["template_id"] == "lora-text-to-image"
+    assert missing["status"] == "unsupported"
+
+
+@pytest.mark.asyncio
+async def test_comfy_suggest_workflow_recipes_tool_scores_intent():
+    result = await server.comfy_suggest_workflow_recipes(
+        "make a portrait with a lora style",
+        parameters={"lora_name": "style.safetensors"},
+    )
+
+    assert result["suggestions"][0]["recipe_id"] == "text-to-image-lora"
+    assert result["suggestion_count"] >= 1
+
+
+@pytest.mark.asyncio
+async def test_comfy_resolve_recipe_capabilities_tool_uses_live_object_info(
+    monkeypatch,
+    tmp_path: Path,
+):
+    _write_config(tmp_path)
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+    checkpoint = tmp_path / "models" / "checkpoints" / "sdxl.safetensors"
+    checkpoint.parent.mkdir(parents=True)
+    checkpoint.write_text("model", encoding="utf-8")
+    monkeypatch.setattr(
+        server,
+        "ComfyClient",
+        object_info_client(TEXT_TO_IMAGE_OBJECT_INFO),
+    )
+
+    result = await server.comfy_resolve_recipe_capabilities(
+        "text-to-image-basic",
+        parameters={
+            "checkpoint_name": "sdxl.safetensors",
+            "positive_prompt": "a lake",
+        },
+    )
+
+    assert result["status"] == "ready"
+    assert result["recipe"]["recipe_id"] == "text-to-image-basic"
+    assert result["capability_report"]["can_run_now"] is True
+
+
+@pytest.mark.asyncio
+async def test_comfy_workflow_recipe_tool_is_registered_with_mcp():
+    _content, structured = await server.mcp.call_tool(
+        "comfy_suggest_workflow_recipes",
+        {"intent": "upscale this image", "limit": 1},
+    )
+
+    assert structured["suggestions"][0]["recipe_id"] == "image-upscale"
+
+
+@pytest.mark.asyncio
 async def test_comfy_custom_node_tools_use_package_name(
     monkeypatch,
     tmp_path: Path,
