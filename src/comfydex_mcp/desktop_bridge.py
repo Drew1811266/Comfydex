@@ -19,9 +19,16 @@ from .batches import read_batch_record
 from .comfy_client import ComfyClient
 from .config import ComfydexConfig, load_config, redact_config, save_config
 from .core import project_context_from_config, project_status, reindex_project
+from .live_bridge import (
+    get_live_bridge_status,
+    push_live_workflow,
+    reload_live_bridge_backend,
+    reload_live_bridge_client,
+    verify_live_bridge,
+)
 from .paths import is_redirected_path
 from .runs import list_runs
-from .workflows import list_workflows
+from .workflows import list_workflows, read_workflow
 
 
 def run_bridge_operation(
@@ -83,6 +90,41 @@ def _dispatch(
         return redact_config(updated)
     if operation == "check_connection":
         return asyncio.run(_check_connection(config))
+    if operation == "live_bridge_status":
+        return asyncio.run(get_live_bridge_status(config))
+    if operation == "live_bridge_reload_client":
+        return asyncio.run(
+            reload_live_bridge_client(config, _optional_string(payload.get("version")))
+        )
+    if operation == "live_bridge_reload_backend":
+        return asyncio.run(reload_live_bridge_backend(config))
+    if operation == "live_bridge_push_workflow":
+        workflow_name = str(payload.get("workflow_name", ""))
+        workflow = _read_ui_workflow_for_live_bridge(config, workflow_name)
+        return asyncio.run(
+            push_live_workflow(
+                config,
+                workflow,
+                name=workflow_name,
+                activate=bool(payload.get("activate", True)),
+                force=bool(payload.get("force", False)),
+                wait_for_ack=bool(payload.get("wait_for_ack", True)),
+            )
+        )
+    if operation == "live_bridge_verify":
+        workflow_name = _optional_string(payload.get("workflow_name"))
+        force = bool(payload.get("force", False))
+        if workflow_name is None:
+            return asyncio.run(verify_live_bridge(config, None, force=force))
+        workflow = _read_ui_workflow_for_live_bridge(config, workflow_name)
+        return asyncio.run(
+            verify_live_bridge(
+                config,
+                workflow,
+                name=workflow_name,
+                force=force,
+            )
+        )
     if operation == "list_workflows":
         return list_workflows(config.workflows_dir)
     if operation == "list_runs":
@@ -122,6 +164,32 @@ def _update_asset_metadata(project: Any, payload: dict[str, Any]) -> dict[str, A
         if key in payload
     }
     return update_asset_metadata(project, asset_id, **kwargs)
+
+
+def _read_ui_workflow_for_live_bridge(
+    config: ComfydexConfig,
+    workflow_name: str,
+) -> dict[str, Any]:
+    workflow_record = read_workflow(config.workflows_dir, workflow_name)
+    workflow = workflow_record.get("json")
+    if not _is_ui_workflow_json(workflow):
+        raise ValueError("workflow_not_ui_json")
+    return workflow
+
+
+def _is_ui_workflow_json(workflow: Any) -> bool:
+    return (
+        isinstance(workflow, dict)
+        and isinstance(workflow.get("nodes"), list)
+        and isinstance(workflow.get("links"), list)
+    )
+
+
+def _optional_string(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value)
+    return text if text else None
 
 
 def _updated_config(

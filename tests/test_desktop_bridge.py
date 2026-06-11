@@ -7,6 +7,7 @@ from pathlib import Path
 import httpx
 import respx
 
+from comfydex_mcp import desktop_bridge
 from comfydex_mcp.config import ComfydexConfig, save_config
 from comfydex_mcp.batches import create_batch_record
 from comfydex_mcp.core.indexer import reindex_project
@@ -27,6 +28,7 @@ API_WORKFLOW = {
     },
     "5": {"class_type": "SaveImage", "inputs": {"images": ["4", 0]}},
 }
+UI_WORKFLOW = {"nodes": [{"id": 1, "type": "SaveImage"}], "links": []}
 
 
 def _config(tmp_path: Path) -> ComfydexConfig:
@@ -156,6 +158,139 @@ def test_bridge_check_connection_returns_desktop_connection_shape(tmp_path: Path
     assert result["data"]["message"] == "Connected"
     assert result["data"]["checked_at"]
     assert result["data"]["details"]["reachable"] is True
+
+
+def test_bridge_live_bridge_status_returns_success_envelope(monkeypatch, tmp_path: Path):
+    _write_workspace(tmp_path)
+
+    async def fake_status(config):
+        return {"ok": True, "ready": True, "base_url": config.base_url}
+
+    monkeypatch.setattr(desktop_bridge, "get_live_bridge_status", fake_status)
+
+    result = run_bridge_operation("live_bridge_status", tmp_path)
+
+    assert result["ok"] is True
+    assert result["data"] == {
+        "ok": True,
+        "ready": True,
+        "base_url": "http://127.0.0.1:8188",
+    }
+
+
+def test_bridge_live_bridge_reload_operations(monkeypatch, tmp_path: Path):
+    _write_workspace(tmp_path)
+    calls = []
+
+    async def fake_reload_client(config, version=None):
+        calls.append(("client", config.base_url, version))
+        return {"ok": True, "version": version}
+
+    async def fake_reload_backend(config):
+        calls.append(("backend", config.base_url))
+        return {"ok": True, "generation": 3}
+
+    monkeypatch.setattr(desktop_bridge, "reload_live_bridge_client", fake_reload_client)
+    monkeypatch.setattr(desktop_bridge, "reload_live_bridge_backend", fake_reload_backend)
+
+    client = run_bridge_operation(
+        "live_bridge_reload_client",
+        tmp_path,
+        {"version": "manual"},
+    )
+    backend = run_bridge_operation("live_bridge_reload_backend", tmp_path)
+
+    assert client["ok"] is True
+    assert client["data"] == {"ok": True, "version": "manual"}
+    assert backend["ok"] is True
+    assert backend["data"] == {"ok": True, "generation": 3}
+    assert calls == [
+        ("client", "http://127.0.0.1:8188", "manual"),
+        ("backend", "http://127.0.0.1:8188"),
+    ]
+
+
+def test_bridge_live_bridge_push_workflow_reads_ui_workflow(
+    monkeypatch,
+    tmp_path: Path,
+):
+    _write_workspace(tmp_path)
+    cfg = _config(tmp_path)
+    save_workflow(cfg.workflows_dir, "ui.json", UI_WORKFLOW)
+    calls = []
+
+    async def fake_push(config, workflow, **kwargs):
+        calls.append((config.base_url, workflow, kwargs))
+        return {"ok": True, "acknowledged": True}
+
+    monkeypatch.setattr(desktop_bridge, "push_live_workflow", fake_push)
+
+    result = run_bridge_operation(
+        "live_bridge_push_workflow",
+        tmp_path,
+        {
+            "workflow_name": "ui.json",
+            "force": True,
+            "activate": False,
+            "wait_for_ack": False,
+        },
+    )
+
+    assert result["ok"] is True
+    assert result["data"] == {"ok": True, "acknowledged": True}
+    assert calls == [
+        (
+            "http://127.0.0.1:8188",
+            UI_WORKFLOW,
+            {
+                "name": "ui.json",
+                "activate": False,
+                "force": True,
+                "wait_for_ack": False,
+            },
+        )
+    ]
+
+
+def test_bridge_live_bridge_push_workflow_rejects_api_workflow(tmp_path: Path):
+    _write_workspace(tmp_path)
+
+    result = run_bridge_operation(
+        "live_bridge_push_workflow",
+        tmp_path,
+        {"workflow_name": "cat.json"},
+    )
+
+    assert result["ok"] is False
+    assert result["error"]["type"] == "ValueError"
+    assert "workflow_not_ui_json" in result["error"]["message"]
+
+
+def test_bridge_live_bridge_verify_operations(monkeypatch, tmp_path: Path):
+    _write_workspace(tmp_path)
+    cfg = _config(tmp_path)
+    save_workflow(cfg.workflows_dir, "ui.json", UI_WORKFLOW)
+    calls = []
+
+    async def fake_verify(config, workflow=None, **kwargs):
+        calls.append((config.base_url, workflow, kwargs))
+        return {"ok": True, "verified": True}
+
+    monkeypatch.setattr(desktop_bridge, "verify_live_bridge", fake_verify)
+
+    without_workflow = run_bridge_operation("live_bridge_verify", tmp_path)
+    with_workflow = run_bridge_operation(
+        "live_bridge_verify",
+        tmp_path,
+        {"workflow_name": "ui.json", "force": True},
+    )
+
+    assert without_workflow["ok"] is True
+    assert with_workflow["ok"] is True
+    assert calls == [
+        ("http://127.0.0.1:8188", None, {"force": False}),
+        ("http://127.0.0.1:8188", UI_WORKFLOW, {"name": "ui.json", "force": True}),
+    ]
 
 
 def test_bridge_updates_asset_metadata(tmp_path: Path):

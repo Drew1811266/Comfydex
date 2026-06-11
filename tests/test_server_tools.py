@@ -100,6 +100,22 @@ def object_info_client(object_info: dict):
     return ObjectInfoClient
 
 
+def _write_config(tmp_path: Path):
+    from comfydex_mcp.config import ComfydexConfig, save_config
+
+    cfg = ComfydexConfig(
+        workspace=tmp_path,
+        base_url="http://127.0.0.1:8188",
+        workflows_dir=tmp_path / "workflows",
+        runs_dir=tmp_path / "runs",
+        headers={},
+        request_timeout_seconds=30,
+        websocket_timeout_seconds=600,
+    )
+    save_config(cfg)
+    return cfg
+
+
 @pytest.mark.asyncio
 async def test_comfy_scaffold_custom_node_package_tool_creates_package(
     monkeypatch,
@@ -115,6 +131,160 @@ async def test_comfy_scaffold_custom_node_package_tool_creates_package(
     assert result["class_name"] == "SimpleMathNode"
     assert (package_dir / "__init__.py").exists()
     assert (package_dir / "nodes.py").exists()
+
+
+@pytest.mark.asyncio
+async def test_comfy_live_bridge_status_tool_uses_config(monkeypatch, tmp_path: Path):
+    _write_config(tmp_path)
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+
+    async def fake_status(config):
+        return {"ok": True, "ready": True, "base_url": config.base_url}
+
+    monkeypatch.setattr(server, "get_live_bridge_status", fake_status)
+
+    result = await server.comfy_live_bridge_status()
+
+    assert result == {
+        "ok": True,
+        "ready": True,
+        "base_url": "http://127.0.0.1:8188",
+    }
+
+
+@pytest.mark.asyncio
+async def test_comfy_live_bridge_reload_tools_call_services(monkeypatch, tmp_path: Path):
+    _write_config(tmp_path)
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+    calls = []
+
+    async def fake_reload_client(config, version=None):
+        calls.append(("client", config.base_url, version))
+        return {"ok": True, "version": version}
+
+    async def fake_reload_backend(config):
+        calls.append(("backend", config.base_url))
+        return {"ok": True, "generation": 2}
+
+    monkeypatch.setattr(server, "reload_live_bridge_client", fake_reload_client)
+    monkeypatch.setattr(server, "reload_live_bridge_backend", fake_reload_backend)
+
+    client = await server.comfy_live_bridge_reload_client("manual")
+    backend = await server.comfy_live_bridge_reload_backend()
+
+    assert client == {"ok": True, "version": "manual"}
+    assert backend == {"ok": True, "generation": 2}
+    assert calls == [
+        ("client", "http://127.0.0.1:8188", "manual"),
+        ("backend", "http://127.0.0.1:8188"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_comfy_live_bridge_push_workflow_reads_ui_workflow(
+    monkeypatch,
+    tmp_path: Path,
+):
+    cfg = _write_config(tmp_path)
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+    save_workflow(cfg.workflows_dir, "ui.json", UI_WORKFLOW)
+    calls = []
+
+    async def fake_push(config, workflow, **kwargs):
+        calls.append((config.base_url, workflow, kwargs))
+        return {"ok": True, "acknowledged": True}
+
+    monkeypatch.setattr(server, "push_live_workflow", fake_push)
+
+    result = await server.comfy_live_bridge_push_workflow(
+        "ui.json",
+        force=True,
+        activate=False,
+        wait_for_ack=False,
+    )
+
+    assert result == {"ok": True, "acknowledged": True}
+    assert calls == [
+        (
+            "http://127.0.0.1:8188",
+            UI_WORKFLOW,
+            {
+                "name": "ui.json",
+                "activate": False,
+                "force": True,
+                "wait_for_ack": False,
+            },
+        )
+    ]
+
+
+@pytest.mark.asyncio
+async def test_comfy_live_bridge_push_workflow_rejects_api_workflow(
+    monkeypatch,
+    tmp_path: Path,
+):
+    cfg = _write_config(tmp_path)
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+    save_workflow(cfg.workflows_dir, "api.json", API_WORKFLOW)
+    called = False
+
+    async def fail_if_called(*args, **kwargs):
+        nonlocal called
+        called = True
+        raise AssertionError("push service should not run")
+
+    monkeypatch.setattr(server, "push_live_workflow", fail_if_called)
+
+    with pytest.raises(ValueError, match="workflow_not_ui_json"):
+        await server.comfy_live_bridge_push_workflow("api.json")
+
+    assert called is False
+
+
+@pytest.mark.asyncio
+async def test_comfy_live_bridge_verify_passes_optional_workflow(
+    monkeypatch,
+    tmp_path: Path,
+):
+    cfg = _write_config(tmp_path)
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+    save_workflow(cfg.workflows_dir, "ui.json", UI_WORKFLOW)
+    calls = []
+
+    async def fake_verify(config, workflow=None, **kwargs):
+        calls.append((config.base_url, workflow, kwargs))
+        return {"ok": True}
+
+    monkeypatch.setattr(server, "verify_live_bridge", fake_verify)
+
+    without_workflow = await server.comfy_live_bridge_verify()
+    with_workflow = await server.comfy_live_bridge_verify("ui.json", force=True)
+
+    assert without_workflow == {"ok": True}
+    assert with_workflow == {"ok": True}
+    assert calls == [
+        ("http://127.0.0.1:8188", None, {"force": False}),
+        ("http://127.0.0.1:8188", UI_WORKFLOW, {"name": "ui.json", "force": True}),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_comfy_live_bridge_status_tool_is_registered_with_mcp(
+    monkeypatch,
+    tmp_path: Path,
+):
+    _write_config(tmp_path)
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+
+    async def fake_status(config):
+        return {"ok": True, "ready": True, "base_url": config.base_url}
+
+    monkeypatch.setattr(server, "get_live_bridge_status", fake_status)
+
+    _content, structured = await server.mcp.call_tool("comfy_live_bridge_status", {})
+
+    assert structured["ok"] is True
+    assert structured["ready"] is True
 
 
 @pytest.mark.asyncio

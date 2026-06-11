@@ -52,6 +52,13 @@ from .generation import (
     evaluate_submit_policy,
     plan_workflow_generation,
 )
+from .live_bridge import (
+    get_live_bridge_status,
+    push_live_workflow,
+    reload_live_bridge_backend,
+    reload_live_bridge_client,
+    verify_live_bridge,
+)
 from .node_docs import generate_node_docs
 from .node_contracts import (
     custom_node_repair_guidance,
@@ -443,6 +450,25 @@ def _read_workflow_snapshot(
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def _read_ui_workflow_for_live_bridge(
+    config: ComfydexConfig,
+    workflow_name: str,
+) -> dict[str, Any]:
+    workflow_record = read_workflow(config.workflows_dir, workflow_name)
+    workflow = workflow_record.get("json")
+    if not _is_ui_workflow_json(workflow):
+        raise ValueError("workflow_not_ui_json")
+    return workflow
+
+
+def _is_ui_workflow_json(workflow: Any) -> bool:
+    return (
+        isinstance(workflow, dict)
+        and isinstance(workflow.get("nodes"), list)
+        and isinstance(workflow.get("links"), list)
+    )
+
+
 @mcp.tool()
 async def comfy_check_connection() -> dict[str, Any]:
     ctx = tool_context()
@@ -494,6 +520,62 @@ async def comfy_project_status() -> dict[str, Any]:
     ctx = tool_context()
     project = project_context_from_config(ctx.config)
     return project_status(project)
+
+
+@mcp.tool()
+async def comfy_live_bridge_status() -> dict[str, Any]:
+    ctx = tool_context()
+    return await get_live_bridge_status(ctx.config)
+
+
+@mcp.tool()
+async def comfy_live_bridge_reload_client(
+    version: str | None = None,
+) -> dict[str, Any]:
+    ctx = tool_context()
+    return await reload_live_bridge_client(ctx.config, version)
+
+
+@mcp.tool()
+async def comfy_live_bridge_reload_backend() -> dict[str, Any]:
+    ctx = tool_context()
+    return await reload_live_bridge_backend(ctx.config)
+
+
+@mcp.tool()
+async def comfy_live_bridge_push_workflow(
+    workflow_name: str,
+    force: bool = False,
+    activate: bool = True,
+    wait_for_ack: bool = True,
+) -> dict[str, Any]:
+    ctx = tool_context()
+    workflow = _read_ui_workflow_for_live_bridge(ctx.config, workflow_name)
+    return await push_live_workflow(
+        ctx.config,
+        workflow,
+        name=workflow_name,
+        activate=activate,
+        force=force,
+        wait_for_ack=wait_for_ack,
+    )
+
+
+@mcp.tool()
+async def comfy_live_bridge_verify(
+    workflow_name: str | None = None,
+    force: bool = False,
+) -> dict[str, Any]:
+    ctx = tool_context()
+    if workflow_name is None:
+        return await verify_live_bridge(ctx.config, None, force=force)
+    workflow = _read_ui_workflow_for_live_bridge(ctx.config, workflow_name)
+    return await verify_live_bridge(
+        ctx.config,
+        workflow,
+        name=workflow_name,
+        force=force,
+    )
 
 
 @mcp.tool()
