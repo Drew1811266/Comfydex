@@ -355,6 +355,42 @@ def test_release_checklist_1_2_covers_live_bridge_release_gates():
         assert marker in checklist
 
 
+def test_node_semantic_registry_docs_cover_supported_unknown_and_tools():
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    usage = (ROOT / "docs" / "usage" / "node-semantic-registry.md").read_text(
+        encoding="utf-8"
+    )
+
+    for marker in (
+        "Node Semantic Registry",
+        "comfy_list_node_semantics",
+        "comfy_explain_node_semantics",
+        "comfy_search_node_semantics",
+        "comfy_validate_node_semantics",
+        "CheckpointLoaderSimple",
+        "KSampler",
+        "Unknown nodes are not treated as first-class supported nodes.",
+    ):
+        assert marker in usage
+        assert marker in readme
+
+
+def test_release_checklist_1_3_covers_registry_release_gates():
+    checklist = (ROOT / "docs" / "release" / "1.3-release-checklist.md").read_text(
+        encoding="utf-8"
+    )
+
+    for marker in (
+        "python -m pytest -q",
+        "registry validation",
+        "object_info matching",
+        "MCP registry tools",
+        "unknown-node refusal",
+        "version files report `1.3.0`",
+    ):
+        assert marker in checklist
+
+
 def test_workflow_generation_doc_explains_submit_policy():
     text = (ROOT / "docs" / "usage" / "workflow-generation.md").read_text(
         encoding="utf-8"

@@ -6,9 +6,9 @@ The plugin is installed in Codex, not in ComfyUI. ComfyUI remains the runtime se
 
 ## Status
 
-Current version: `1.2.0`
+Current version: `1.3.0`
 
-This 1.2 Live Bridge Productization Release focuses on a practical local ComfyUI workflow:
+This 1.3 Node Semantic Registry Release focuses on a practical local ComfyUI workflow:
 
 - connect to a local or remote ComfyUI server
 - manage workflow JSON files from a Codex workspace
@@ -20,6 +20,8 @@ This 1.2 Live Bridge Productization Release focuses on a practical local ComfyUI
 - build generated workflows from deterministic generation plans
 - validate generated workflows and classify submit policy before running
 - analyze workflow nodes, links, model references, and missing node types
+- explain supported native and high-frequency functional nodes through the Node Semantic Registry
+- refuse unsupported unknown nodes honestly instead of pretending they are first-class workflow building blocks
 - import UI workflow JSON and convert it toward API prompt JSON
 - build first-pass workflows from templates and structured plans
 - scaffold, inspect, validate, import-check, document, contract-test, and repair-guide custom node packages
@@ -119,7 +121,9 @@ The Skill explains how Codex should work with ComfyUI workflows, including the d
 - UI workflow JSON, exported for the ComfyUI visual editor
 - API prompt JSON, submitted to ComfyUI `/prompt`
 
-Version `1.2.0` can import UI workflow files and help convert them, but submission still requires validated API prompt JSON. It also provides the shared project index, workflow generation engine, complete custom node loop, local asset library for generated outputs, desktop app shell backed by a Python desktop bridge with Gallery And Batch UI surfaces, safe end-to-end automation, Windows install helper, release checklist, security/path review, release package validation, and a productized ComfyUI-side Live Bridge for direct desktop canvas workflow loading.
+Version `1.3.0` can import UI workflow files and help convert them, but submission still requires validated API prompt JSON. It also provides the shared project index, workflow generation engine, Node Semantic Registry, complete custom node loop, local asset library for generated outputs, desktop app shell backed by a Python desktop bridge with Gallery And Batch UI surfaces, safe end-to-end automation, Windows install helper, release checklist, security/path review, release package validation, and a productized ComfyUI-side Live Bridge for direct desktop canvas workflow loading.
+
+Unknown nodes are not treated as first-class supported nodes.
 
 ## Capability Groups
 
@@ -131,6 +135,7 @@ Version `1.2.0` can import UI workflow files and help convert them, but submissi
 | Asset library | Reindex, search, annotate, sidecar, clean up, report, and compare generated output assets. | `comfy_reindex_assets`, `comfy_search_assets`, `comfy_update_asset_metadata`, `comfy_plan_asset_cleanup` |
 | UI workflow import | Classify, import, convert, and explain UI workflow conversion gaps. | `comfy_classify_workflow`, `comfy_import_ui_workflow`, `comfy_convert_ui_to_api` |
 | Workflow builder | Plan and build template-based API workflows from user intent. | `comfy_build_workflow_plan`, `comfy_explain_workflow_plan`, `comfy_build_workflow` |
+| Node Semantic Registry | Explain supported native and high-frequency functional nodes, search node semantics, and validate semantic coverage against ComfyUI `object_info`. | `comfy_list_node_semantics`, `comfy_explain_node_semantics`, `comfy_search_node_semantics`, `comfy_validate_node_semantics` |
 | Validation | Validate API workflows and generated workflows against object metadata. | `comfy_validate_api_workflow`, `comfy_validate_workflow_against_object_info` |
 | Custom node assistant | Scaffold, inspect, validate, import-check, document, generate examples, run contract tests, and produce repair guidance. | `comfy_scaffold_custom_node_package`, `comfy_validate_node_class`, `comfy_check_node_imports`, `comfy_generate_node_examples`, `comfy_run_node_contract_tests`, `comfy_custom_node_repair_guidance` |
 | Run diagnostics | Diagnose, report, compare, and inspect run outputs. | `comfy_diagnose_run`, `comfy_export_run_report`, `comfy_compare_runs`, `comfy_list_outputs` |
@@ -191,6 +196,10 @@ Comfydex exposes these tools:
 | `comfy_export_asset_library_report` | Write a deterministic markdown asset library report. |
 | `comfy_compare_assets` | Compare two assets by metadata, prompts, models, file size, and annotations. |
 | `comfy_get_object_info` | Read ComfyUI `/object_info` node metadata. |
+| `comfy_list_node_semantics` | List first-class Node Semantic Registry entries. |
+| `comfy_explain_node_semantics` | Explain one supported node or refuse an unknown node honestly. |
+| `comfy_search_node_semantics` | Search supported node semantics by node type, display name, category, purpose, or parameter strategy. |
+| `comfy_validate_node_semantics` | Compare registry support with live ComfyUI `object_info` metadata. |
 | `comfy_list_workflows` | List local workflow JSON files. |
 | `comfy_read_workflow` | Read and summarize one workflow. |
 | `comfy_save_workflow` | Save a workflow JSON file safely under the configured workflow directory. |
@@ -518,6 +527,13 @@ Desktop Live Bridge status terms:
 Use Reload client from Settings when the frontend client needs to reconnect. Use Reload backend after changing bridge Python/runtime files and restarting ComfyUI is not required for the backend reload path.
 
 ## Release Notes
+
+### 1.3.0 - Node Semantic Registry Foundations
+
+- Added the Node Semantic Registry for native ComfyUI nodes and selected high-frequency functional nodes including CheckpointLoaderSimple, KSampler, LoRA, ControlNet, upscale, and inpaint paths.
+- Added MCP tools `comfy_list_node_semantics`, `comfy_explain_node_semantics`, `comfy_search_node_semantics`, and `comfy_validate_node_semantics`.
+- Added semantic coverage summaries to generated workflow plans so Codex can distinguish supported nodes from unsupported unknown nodes.
+- Documented that unknown nodes are not treated as first-class supported nodes.
 
 ### 1.2.0 - Live Bridge Productization
 
