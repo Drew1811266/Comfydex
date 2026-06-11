@@ -637,6 +637,120 @@ textarea {
   font-weight: 600;
 }
 
+.install-plan-panel {
+  max-width: 980px;
+  margin-top: 12px;
+}
+
+.install-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.install-summary-grid > div {
+  min-width: 0;
+  border: 1px solid #2a3038;
+  border-radius: 6px;
+  background: #151a20;
+  padding: 10px;
+}
+
+.install-summary-grid span,
+.install-requirements h3,
+.install-audit h3 {
+  color: #8d98a7;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.install-summary-grid strong {
+  display: block;
+  min-width: 0;
+  margin-top: 5px;
+  overflow-wrap: anywhere;
+}
+
+.install-list-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.install-requirements {
+  min-width: 0;
+  border: 1px solid #2a3038;
+  border-radius: 6px;
+  padding: 10px;
+}
+
+.install-requirements h3,
+.install-audit h3 {
+  margin: 0 0 8px;
+}
+
+.install-requirements ul,
+.install-audit ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.install-requirements li,
+.install-audit li {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.install-table-wrap {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.install-table th,
+.install-table td {
+  width: 25%;
+  height: auto;
+  min-height: 36px;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.install-empty {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  color: #bbf7d0;
+}
+
+.install-actions {
+  margin: 10px 0 12px;
+}
+
+.install-audit {
+  border-top: 1px solid #2a3038;
+  padding-top: 10px;
+}
+
+.install-audit li {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  gap: 10px;
+}
+
+.install-audit strong {
+  min-width: 0;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
 .compare-list {
   display: grid;
   gap: 4px;
@@ -674,8 +788,10 @@ pre {
     .status-grid,
     .split-pane,
     .settings-grid,
+    .install-summary-grid,
+    .install-list-grid,
     .asset-workbench,
-  .panel-grid {
+    .panel-grid {
     grid-template-columns: 1fr;
   }
 
@@ -714,5 +830,51 @@ pre {
   .status-band-body p,
   .status-band-body span {
     max-width: calc(100vw - 112px);
+  }
+
+  .install-table,
+  .install-table tbody,
+  .install-table tr,
+  .install-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .install-table thead {
+    display: none;
+  }
+
+  .install-table tr {
+    border-bottom: 1px solid #2a3038;
+    padding: 8px 10px;
+  }
+
+  .install-table td {
+    display: grid;
+    grid-template-columns: 82px minmax(0, 1fr);
+    gap: 8px;
+    border: 0;
+    padding: 4px 0;
+  }
+
+  .install-table td::before {
+    color: #8d98a7;
+    font-size: 12px;
+  }
+
+  .install-table td:nth-child(1)::before {
+    content: "Kind";
+  }
+
+  .install-table td:nth-child(2)::before {
+    content: "Target";
+  }
+
+  .install-table td:nth-child(3)::before {
+    content: "Reason";
+  }
+
+  .install-table td:nth-child(4)::before {
+    content: "Mode";
   }
 }

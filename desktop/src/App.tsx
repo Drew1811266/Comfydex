@@ -10,22 +10,29 @@ import {
 } from "lucide-react";
 import {
   checkConnection,
+  createInstallPlan,
   getConfig,
+  getCapabilityReport,
   getLiveBridgeStatus,
   getProjectStatus,
   listBatches,
   listRuns,
   listWorkflows,
+  readInstallAudit,
   reloadLiveBridgeBackend,
   reloadLiveBridgeClient,
   reindexProject,
+  recordInstallAudit,
   searchAssets
 } from "./lib/api";
 import type {
   AssetRow,
   BatchSummary,
+  CapabilityReport,
   ConfigState,
   ConnectionResult,
+  InstallAudit,
+  InstallPlan,
   LiveBridgeStatus,
   LoadState,
   ProjectStatus,
@@ -40,6 +47,7 @@ import { SettingsView } from "./views/SettingsView";
 import { WorkflowsView } from "./views/WorkflowsView";
 
 type View = "dashboard" | "workflows" | "runs" | "assets" | "batches" | "settings";
+type InstallDecision = "accepted" | "rejected";
 
 const navItems: Array<{ id: View; label: string; icon: typeof Activity }> = [
   { id: "dashboard", label: "Project", icon: Activity },
@@ -58,6 +66,31 @@ async function getLiveBridgeStatusOrNull(): Promise<LiveBridgeStatus | null> {
   }
 }
 
+type InstallReviewResult = {
+  capabilityReport: CapabilityReport | null;
+  installPlan: InstallPlan | null;
+  installAudit: InstallAudit | null;
+  error: string | null;
+};
+
+async function fetchInstallReview(): Promise<InstallReviewResult> {
+  try {
+    const capabilityReport = await getCapabilityReport();
+    const [installPlan, installAudit] = await Promise.all([
+      createInstallPlan(capabilityReport),
+      readInstallAudit()
+    ]);
+    return { capabilityReport, installPlan, installAudit, error: null };
+  } catch (caught) {
+    return {
+      capabilityReport: null,
+      installPlan: null,
+      installAudit: null,
+      error: caught instanceof Error ? caught.message : String(caught)
+    };
+  }
+}
+
 export function App() {
   const [view, setView] = useState<View>("dashboard");
   const [loadState, setLoadState] = useState<LoadState>("loading");
@@ -71,12 +104,26 @@ export function App() {
   const [batches, setBatches] = useState<BatchSummary[]>([]);
   const [config, setConfigState] = useState<ConfigState | null>(null);
   const [liveBridgeStatus, setLiveBridgeStatus] = useState<LiveBridgeStatus | null>(null);
+  const [capabilityReport, setCapabilityReport] = useState<CapabilityReport | null>(null);
+  const [installPlan, setInstallPlan] = useState<InstallPlan | null>(null);
+  const [installAudit, setInstallAudit] = useState<InstallAudit | null>(null);
+  const [installReviewError, setInstallReviewError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     setLoadState("loading");
     setError(null);
     try {
-      const [projectStatus, workflowRows, runRows, assetResult, batchRows, configState, connectionState, bridgeState] =
+      const [
+        projectStatus,
+        workflowRows,
+        runRows,
+        assetResult,
+        batchRows,
+        configState,
+        connectionState,
+        bridgeState,
+        installReview
+      ] =
         await Promise.all([
           getProjectStatus(),
           listWorkflows(),
@@ -85,7 +132,8 @@ export function App() {
           listBatches(),
           getConfig(),
           checkConnection(),
-          getLiveBridgeStatusOrNull()
+          getLiveBridgeStatusOrNull(),
+          fetchInstallReview()
         ]);
 
       setStatus(projectStatus);
@@ -96,6 +144,10 @@ export function App() {
       setConfigState(configState);
       setConnection(connectionState);
       setLiveBridgeStatus(bridgeState);
+      setCapabilityReport(installReview.capabilityReport);
+      setInstallPlan(installReview.installPlan);
+      setInstallAudit(installReview.installAudit);
+      setInstallReviewError(installReview.error);
       setLoadState(projectStatus.workspace === "No workspace selected" ? "empty" : "loaded");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
@@ -182,6 +234,34 @@ export function App() {
     }
   }
 
+  async function handleRefreshInstallPlan() {
+    setActionBusy(true);
+    setInstallReviewError(null);
+    try {
+      const installReview = await fetchInstallReview();
+      setCapabilityReport(installReview.capabilityReport);
+      setInstallPlan(installReview.installPlan);
+      setInstallAudit(installReview.installAudit);
+      setInstallReviewError(installReview.error);
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
+  async function handleRecordInstallDecision(decision: InstallDecision) {
+    if (!installPlan) return;
+    setActionBusy(true);
+    setInstallReviewError(null);
+    try {
+      await recordInstallAudit(installPlan, decision);
+      setInstallAudit(await readInstallAudit());
+    } catch (caught) {
+      setInstallReviewError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
   const currentView = (() => {
     if (view === "workflows") return <WorkflowsView error={error} state={loadState} workflows={workflows} />;
     if (view === "runs") return <RunsView error={error} runs={runs} state={loadState} />;
@@ -191,13 +271,19 @@ export function App() {
       return (
         <SettingsView
           busy={actionBusy}
+          capabilityReport={capabilityReport}
           config={config}
           connection={connection}
           error={error}
+          installAudit={installAudit}
+          installPlan={installPlan}
+          installReviewError={installReviewError}
           liveBridgeStatus={liveBridgeStatus}
           onCheckConnection={handleCheckConnection}
+          onRecordInstallDecision={handleRecordInstallDecision}
           onReloadLiveBridgeBackend={handleReloadLiveBridgeBackend}
           onReloadLiveBridgeClient={handleReloadLiveBridgeClient}
+          onRefreshInstallPlan={handleRefreshInstallPlan}
           onVerifyLiveBridgeStatus={handleVerifyLiveBridgeStatus}
           state={loadState}
         />
@@ -231,9 +317,11 @@ export function App() {
             return (
               <button
                 aria-current={view === item.id ? "page" : undefined}
+                aria-label={item.label}
                 className={view === item.id ? "nav-item active" : "nav-item"}
                 key={item.id}
                 onClick={() => setView(item.id)}
+                title={item.label}
                 type="button"
               >
                 <Icon size={16} />

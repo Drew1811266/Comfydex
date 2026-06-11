@@ -166,4 +166,90 @@ export type BatchRecord = BatchSummary & {
   runs: BatchRunRow[];
 };
 
+export type ModelInventoryItem = {
+  filename: string;
+  path: string;
+  model_type: string;
+  size_bytes: number;
+};
+
+export type ModelInventory = {
+  roots: string[];
+  missing_roots: string[];
+  model_count: number;
+  models: ModelInventoryItem[];
+  by_type: Record<string, ModelInventoryItem[]>;
+};
+
+export type CapabilityMissingModel = {
+  parameter: string;
+  filename: string;
+  model_type: string;
+  reason: string;
+};
+
+export type CapabilityMissingNode = {
+  node_type: string;
+  reason: string;
+};
+
+export type CapabilityReportRequest = {
+  intent: string;
+  parameters?: Record<string, unknown>;
+  template_id?: string;
+  model_roots?: string[];
+};
+
+export type CapabilityReport = {
+  status: string;
+  can_run_now: boolean;
+  plan: {
+    selected_template_id?: string;
+    title?: string;
+    required_nodes?: string[];
+    parameters?: Record<string, unknown>;
+    semantic_coverage?: Record<string, unknown>;
+    [key: string]: unknown;
+  };
+  node_inventory: {
+    node_count: number;
+    node_types: string[];
+    semantic_match?: Record<string, unknown>;
+  };
+  model_inventory: ModelInventory;
+  missing_nodes: CapabilityMissingNode[];
+  missing_models: CapabilityMissingModel[];
+  missing_information: string[];
+};
+
+export type InstallPlanAction = {
+  kind: string;
+  target_type?: string;
+  filename?: string;
+  parameter?: string;
+  node_type?: string;
+  reason?: string;
+  restart_required?: boolean;
+  requires_confirmation: boolean;
+  automatic: boolean;
+};
+
+export type InstallPlan = {
+  status: string;
+  automatic: boolean;
+  requires_confirmation: boolean;
+  actions: InstallPlanAction[];
+};
+
+export type InstallAuditEntry = {
+  timestamp: string;
+  decision: string;
+  plan: InstallPlan;
+};
+
+export type InstallAudit = {
+  path: string;
+  entries: InstallAuditEntry[];
+};
+
 export type LoadState = "loading" | "empty" | "error" | "loaded";

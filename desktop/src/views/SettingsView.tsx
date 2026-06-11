@@ -1,26 +1,47 @@
-import { Plug, RefreshCcw, RotateCw } from "lucide-react";
-import type { ConfigState, ConnectionResult, LiveBridgeStatus, LoadState } from "../lib/types";
+import { CheckCircle2, Plug, RefreshCcw, RotateCw, ShieldCheck, XCircle } from "lucide-react";
+import type {
+  CapabilityReport,
+  ConfigState,
+  ConnectionResult,
+  InstallAudit,
+  InstallPlan,
+  InstallPlanAction,
+  LiveBridgeStatus,
+  LoadState
+} from "../lib/types";
 
 export function SettingsView({
   busy,
+  capabilityReport,
   config,
   connection,
   error,
+  installAudit,
+  installPlan,
+  installReviewError,
   liveBridgeStatus,
   onCheckConnection,
+  onRecordInstallDecision,
   onReloadLiveBridgeBackend,
   onReloadLiveBridgeClient,
+  onRefreshInstallPlan,
   onVerifyLiveBridgeStatus,
   state
 }: {
   busy: boolean;
+  capabilityReport: CapabilityReport | null;
   config: ConfigState | null;
   connection: ConnectionResult | null;
   error: string | null;
+  installAudit: InstallAudit | null;
+  installPlan: InstallPlan | null;
+  installReviewError: string | null;
   liveBridgeStatus: LiveBridgeStatus | null;
   onCheckConnection: () => void;
+  onRecordInstallDecision: (decision: "accepted" | "rejected") => void;
   onReloadLiveBridgeBackend: () => void;
   onReloadLiveBridgeClient: () => void;
+  onRefreshInstallPlan: () => void;
   onVerifyLiveBridgeStatus: () => void;
   state: LoadState;
 }) {
@@ -123,8 +144,182 @@ export function SettingsView({
           </ul>
         ) : null}
       </section>
+      <InstallPlanPanel
+        audit={installAudit}
+        busy={actionsDisabled}
+        capabilityReport={capabilityReport}
+        error={installReviewError}
+        installPlan={installPlan}
+        onRecordInstallDecision={onRecordInstallDecision}
+        onRefreshInstallPlan={onRefreshInstallPlan}
+      />
     </section>
   );
+}
+
+function InstallPlanPanel({
+  audit,
+  busy,
+  capabilityReport,
+  error,
+  installPlan,
+  onRecordInstallDecision,
+  onRefreshInstallPlan
+}: {
+  audit: InstallAudit | null;
+  busy: boolean;
+  capabilityReport: CapabilityReport | null;
+  error: string | null;
+  installPlan: InstallPlan | null;
+  onRecordInstallDecision: (decision: "accepted" | "rejected") => void;
+  onRefreshInstallPlan: () => void;
+}) {
+  const missingModels = capabilityReport?.missing_models ?? [];
+  const missingNodes = capabilityReport?.missing_nodes ?? [];
+  const actions = installPlan?.actions ?? [];
+  const isReady = capabilityReport?.can_run_now === true;
+  const badgeClass = isReady || installPlan?.status === "not_required" ? "badge ok" : "badge warn";
+  const actionDisabled = busy || !installPlan || actions.length === 0;
+
+  return (
+    <section className="tool-panel install-plan-panel">
+      <div className="view-header split compact">
+        <div>
+          <h2>Install Plan</h2>
+          <p>{error ?? installSummary(capabilityReport, installPlan)}</p>
+        </div>
+        <button disabled={busy} onClick={onRefreshInstallPlan} type="button">
+          <RefreshCcw size={15} />
+          <span>Refresh plan</span>
+        </button>
+      </div>
+      <div className="install-summary-grid">
+        <SummaryCell label="Capability" value={capabilityReport?.status ?? "unchecked"} />
+        <SummaryCell label="Models" value={`${missingModels.length} missing`} />
+        <SummaryCell label="Nodes" value={`${missingNodes.length} missing`} />
+        <div>
+          <span>Plan</span>
+          <strong>
+            <span className={badgeClass}>{installPlan?.status ?? "unchecked"}</span>
+          </strong>
+        </div>
+      </div>
+      <div className="install-list-grid">
+        <RequirementList
+          empty="No missing model references."
+          items={missingModels.map((model) => model.filename)}
+          title="Missing models"
+        />
+        <RequirementList
+          empty="No missing node types."
+          items={missingNodes.map((node) => node.node_type)}
+          title="Missing nodes"
+        />
+      </div>
+      <ActionTable actions={actions} />
+      <div className="action-row install-actions">
+        <button disabled={actionDisabled} onClick={() => onRecordInstallDecision("accepted")} type="button">
+          <CheckCircle2 size={15} />
+          <span>Record accepted</span>
+        </button>
+        <button disabled={actionDisabled} onClick={() => onRecordInstallDecision("rejected")} type="button">
+          <XCircle size={15} />
+          <span>Record rejected</span>
+        </button>
+      </div>
+      <AuditList audit={audit} />
+    </section>
+  );
+}
+
+function SummaryCell({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+function RequirementList({ empty, items, title }: { empty: string; items: string[]; title: string }) {
+  return (
+    <div className="install-requirements">
+      <h3>{title}</h3>
+      {items.length ? (
+        <ul>
+          {items.map((item) => (
+            <li key={item}>{item}</li>
+          ))}
+        </ul>
+      ) : (
+        <p>{empty}</p>
+      )}
+    </div>
+  );
+}
+
+function ActionTable({ actions }: { actions: InstallPlanAction[] }) {
+  if (actions.length === 0) {
+    return (
+      <div className="install-empty">
+        <ShieldCheck size={16} />
+        <span>No pending install actions.</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="install-table-wrap">
+      <table className="install-table">
+        <thead>
+          <tr>
+            <th>Kind</th>
+            <th>Target</th>
+            <th>Reason</th>
+            <th>Mode</th>
+          </tr>
+        </thead>
+        <tbody>
+          {actions.map((action, index) => (
+            <tr key={`${action.kind}-${action.filename ?? action.node_type ?? index}`}>
+              <td>{action.kind}</td>
+              <td>{action.filename ?? action.node_type ?? action.target_type ?? ""}</td>
+              <td>{action.reason ?? ""}</td>
+              <td>{action.automatic ? "automatic" : "manual review"}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function AuditList({ audit }: { audit: InstallAudit | null }) {
+  const entries = audit?.entries ?? [];
+  return (
+    <div className="install-audit">
+      <h3>Recent decisions</h3>
+      {entries.length ? (
+        <ul>
+          {entries.slice(-5).reverse().map((entry) => (
+            <li key={`${entry.timestamp}-${entry.decision}`}>
+              <span>{entry.decision}</span>
+              <strong>{entry.timestamp}</strong>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p>No audit entries recorded.</p>
+      )}
+    </div>
+  );
+}
+
+function installSummary(report: CapabilityReport | null, plan: InstallPlan | null): string {
+  if (!report) return "Capability report has not been loaded.";
+  if (report.can_run_now) return "The current text-to-image probe is ready with local nodes and models.";
+  if (plan?.actions.length) return `${plan.actions.length} manual review actions are pending.`;
+  return "Capability review found missing information but no install actions.";
 }
 
 function formatBridgeState(status: LiveBridgeStatus | null): { label: string; detail: string } {

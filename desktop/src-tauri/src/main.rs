@@ -110,6 +110,51 @@ fn live_bridge_reload_backend(app: AppHandle) -> Value {
 }
 
 #[tauri::command]
+fn capability_report(app: AppHandle, payload: Value) -> Value {
+    match current_workspace(&app) {
+        Ok(Some(workspace)) => run_bridge("capability_report", &workspace, payload),
+        Ok(None) => bridge_error(
+            "WorkspaceError",
+            "workspace must be selected before resolving capabilities",
+        ),
+        Err(message) => bridge_error("WorkspaceError", message),
+    }
+}
+
+#[tauri::command]
+fn create_install_plan(app: AppHandle, payload: Value) -> Value {
+    match current_workspace(&app) {
+        Ok(Some(workspace)) => run_bridge("create_install_plan", &workspace, payload),
+        Ok(None) => bridge_error(
+            "WorkspaceError",
+            "workspace must be selected before creating install plans",
+        ),
+        Err(message) => bridge_error("WorkspaceError", message),
+    }
+}
+
+#[tauri::command]
+fn record_install_audit(app: AppHandle, payload: Value) -> Value {
+    match current_workspace(&app) {
+        Ok(Some(workspace)) => run_bridge("record_install_audit", &workspace, payload),
+        Ok(None) => bridge_error(
+            "WorkspaceError",
+            "workspace must be selected before recording install decisions",
+        ),
+        Err(message) => bridge_error("WorkspaceError", message),
+    }
+}
+
+#[tauri::command]
+fn read_install_audit(app: AppHandle) -> Value {
+    match current_workspace(&app) {
+        Ok(Some(workspace)) => run_bridge("read_install_audit", &workspace, json!({})),
+        Ok(None) => ok(json!({ "path": ".comfydex/install_audit.jsonl", "entries": [] })),
+        Err(message) => bridge_error("WorkspaceError", message),
+    }
+}
+
+#[tauri::command]
 fn list_workflows(app: AppHandle) -> Value {
     match current_workspace(&app) {
         Ok(Some(workspace)) => run_bridge("list_workflows", &workspace, json!({})),
@@ -203,6 +248,10 @@ fn main() {
             live_bridge_status,
             live_bridge_reload_client,
             live_bridge_reload_backend,
+            capability_report,
+            create_install_plan,
+            record_install_audit,
+            read_install_audit,
             list_workflows,
             list_runs,
             search_assets,

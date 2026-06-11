@@ -9,9 +9,15 @@ import type {
   AssetSearchResult,
   BatchRecord,
   BatchSummary,
+  CapabilityReport,
+  CapabilityReportRequest,
   CleanupPlan,
   ConfigState,
   ConnectionResult,
+  InstallAudit,
+  InstallAuditEntry,
+  InstallPlan,
+  InstallPlanAction,
   LiveBridgeStatus,
   ProjectStatus,
   RunRow,
@@ -86,6 +92,86 @@ const fallbackLiveBridgeStatus: LiveBridgeStatus = {
   ]
 };
 
+const defaultCapabilityRequest: CapabilityReportRequest = {
+  intent: "text to image",
+  parameters: {
+    checkpoint_name: "sdxl.safetensors",
+    positive_prompt: "desktop capability probe"
+  }
+};
+
+const fallbackCapabilityReport: CapabilityReport = {
+  status: "missing_requirements",
+  can_run_now: false,
+  plan: {
+    selected_template_id: "sdxl-text-to-image",
+    required_nodes: [
+      "CheckpointLoaderSimple",
+      "CLIPTextEncode",
+      "EmptyLatentImage",
+      "KSampler",
+      "VAEDecode",
+      "SaveImage"
+    ],
+    parameters: defaultCapabilityRequest.parameters,
+    semantic_coverage: { status: "desktop_preview" }
+  },
+  node_inventory: {
+    node_count: 0,
+    node_types: [],
+    semantic_match: { status: "desktop_preview" }
+  },
+  model_inventory: {
+    roots: [],
+    missing_roots: ["models"],
+    model_count: 0,
+    models: [],
+    by_type: {}
+  },
+  missing_nodes: [],
+  missing_models: [
+    {
+      parameter: "checkpoint_name",
+      filename: "sdxl.safetensors",
+      model_type: "checkpoint",
+      reason: "desktop_preview"
+    }
+  ],
+  missing_information: []
+};
+
+function fallbackInstallPlanFrom(report: CapabilityReport): InstallPlan {
+  const modelActions: InstallPlanAction[] = report.missing_models.map((model) => ({
+    kind: "model",
+    target_type: model.model_type,
+    filename: model.filename,
+    parameter: model.parameter,
+    reason: model.reason,
+    requires_confirmation: true,
+    automatic: false
+  }));
+  const nodeActions: InstallPlanAction[] = report.missing_nodes.map((node) => ({
+    kind: "custom_node",
+    node_type: node.node_type,
+    reason: node.reason,
+    restart_required: true,
+    requires_confirmation: true,
+    automatic: false
+  }));
+  const actions = [...modelActions, ...nodeActions];
+  return {
+    status: actions.length ? "requires_confirmation" : "not_required",
+    automatic: false,
+    requires_confirmation: actions.length > 0,
+    actions
+  };
+}
+
+const fallbackInstallAudit: InstallAudit = {
+  path: ".comfydex/install_audit.jsonl",
+  entries: []
+};
+
 function hasTauri(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
@@ -149,6 +235,33 @@ export function checkConnection(): Promise<ConnectionResult> {
 
 export function getLiveBridgeStatus(): Promise<LiveBridgeStatus> {
   return call("live_bridge_status", fallbackLiveBridgeStatus);
+}
+
+export function getCapabilityReport(
+  payload: CapabilityReportRequest = defaultCapabilityRequest
+): Promise<CapabilityReport> {
+  return call("capability_report", fallbackCapabilityReport, { payload });
+}
+
+export function createInstallPlan(capabilityReport: CapabilityReport): Promise<InstallPlan> {
+  return call("create_install_plan", fallbackInstallPlanFrom(capabilityReport), {
+    payload: { capability_report: capabilityReport }
+  });
+}
+
+export function recordInstallAudit(
+  installPlan: InstallPlan,
+  decision: "accepted" | "rejected"
+): Promise<InstallAuditEntry> {
+  return call("record_install_audit", {
+    timestamp: new Date().toISOString(),
+    decision,
+    plan: installPlan
+  }, { payload: { install_plan: installPlan, decision } });
+}
+
+export function readInstallAudit(): Promise<InstallAudit> {
+  return call("read_install_audit", fallbackInstallAudit);
 }
 
 export function reloadLiveBridgeClient(): Promise<Record<string, unknown>> {
