@@ -6,9 +6,9 @@ The plugin is installed in Codex, not in ComfyUI. ComfyUI remains the runtime se
 
 ## Status
 
-Current version: `1.1.0`
+Current version: `1.2.0`
 
-This Usable Developer Release focuses on a practical local ComfyUI workflow:
+This 1.2 Live Bridge Productization Release focuses on a practical local ComfyUI workflow:
 
 - connect to a local or remote ComfyUI server
 - manage workflow JSON files from a Codex workspace
@@ -27,6 +27,8 @@ This Usable Developer Release focuses on a practical local ComfyUI workflow:
 - watch execution through WebSocket events
 - fall back to HTTP queue/history polling when WebSocket waiting fails
 - install a ComfyUI-side Live Bridge that can push workflows directly into the desktop canvas after one bootstrap restart
+- verify Live Bridge readiness from Codex scripts, MCP tools, and the desktop Settings view
+- use desktop Reload client and Reload backend controls when the bridge can be refreshed without a full reinstall
 - persist local run records
 - diagnose runs, export run reports, compare experiments, and manage outputs
 - submit simple batch runs with parameter variations
@@ -117,7 +119,7 @@ The Skill explains how Codex should work with ComfyUI workflows, including the d
 - UI workflow JSON, exported for the ComfyUI visual editor
 - API prompt JSON, submitted to ComfyUI `/prompt`
 
-Version `1.1.0` can import UI workflow files and help convert them, but submission still requires validated API prompt JSON. It also provides the shared project index, workflow generation engine, complete custom node loop, local asset library for generated outputs, desktop app shell backed by a Python desktop bridge with Gallery And Batch UI surfaces, safe end-to-end automation, Windows install helper, release checklist, security/path review, release package validation, and the optional ComfyUI-side Live Bridge for direct desktop canvas workflow loading.
+Version `1.2.0` can import UI workflow files and help convert them, but submission still requires validated API prompt JSON. It also provides the shared project index, workflow generation engine, complete custom node loop, local asset library for generated outputs, desktop app shell backed by a Python desktop bridge with Gallery And Batch UI surfaces, safe end-to-end automation, Windows install helper, release checklist, security/path review, release package validation, and a productized ComfyUI-side Live Bridge for direct desktop canvas workflow loading.
 
 ## Capability Groups
 
@@ -134,6 +136,7 @@ Version `1.1.0` can import UI workflow files and help convert them, but submissi
 | Run diagnostics | Diagnose, report, compare, and inspect run outputs. | `comfy_diagnose_run`, `comfy_export_run_report`, `comfy_compare_runs`, `comfy_list_outputs` |
 | Batch runs | Submit parameter variations and read batch records. | `comfy_batch_submit`, `comfy_read_batch` |
 | Desktop shell | Browse project status, workflows, runs, assets, Gallery And Batch UI, reports, comparisons, cleanup plans, and settings through the local Tauri app. | `desktop/`, Python desktop bridge |
+| Live Bridge | Install, verify, reload, and push UI workflow JSON into the ComfyUI desktop canvas after the initial custom node bootstrap is loaded. | `scripts/install_live_bridge.ps1`, `scripts/verify_live_bridge.ps1`, `comfy_live_bridge_status`, `comfy_live_bridge_push_workflow` |
 
 ## Configuration
 
@@ -499,7 +502,29 @@ npm --prefix desktop run build
 cargo check --manifest-path desktop\src-tauri\Cargo.toml
 ```
 
+Validate the Live Bridge after installing or updating it:
+
+```powershell
+pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\verify_live_bridge.ps1 -BaseUrl "http://127.0.0.1:8188" -SkipPush
+```
+
+Desktop Live Bridge status terms:
+
+- Ready: ComfyUI reachable, backend route loaded, frontend extension listed, frontend connected.
+- Restart required: ComfyUI reachable but bridge status route is missing.
+- Refresh required: backend route loaded but frontend client has not heartbeated or is stale.
+- Unsaved canvas: frontend refused a push because the current workflow has unsaved changes.
+
+Use Reload client from Settings when the frontend client needs to reconnect. Use Reload backend after changing bridge Python/runtime files and restarting ComfyUI is not required for the backend reload path.
+
 ## Release Notes
+
+### 1.2.0 - Live Bridge Productization
+
+- Added MCP and desktop bridge operations for Live Bridge status, frontend reload, backend reload, push, and verification.
+- Added desktop Dashboard and Settings Live Bridge status panels with Ready, Restart required, Refresh required, and Unsaved canvas diagnostics.
+- Hardened install, update, backup, verification, and push acknowledgement scripts for the ComfyUI-side bridge.
+- Added release docs, status meanings, and release gates for the productized Live Bridge workflow.
 
 ### 1.1.0 - Live Bridge Release
 

@@ -302,6 +302,59 @@ def test_desktop_app_docs_cover_gallery_batch_ui():
     assert "batch task view" in skill
 
 
+def test_live_bridge_docs_cover_install_verify_remove_and_desktop_status():
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    usage = (ROOT / "docs" / "usage" / "live-bridge.md").read_text(
+        encoding="utf-8"
+    )
+    desktop = (ROOT / "docs" / "usage" / "desktop-app.md").read_text(
+        encoding="utf-8"
+    )
+
+    for marker in (
+        'scripts\\install_live_bridge.ps1 -ComfyBaseDir "E:\\ComfyUI files"',
+        'scripts\\install_live_bridge.ps1 -ComfyCustomNodesDir "E:\\ComfyUI files\\custom_nodes"',
+        'scripts\\verify_live_bridge.ps1 -BaseUrl "http://127.0.0.1:8188" -SkipPush',
+        'scripts\\verify_live_bridge.ps1 -BaseUrl "http://127.0.0.1:8188" -WorkflowPath "workflows\\z-image-turbo-text-to-image.ui.json" -Force',
+        'Remove-Item -LiteralPath "E:\\ComfyUI files\\custom_nodes\\comfydex_live_bridge"',
+        "Ready: ComfyUI reachable, backend route loaded, frontend extension listed, frontend connected.",
+        "Restart required: ComfyUI reachable but bridge status route is missing.",
+        "Refresh required: backend route loaded but frontend client has not heartbeated or is stale.",
+        "Unsaved canvas: frontend refused a push because the current workflow has unsaved changes.",
+    ):
+        assert marker in usage
+
+    for marker in (
+        "Live Bridge",
+        "Ready",
+        "Restart required",
+        "Refresh required",
+        "Reload client",
+        "Reload backend",
+    ):
+        assert marker in desktop
+        assert marker in readme
+
+
+def test_release_checklist_1_2_covers_live_bridge_release_gates():
+    checklist = (ROOT / "docs" / "release" / "1.2-release-checklist.md").read_text(
+        encoding="utf-8"
+    )
+
+    for marker in (
+        "clean worktree",
+        "python -m pytest -q",
+        "node --check custom_nodes\\comfydex_live_bridge\\web\\comfydex_live_bridge.js",
+        "PowerShell parser checks",
+        "npm run typecheck",
+        "npm run build",
+        "cargo check",
+        "manual ComfyUI restart verification",
+        "push verification with a UI workflow",
+    ):
+        assert marker in checklist
+
+
 def test_workflow_generation_doc_explains_submit_policy():
     text = (ROOT / "docs" / "usage" / "workflow-generation.md").read_text(
         encoding="utf-8"

@@ -1,6 +1,6 @@
 # Comfydex Desktop App
 
-Comfydex `0.8.0` provides a Windows-first Tauri desktop app shell under `desktop/`. The desktop app is a local project workbench for browsing Comfydex project state, asset gallery records, reports, cleanup plans, comparisons, and batch records; it does not replace Codex or the Python MCP server.
+Comfydex `1.2.0` provides a Windows-first Tauri desktop app shell under `desktop/`. The desktop app is a local project workbench for browsing Comfydex project state, asset gallery records, reports, cleanup plans, comparisons, batch records, and Live Bridge readiness; it does not replace Codex or the Python MCP server.
 
 The app uses a Python desktop bridge:
 
@@ -65,8 +65,28 @@ The Dashboard shows:
 - connection result,
 - Reindex action,
 - Check connection action.
+- compact Live Bridge readiness.
 
 `project_status` reads the shared project index. `reindex_project` rebuilds index rows from compatibility records and does not delete local workflow files, run records, output files, batch records, sidecars, or reports.
+
+## Live Bridge Status
+
+The Dashboard shows a compact Live Bridge status band beside the ComfyUI connection band. The Settings view shows the expanded Live Bridge panel with diagnostics, timestamps, bridge version, frontend client id, and controls.
+
+Status terms:
+
+- Ready: ComfyUI reachable, backend route loaded, frontend extension listed, frontend connected.
+- Restart required: ComfyUI reachable but bridge status route is missing.
+- Refresh required: backend route loaded but frontend client has not heartbeated or is stale.
+- Unsaved canvas: frontend refused a push because the current workflow has unsaved changes.
+
+Controls:
+
+- Verify refreshes the Live Bridge status from the Python desktop bridge.
+- Reload client asks the ComfyUI frontend extension to reload the browser-side Live Bridge client.
+- Reload backend asks the ComfyUI-side bridge route to reload backend runtime code.
+
+Use Restart required when ComfyUI must be restarted after first installing the custom node. Use Refresh required when the backend is loaded but the ComfyUI browser tab has not loaded or recently heartbeated the frontend extension.
 
 ## Workflows
 
@@ -138,6 +158,10 @@ The Settings view shows:
 - WebSocket timeout,
 - redacted header count,
 - connection check result.
+- Live Bridge status,
+- Live Bridge diagnostics,
+- Reload client action,
+- Reload backend action.
 
 Sensitive header values must stay redacted. The desktop app should not expose login, OAuth, or browser-based account flows.
 
@@ -160,6 +184,9 @@ export_asset_library_report
 compare_assets
 list_batches
 read_batch
+live_bridge_status
+live_bridge_reload_client
+live_bridge_reload_backend
 ```
 
 Tauri commands return stable envelopes:
