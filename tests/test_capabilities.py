@@ -1,8 +1,11 @@
 from pathlib import Path
 
 from comfydex_mcp.capabilities import (
+    append_install_audit,
+    create_install_plan,
     infer_model_type,
     node_inventory_from_object_info,
+    read_install_audit,
     resolve_capabilities,
     scan_model_inventory,
 )
@@ -116,3 +119,52 @@ def test_resolve_capabilities_reports_missing_models_and_nodes():
             "reason": "missing_model",
         }
     ]
+
+
+def test_create_install_plan_requires_confirmation_for_missing_requirements():
+    object_info = dict(TEXT_TO_IMAGE_OBJECT_INFO)
+    object_info.pop("KSampler")
+    report = resolve_capabilities(
+        "text to image",
+        {"checkpoint_name": "missing.safetensors", "positive_prompt": "a lake"},
+        object_info,
+        {"models": [], "by_type": {}},
+    )
+
+    plan = create_install_plan(report)
+
+    assert plan["status"] == "requires_confirmation"
+    assert plan["automatic"] is False
+    assert plan["requires_confirmation"] is True
+    assert plan["actions"][0] == {
+        "kind": "model",
+        "target_type": "checkpoint",
+        "filename": "missing.safetensors",
+        "parameter": "checkpoint_name",
+        "reason": "missing_model",
+        "requires_confirmation": True,
+        "automatic": False,
+    }
+    assert plan["actions"][1] == {
+        "kind": "custom_node",
+        "node_type": "KSampler",
+        "reason": "missing_object_info",
+        "restart_required": True,
+        "requires_confirmation": True,
+        "automatic": False,
+    }
+
+
+def test_install_audit_appends_and_reads_entries(tmp_path):
+    plan = {
+        "status": "requires_confirmation",
+        "actions": [{"kind": "model", "filename": "missing.safetensors"}],
+    }
+
+    written = append_install_audit(tmp_path, plan, "rejected")
+    entries = read_install_audit(tmp_path)
+
+    assert written["decision"] == "rejected"
+    assert written["plan"] == plan
+    assert entries["entries"][0]["decision"] == "rejected"
+    assert (tmp_path / ".comfydex" / "install_audit.jsonl").is_file()

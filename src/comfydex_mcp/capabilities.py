@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -160,3 +162,82 @@ def _inventory_has_model(
         if isinstance(item, dict) and str(item.get("filename", "")).casefold() == expected:
             return True
     return False
+
+
+def create_install_plan(capability_report: dict[str, Any]) -> dict[str, Any]:
+    actions: list[dict[str, Any]] = []
+    for model in capability_report.get("missing_models", []):
+        if not isinstance(model, dict):
+            continue
+        actions.append(
+            {
+                "kind": "model",
+                "target_type": str(model.get("model_type", "unknown")),
+                "filename": str(model.get("filename", "")),
+                "parameter": str(model.get("parameter", "")),
+                "reason": str(model.get("reason", "missing_model")),
+                "requires_confirmation": True,
+                "automatic": False,
+            }
+        )
+    for node in capability_report.get("missing_nodes", []):
+        if not isinstance(node, dict):
+            continue
+        actions.append(
+            {
+                "kind": "custom_node",
+                "node_type": str(node.get("node_type", "")),
+                "reason": str(node.get("reason", "missing_object_info")),
+                "restart_required": True,
+                "requires_confirmation": True,
+                "automatic": False,
+            }
+        )
+
+    return {
+        "status": "requires_confirmation" if actions else "not_required",
+        "automatic": False,
+        "requires_confirmation": bool(actions),
+        "actions": actions,
+    }
+
+
+def append_install_audit(
+    workspace: Path,
+    install_plan: dict[str, Any],
+    decision: str,
+) -> dict[str, Any]:
+    entry = {
+        "timestamp": datetime.now(UTC).isoformat(),
+        "decision": decision,
+        "plan": install_plan,
+    }
+    audit_path = _install_audit_path(workspace)
+    audit_path.parent.mkdir(parents=True, exist_ok=True)
+    with audit_path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(entry, sort_keys=True) + "\n")
+    return entry
+
+
+def read_install_audit(workspace: Path, limit: int = 20) -> dict[str, Any]:
+    audit_path = _install_audit_path(workspace)
+    if not audit_path.is_file():
+        return {"path": str(audit_path), "entries": []}
+
+    entries: list[dict[str, Any]] = []
+    for line in audit_path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            value = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(value, dict):
+            entries.append(value)
+    if limit <= 0:
+        return {"path": str(audit_path), "entries": []}
+    return {"path": str(audit_path), "entries": entries[-limit:]}
+
+
+def _install_audit_path(workspace: Path) -> Path:
+    return workspace.resolve() / ".comfydex" / "install_audit.jsonl"
