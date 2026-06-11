@@ -1,6 +1,7 @@
 from comfydex_mcp.node_semantics import (
     get_node_semantics,
     list_node_semantics,
+    match_semantics_to_object_info,
     validate_semantic_registry,
 )
 
@@ -34,3 +35,26 @@ def test_registry_validation_accepts_builtin_entries():
     assert report["status"] == "valid"
     assert report["errors"] == []
     assert report["entry_count"] >= 18
+
+
+def test_match_semantics_to_object_info_reports_supported_missing_and_unknown():
+    object_info = {
+        "CheckpointLoaderSimple": {"input": {"required": {"ckpt_name": ("COMBO",)}}},
+        "KSampler": {"input": {"required": {"model": ("MODEL",)}}},
+        "UnknownCustomNode": {"input": {"required": {}}},
+    }
+
+    report = match_semantics_to_object_info(object_info)
+
+    assert report["supported_node_types"] == ["CheckpointLoaderSimple", "KSampler"]
+    assert "CLIPTextEncode" in report["missing_supported_node_types"]
+    assert report["unknown_node_types"] == ["UnknownCustomNode"]
+    assert report["status"] == "partial"
+
+
+def test_match_semantics_to_object_info_rejects_non_mapping_payload():
+    report = match_semantics_to_object_info(["not", "a", "mapping"])
+
+    assert report["status"] == "invalid_object_info"
+    assert report["supported_node_types"] == []
+    assert report["unknown_node_types"] == []

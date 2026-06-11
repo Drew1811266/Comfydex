@@ -452,3 +452,35 @@ def validate_semantic_registry() -> dict[str, Any]:
         "entry_count": len(_REGISTRY),
         "errors": errors,
     }
+
+
+def match_semantics_to_object_info(object_info: Any) -> dict[str, Any]:
+    if not isinstance(object_info, dict):
+        return {
+            "status": "invalid_object_info",
+            "supported_node_types": [],
+            "missing_supported_node_types": [],
+            "unknown_node_types": [],
+            "known_entry_count": len(_REGISTRY),
+        }
+
+    object_node_types = {key for key in object_info if isinstance(key, str)}
+    registry_node_types = set(_REGISTRY)
+    supported = sorted(object_node_types & registry_node_types)
+    missing = sorted(registry_node_types - object_node_types)
+    unknown = sorted(object_node_types - registry_node_types)
+
+    if supported and not unknown:
+        status = "valid"
+    elif supported:
+        status = "partial"
+    else:
+        status = "unsupported"
+
+    return {
+        "status": status,
+        "supported_node_types": supported,
+        "missing_supported_node_types": missing,
+        "unknown_node_types": unknown,
+        "known_entry_count": len(_REGISTRY),
+    }
