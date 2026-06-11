@@ -1,6 +1,7 @@
 from comfydex_mcp.recipes import (
     get_workflow_recipe,
     list_workflow_recipes,
+    resolve_recipe_capabilities,
     search_workflow_recipes,
     suggest_workflow_recipes,
     validate_workflow_recipes,
@@ -76,3 +77,35 @@ def test_suggest_workflow_recipes_accepts_explicit_recipe_id():
             "reasons": ["explicit recipe_id"],
         }
     ]
+
+
+def test_resolve_recipe_capabilities_reports_ready_recipe():
+    object_info = {
+        "CheckpointLoaderSimple": {"input": {"required": {}}},
+        "CLIPTextEncode": {"input": {"required": {}}},
+        "EmptyLatentImage": {"input": {"required": {}}},
+        "KSampler": {"input": {"required": {}}},
+        "VAEDecode": {"input": {"required": {}}},
+        "SaveImage": {"input": {"required": {}}},
+    }
+    inventory = {
+        "models": [{"filename": "sdxl.safetensors", "model_type": "checkpoint"}],
+        "by_type": {"checkpoint": [{"filename": "sdxl.safetensors"}]},
+    }
+
+    report = resolve_recipe_capabilities(
+        "text-to-image-basic",
+        {"checkpoint_name": "sdxl.safetensors", "positive_prompt": "a lake"},
+        object_info,
+        inventory,
+    )
+
+    assert report["recipe"]["recipe_id"] == "text-to-image-basic"
+    assert report["capability_report"]["can_run_now"] is True
+
+
+def test_resolve_recipe_capabilities_reports_unknown_recipe():
+    report = resolve_recipe_capabilities("missing", {}, {}, {"models": [], "by_type": {}})
+
+    assert report["status"] == "unknown_recipe"
+    assert report["recipe_id"] == "missing"

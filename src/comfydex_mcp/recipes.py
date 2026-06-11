@@ -237,6 +237,32 @@ def suggest_workflow_recipes(
     return ranked[:limit]
 
 
+def resolve_recipe_capabilities(
+    recipe_id: str,
+    parameters: dict[str, Any] | None,
+    object_info: dict[str, Any],
+    model_inventory: dict[str, Any],
+) -> dict[str, Any]:
+    recipe = get_workflow_recipe(recipe_id)
+    if recipe is None:
+        return {"status": "unknown_recipe", "recipe_id": recipe_id}
+
+    from .capabilities import resolve_capabilities
+
+    capability_report = resolve_capabilities(
+        str(recipe["description"]),
+        parameters,
+        object_info,
+        model_inventory,
+        template_id=str(recipe["template_id"]),
+    )
+    return {
+        "status": capability_report["status"],
+        "recipe": recipe,
+        "capability_report": capability_report,
+    }
+
+
 def validate_workflow_recipes() -> dict[str, Any]:
     errors: list[dict[str, str]] = []
     seen_ids: set[str] = set()
