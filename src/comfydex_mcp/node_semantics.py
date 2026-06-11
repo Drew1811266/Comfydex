@@ -470,7 +470,7 @@ def match_semantics_to_object_info(object_info: Any) -> dict[str, Any]:
     missing = sorted(registry_node_types - object_node_types)
     unknown = sorted(object_node_types - registry_node_types)
 
-    if supported and not unknown:
+    if supported and not unknown and not missing:
         status = "valid"
     elif supported:
         status = "partial"
@@ -484,3 +484,28 @@ def match_semantics_to_object_info(object_info: Any) -> dict[str, Any]:
         "unknown_node_types": unknown,
         "known_entry_count": len(_REGISTRY),
     }
+
+
+def search_node_semantics(query: str) -> list[dict[str, Any]]:
+    normalized = " ".join(query.lower().split())
+    if not normalized:
+        return []
+
+    matches: list[NodeSemanticEntry] = []
+    for entry in _REGISTRY.values():
+        haystack = " ".join(
+            (
+                entry.node_type,
+                " ".join(entry.display_names),
+                entry.category,
+                entry.purpose,
+                " ".join(entry.parameter_strategies),
+            )
+        ).lower()
+        if normalized in haystack:
+            matches.append(entry)
+
+    return [
+        entry.to_dict()
+        for entry in sorted(matches, key=lambda item: (item.category, item.node_type))
+    ]

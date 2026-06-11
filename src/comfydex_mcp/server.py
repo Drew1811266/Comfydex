@@ -65,6 +65,13 @@ from .node_contracts import (
     generate_node_examples,
     run_node_contract_tests,
 )
+from .node_semantics import (
+    get_node_semantics,
+    list_node_semantics,
+    match_semantics_to_object_info,
+    search_node_semantics,
+    validate_semantic_registry,
+)
 from .outputs import cleanup_outputs, list_outputs as list_run_outputs
 from .node_scaffold import scaffold_custom_node_package, safe_custom_nodes_dir
 from .patching import patch_workflow
@@ -710,6 +717,44 @@ async def comfy_get_object_info() -> dict[str, Any]:
         ctx.config.request_timeout_seconds,
     ) as client:
         return await client.get_object_info()
+
+
+@mcp.tool()
+async def comfy_list_node_semantics() -> dict[str, Any]:
+    entries = list_node_semantics()
+    return {"entry_count": len(entries), "entries": entries}
+
+
+@mcp.tool()
+async def comfy_explain_node_semantics(node_type: str) -> dict[str, Any]:
+    entry = get_node_semantics(node_type)
+    if entry is None:
+        return {
+            "status": "unsupported",
+            "node_type": node_type,
+            "message": "Comfydex does not have first-class semantic support for this node.",
+        }
+    return {"status": "supported", "entry": entry}
+
+
+@mcp.tool()
+async def comfy_search_node_semantics(query: str) -> dict[str, Any]:
+    entries = search_node_semantics(query)
+    return {"query": query, "entry_count": len(entries), "entries": entries}
+
+
+@mcp.tool()
+async def comfy_validate_node_semantics() -> dict[str, Any]:
+    ctx = tool_context()
+    registry_report = validate_semantic_registry()
+    async with ComfyClient(
+        ctx.config.base_url,
+        ctx.config.headers,
+        ctx.config.request_timeout_seconds,
+    ) as client:
+        object_info = await client.get_object_info()
+    object_report = match_semantics_to_object_info(object_info)
+    return {"registry": registry_report, **object_report}
 
 
 @mcp.tool()

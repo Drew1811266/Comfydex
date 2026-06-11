@@ -288,6 +288,53 @@ async def test_comfy_live_bridge_status_tool_is_registered_with_mcp(
 
 
 @pytest.mark.asyncio
+async def test_comfy_list_node_semantics_tool_returns_supported_nodes():
+    result = await server.comfy_list_node_semantics()
+
+    assert result["entry_count"] >= 18
+    assert any(entry["node_type"] == "KSampler" for entry in result["entries"])
+
+
+@pytest.mark.asyncio
+async def test_comfy_explain_node_semantics_tool_refuses_unknown_node():
+    result = await server.comfy_explain_node_semantics("UnknownNodeForTest")
+
+    assert result["status"] == "unsupported"
+    assert result["node_type"] == "UnknownNodeForTest"
+
+
+@pytest.mark.asyncio
+async def test_comfy_validate_node_semantics_tool_uses_live_object_info(
+    monkeypatch,
+    tmp_path: Path,
+):
+    _write_config(tmp_path)
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+    monkeypatch.setattr(
+        server,
+        "ComfyClient",
+        object_info_client({"KSampler": {"input": {"required": {}}}}),
+    )
+
+    result = await server.comfy_validate_node_semantics()
+
+    assert result["status"] == "partial"
+    assert result["supported_node_types"] == ["KSampler"]
+    assert result["registry"]["status"] == "valid"
+
+
+@pytest.mark.asyncio
+async def test_comfy_search_node_semantics_tool_is_registered_with_mcp():
+    _content, structured = await server.mcp.call_tool(
+        "comfy_search_node_semantics",
+        {"query": "sampler"},
+    )
+
+    assert structured["query"] == "sampler"
+    assert any(entry["node_type"] == "KSampler" for entry in structured["entries"])
+
+
+@pytest.mark.asyncio
 async def test_comfy_custom_node_tools_use_package_name(
     monkeypatch,
     tmp_path: Path,
