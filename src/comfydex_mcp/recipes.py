@@ -5,6 +5,14 @@ from typing import Any
 
 from .templates import get_workflow_template
 
+MODEL_PARAMETER_BY_TYPE = {
+    "checkpoint": "checkpoint_name",
+    "lora": "lora_name",
+    "controlnet": "controlnet_name",
+    "upscale": "upscale_model_name",
+    "vae": "vae_name",
+}
+
 
 @dataclass(frozen=True)
 class WorkflowRecipe:
@@ -194,6 +202,41 @@ def search_workflow_recipes(query: str) -> list[dict[str, Any]]:
     ]
 
 
+def suggest_workflow_recipes(
+    intent: str,
+    parameters: dict[str, Any] | None = None,
+    *,
+    recipe_id: str | None = None,
+    limit: int = 3,
+) -> list[dict[str, Any]]:
+    if limit <= 0:
+        return []
+    if recipe_id is not None:
+        recipe = get_workflow_recipe(recipe_id)
+        if recipe is None:
+            return []
+        return [
+            {
+                "recipe_id": recipe["recipe_id"],
+                "template_id": recipe["template_id"],
+                "score": 1000,
+                "reasons": ["explicit recipe_id"],
+            }
+        ]
+
+    normalized_intent = " ".join(intent.casefold().split())
+    normalized_parameters = parameters or {}
+    candidates = [
+        _recipe_suggestion(recipe, normalized_intent, normalized_parameters)
+        for recipe in _RECIPES
+    ]
+    ranked = sorted(
+        (candidate for candidate in candidates if candidate["score"] > 0),
+        key=lambda candidate: (-int(candidate["score"]), str(candidate["recipe_id"])),
+    )
+    return ranked[:limit]
+
+
 def validate_workflow_recipes() -> dict[str, Any]:
     errors: list[dict[str, str]] = []
     seen_ids: set[str] = set()
@@ -238,3 +281,51 @@ def _search_score(recipe: WorkflowRecipe, query: str) -> int:
             score += 50
         score += 8 * len(query_terms & set(normalized.replace("-", " ").split()))
     return score
+
+
+def _recipe_suggestion(
+    recipe: WorkflowRecipe,
+    intent: str,
+    parameters: dict[str, Any],
+) -> dict[str, Any]:
+    score = 0
+    reasons: list[str] = []
+
+    for phrase in recipe.intent_phrases:
+        if phrase.casefold() in intent:
+            score += 80
+            reasons.append(f"intent phrase: {phrase}")
+
+    for tag in recipe.tags:
+        normalized_tag = tag.casefold()
+        if normalized_tag in intent:
+            score += 35
+            reasons.append(f"tag match: {tag}")
+
+    for model_type in recipe.required_model_types:
+        parameter = MODEL_PARAMETER_BY_TYPE.get(model_type)
+        if parameter and _has_value(parameters.get(parameter)):
+            score += 45
+            reasons.append(f"{parameter} parameter present")
+
+    for input_name in recipe.required_inputs:
+        if _has_value(parameters.get(input_name)):
+            score += 20
+            reasons.append(f"{input_name} input present")
+
+    name_terms = set(recipe.name.casefold().replace("-", " ").split())
+    intent_terms = set(intent.replace("-", " ").split())
+    for term in sorted(name_terms & intent_terms):
+        score += 10
+        reasons.append(f"name word: {term}")
+
+    return {
+        "recipe_id": recipe.recipe_id,
+        "template_id": recipe.template_id,
+        "score": score,
+        "reasons": reasons,
+    }
+
+
+def _has_value(value: Any) -> bool:
+    return value is not None and (not isinstance(value, str) or bool(value.strip()))

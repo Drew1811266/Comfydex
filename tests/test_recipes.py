@@ -2,6 +2,7 @@ from comfydex_mcp.recipes import (
     get_workflow_recipe,
     list_workflow_recipes,
     search_workflow_recipes,
+    suggest_workflow_recipes,
     validate_workflow_recipes,
 )
 
@@ -41,3 +42,37 @@ def test_validate_workflow_recipes_checks_template_ids_and_nodes():
     assert report["status"] == "valid"
     assert report["recipe_count"] >= 5
     assert report["errors"] == []
+
+
+def test_suggest_workflow_recipes_scores_lora_prompt():
+    suggestions = suggest_workflow_recipes(
+        "make a portrait with a lora style",
+        {"lora_name": "style.safetensors", "checkpoint_name": "sdxl.safetensors"},
+    )
+
+    assert suggestions[0]["recipe_id"] == "text-to-image-lora"
+    assert suggestions[0]["score"] > suggestions[-1]["score"]
+    assert any("lora_name parameter" in reason for reason in suggestions[0]["reasons"])
+
+
+def test_suggest_workflow_recipes_honors_limit():
+    suggestions = suggest_workflow_recipes("image upscale", limit=2)
+
+    assert len(suggestions) == 2
+    assert suggestions[0]["recipe_id"] == "image-upscale"
+
+
+def test_suggest_workflow_recipes_accepts_explicit_recipe_id():
+    suggestions = suggest_workflow_recipes(
+        "anything",
+        recipe_id="controlnet-pose",
+    )
+
+    assert suggestions == [
+        {
+            "recipe_id": "controlnet-pose",
+            "template_id": "controlnet-skeleton",
+            "score": 1000,
+            "reasons": ["explicit recipe_id"],
+        }
+    ]
