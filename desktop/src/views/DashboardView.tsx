@@ -1,10 +1,11 @@
 import { Plug, RefreshCcw, RotateCw } from "lucide-react";
-import type { ConnectionResult, LoadState, ProjectStatus } from "../lib/types";
+import type { ConnectionResult, LiveBridgeStatus, LoadState, ProjectStatus } from "../lib/types";
 
 type DashboardProps = {
   busy: boolean;
   connection: ConnectionResult | null;
   error: string | null;
+  liveBridgeStatus: LiveBridgeStatus | null;
   onCheckConnection: () => void;
   onRefresh: () => void;
   onReindex: () => void;
@@ -16,6 +17,7 @@ export function DashboardView({
   busy,
   connection,
   error,
+  liveBridgeStatus,
   onCheckConnection,
   onRefresh,
   onReindex,
@@ -40,6 +42,15 @@ export function DashboardView({
 
   const counts = status?.counts;
   const emptyWorkspace = state === "empty";
+  const firstDiagnostic = liveBridgeStatus?.diagnostics[0];
+  const liveBridgeLabel = liveBridgeStatus?.ready
+    ? "Ready"
+    : liveBridgeStatus?.needs_restart
+      ? "Restart required"
+      : liveBridgeStatus?.needs_refresh
+        ? "Refresh required"
+        : "Not ready";
+  const liveBridgeTone = liveBridgeStatus?.ready ? "success" : liveBridgeStatus ? "warning" : "neutral";
 
   return (
     <section className="view">
@@ -67,6 +78,29 @@ export function DashboardView({
         />
       ) : null}
 
+      <div className="status-grid">
+        <StatusBand
+          detail={connection?.message ?? "Connection has not been checked"}
+          label={connection?.ok ? "Connected" : "Offline"}
+          tone={connection?.ok ? "success" : "warning"}
+          title="ComfyUI"
+        >
+          {connection?.base_url ?? "No base URL"}
+        </StatusBand>
+        <StatusBand
+          detail={
+            firstDiagnostic
+              ? firstDiagnostic.code
+              : liveBridgeStatus?.checked_at ?? "Live Bridge status has not been checked"
+          }
+          label={liveBridgeLabel}
+          tone={liveBridgeTone}
+          title="Live Bridge"
+        >
+          {liveBridgeStatus?.base_url ?? connection?.base_url ?? "No base URL"}
+        </StatusBand>
+      </div>
+
       <div className="metric-grid">
         <Metric label="Schema" value={status?.schema_version ?? "loading"} />
         <Metric label="Workflows" value={counts?.workflows ?? 0} />
@@ -92,6 +126,33 @@ export function DashboardView({
         </div>
       </div>
     </section>
+  );
+}
+
+function StatusBand({
+  children,
+  detail,
+  label,
+  title,
+  tone
+}: {
+  children: string;
+  detail: string;
+  label: string;
+  title: string;
+  tone: "neutral" | "success" | "warning";
+}) {
+  return (
+    <div className={`status-band ${tone}`}>
+      <div>
+        <span>{title}</span>
+        <strong>{label}</strong>
+      </div>
+      <div className="status-band-body">
+        <span>{children}</span>
+        <p>{detail}</p>
+      </div>
+    </div>
   );
 }
 

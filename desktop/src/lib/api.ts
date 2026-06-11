@@ -12,6 +12,7 @@ import type {
   CleanupPlan,
   ConfigState,
   ConnectionResult,
+  LiveBridgeStatus,
   ProjectStatus,
   RunRow,
   WorkflowRow
@@ -50,6 +51,39 @@ const fallbackConnection: ConnectionResult = {
   base_url: fallbackConfig.base_url,
   message: "Connection has not been checked",
   checked_at: "2026-06-08T00:00:00+00:00"
+};
+
+const fallbackLiveBridgeStatus: LiveBridgeStatus = {
+  ok: false,
+  ready: false,
+  base_url: fallbackConfig.base_url,
+  checked_at: "2026-06-08T00:00:00+00:00",
+  server: { reachable: false, status_code: null },
+  bridge: {
+    loaded: false,
+    name: null,
+    version: null,
+    generation: null,
+    routes: []
+  },
+  frontend: {
+    listed: false,
+    connected: false,
+    stale: true,
+    version: null,
+    client_id: null,
+    last_seen_at: null,
+    last_seen_age_ms: null
+  },
+  can_push: false,
+  needs_restart: true,
+  needs_refresh: false,
+  diagnostics: [
+    {
+      code: "desktop_preview",
+      message: "Live Bridge status is only available inside the desktop shell."
+    }
+  ]
 };
 
 function hasTauri(): boolean {
@@ -111,6 +145,18 @@ export function setConfig(configPatch: Partial<ConfigState>): Promise<ConfigStat
 
 export function checkConnection(): Promise<ConnectionResult> {
   return call("check_connection", fallbackConnection);
+}
+
+export function getLiveBridgeStatus(): Promise<LiveBridgeStatus> {
+  return call("live_bridge_status", fallbackLiveBridgeStatus);
+}
+
+export function reloadLiveBridgeClient(): Promise<Record<string, unknown>> {
+  return call("live_bridge_reload_client", { ok: true, version: "desktop-preview" });
+}
+
+export function reloadLiveBridgeBackend(): Promise<Record<string, unknown>> {
+  return call("live_bridge_reload_backend", { ok: true, generation: 0 });
 }
 
 export function listWorkflows(): Promise<WorkflowRow[]> {

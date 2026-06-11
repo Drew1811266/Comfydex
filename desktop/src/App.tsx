@@ -11,10 +11,13 @@ import {
 import {
   checkConnection,
   getConfig,
+  getLiveBridgeStatus,
   getProjectStatus,
   listBatches,
   listRuns,
   listWorkflows,
+  reloadLiveBridgeBackend,
+  reloadLiveBridgeClient,
   reindexProject,
   searchAssets
 } from "./lib/api";
@@ -23,6 +26,7 @@ import type {
   BatchSummary,
   ConfigState,
   ConnectionResult,
+  LiveBridgeStatus,
   LoadState,
   ProjectStatus,
   RunRow,
@@ -46,6 +50,14 @@ const navItems: Array<{ id: View; label: string; icon: typeof Activity }> = [
   { id: "settings", label: "Settings", icon: Settings }
 ];
 
+async function getLiveBridgeStatusOrNull(): Promise<LiveBridgeStatus | null> {
+  try {
+    return await getLiveBridgeStatus();
+  } catch {
+    return null;
+  }
+}
+
 export function App() {
   const [view, setView] = useState<View>("dashboard");
   const [loadState, setLoadState] = useState<LoadState>("loading");
@@ -58,12 +70,13 @@ export function App() {
   const [assets, setAssets] = useState<AssetRow[]>([]);
   const [batches, setBatches] = useState<BatchSummary[]>([]);
   const [config, setConfigState] = useState<ConfigState | null>(null);
+  const [liveBridgeStatus, setLiveBridgeStatus] = useState<LiveBridgeStatus | null>(null);
 
   const refresh = useCallback(async () => {
     setLoadState("loading");
     setError(null);
     try {
-      const [projectStatus, workflowRows, runRows, assetResult, batchRows, configState, connectionState] =
+      const [projectStatus, workflowRows, runRows, assetResult, batchRows, configState, connectionState, bridgeState] =
         await Promise.all([
           getProjectStatus(),
           listWorkflows(),
@@ -71,7 +84,8 @@ export function App() {
           searchAssets(),
           listBatches(),
           getConfig(),
-          checkConnection()
+          checkConnection(),
+          getLiveBridgeStatusOrNull()
         ]);
 
       setStatus(projectStatus);
@@ -81,6 +95,7 @@ export function App() {
       setBatches(batchRows);
       setConfigState(configState);
       setConnection(connectionState);
+      setLiveBridgeStatus(bridgeState);
       setLoadState(projectStatus.workspace === "No workspace selected" ? "empty" : "loaded");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
@@ -111,7 +126,12 @@ export function App() {
     setActionBusy(true);
     setError(null);
     try {
-      setConnection(await checkConnection());
+      const [connectionState, bridgeState] = await Promise.all([
+        checkConnection(),
+        getLiveBridgeStatusOrNull()
+      ]);
+      setConnection(connectionState);
+      setLiveBridgeStatus(bridgeState);
     } catch (caught) {
       setConnection({
         ok: false,
@@ -119,6 +139,44 @@ export function App() {
         message: caught instanceof Error ? caught.message : String(caught),
         checked_at: new Date().toISOString()
       });
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
+  async function handleVerifyLiveBridgeStatus() {
+    setActionBusy(true);
+    setError(null);
+    try {
+      setLiveBridgeStatus(await getLiveBridgeStatus());
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
+  async function handleReloadLiveBridgeClient() {
+    setActionBusy(true);
+    setError(null);
+    try {
+      await reloadLiveBridgeClient();
+      setLiveBridgeStatus(await getLiveBridgeStatus());
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
+  async function handleReloadLiveBridgeBackend() {
+    setActionBusy(true);
+    setError(null);
+    try {
+      await reloadLiveBridgeBackend();
+      setLiveBridgeStatus(await getLiveBridgeStatus());
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
     } finally {
       setActionBusy(false);
     }
@@ -132,10 +190,15 @@ export function App() {
     if (view === "settings") {
       return (
         <SettingsView
+          busy={actionBusy}
           config={config}
           connection={connection}
           error={error}
+          liveBridgeStatus={liveBridgeStatus}
           onCheckConnection={handleCheckConnection}
+          onReloadLiveBridgeBackend={handleReloadLiveBridgeBackend}
+          onReloadLiveBridgeClient={handleReloadLiveBridgeClient}
+          onVerifyLiveBridgeStatus={handleVerifyLiveBridgeStatus}
           state={loadState}
         />
       );
@@ -145,6 +208,7 @@ export function App() {
         busy={actionBusy}
         connection={connection}
         error={error}
+        liveBridgeStatus={liveBridgeStatus}
         onCheckConnection={handleCheckConnection}
         onRefresh={refresh}
         onReindex={handleReindex}

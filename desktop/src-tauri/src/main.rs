@@ -74,6 +74,42 @@ fn check_connection(app: AppHandle) -> Value {
 }
 
 #[tauri::command]
+fn live_bridge_status(app: AppHandle) -> Value {
+    match current_workspace(&app) {
+        Ok(Some(workspace)) => run_bridge("live_bridge_status", &workspace, json!({})),
+        Ok(None) => bridge_error(
+            "WorkspaceError",
+            "workspace must be selected before checking Live Bridge",
+        ),
+        Err(message) => bridge_error("WorkspaceError", message),
+    }
+}
+
+#[tauri::command]
+fn live_bridge_reload_client(app: AppHandle) -> Value {
+    match current_workspace(&app) {
+        Ok(Some(workspace)) => run_bridge("live_bridge_reload_client", &workspace, json!({})),
+        Ok(None) => bridge_error(
+            "WorkspaceError",
+            "workspace must be selected before reloading Live Bridge client",
+        ),
+        Err(message) => bridge_error("WorkspaceError", message),
+    }
+}
+
+#[tauri::command]
+fn live_bridge_reload_backend(app: AppHandle) -> Value {
+    match current_workspace(&app) {
+        Ok(Some(workspace)) => run_bridge("live_bridge_reload_backend", &workspace, json!({})),
+        Ok(None) => bridge_error(
+            "WorkspaceError",
+            "workspace must be selected before reloading Live Bridge backend",
+        ),
+        Err(message) => bridge_error("WorkspaceError", message),
+    }
+}
+
+#[tauri::command]
 fn list_workflows(app: AppHandle) -> Value {
     match current_workspace(&app) {
         Ok(Some(workspace)) => run_bridge("list_workflows", &workspace, json!({})),
@@ -164,6 +200,9 @@ fn main() {
             get_config,
             set_config,
             check_connection,
+            live_bridge_status,
+            live_bridge_reload_client,
+            live_bridge_reload_backend,
             list_workflows,
             list_runs,
             search_assets,

@@ -68,6 +68,43 @@ export type ConnectionResult = {
   checked_at: string | null;
 };
 
+export type LiveBridgeDiagnostic = {
+  code: string;
+  message: string;
+  evidence?: Record<string, unknown>;
+};
+
+export type LiveBridgeStatus = {
+  ok: boolean;
+  ready: boolean;
+  base_url: string;
+  checked_at: string | null;
+  server: {
+    reachable: boolean;
+    status_code?: number | null;
+  };
+  bridge: {
+    loaded: boolean;
+    name?: string | null;
+    version?: string | null;
+    generation?: number | null;
+    routes: string[];
+  };
+  frontend: {
+    listed: boolean;
+    connected: boolean;
+    stale: boolean;
+    version?: string | null;
+    client_id?: string | null;
+    last_seen_at?: string | null;
+    last_seen_age_ms?: number | null;
+  };
+  can_push: boolean;
+  needs_restart: boolean;
+  needs_refresh: boolean;
+  diagnostics: LiveBridgeDiagnostic[];
+};
+
 export type AssetSearchFilters = {
   query?: string;
   favorite?: boolean;
