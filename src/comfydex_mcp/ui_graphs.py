@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+import json
 from copy import deepcopy
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
+from .paths import ensure_directory
 from .templates import get_workflow_template
+from .workflows import save_workflow
 
 NODE_TITLES = {
     "checkpoint": "Checkpoint",
@@ -56,6 +61,79 @@ FALLBACK_OUTPUT_TYPES = {
     "ControlNetApply": ["CONDITIONING"],
     "SaveImage": [],
 }
+
+HISTORY_FILENAME = "ui_graph_history.jsonl"
+
+
+def save_generated_ui_workflow(
+    workspace: Path,
+    workflows_dir: Path,
+    filename: str,
+    plan: dict[str, Any],
+    *,
+    object_info: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    build = build_ui_workflow_from_plan(plan, object_info=object_info)
+    if build["status"] != "valid":
+        return build
+
+    workflow = build["workflow"]
+    path = save_workflow(
+        workflows_dir,
+        filename,
+        workflow,
+        require_api=False,
+        source="generated_ui_graph",
+        validation_status="valid",
+    )
+    summary = build["summary"]
+    record = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "workflow_name": filename,
+        "path": str(path),
+        "status": "saved",
+        "template_id": summary["template_id"],
+        "recipe_id": summary["recipe_id"],
+        "node_count": summary["node_count"],
+        "link_count": summary["link_count"],
+    }
+    append_ui_graph_history(workspace, record)
+    return {
+        "status": "saved",
+        "workflow_name": filename,
+        "path": str(path),
+        "workflow": workflow,
+        "summary": summary,
+        "history_record": record,
+    }
+
+
+def append_ui_graph_history(workspace: Path, record: dict[str, Any]) -> dict[str, Any]:
+    path = _history_path(workspace)
+    ensure_directory(path.parent)
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(record, sort_keys=True) + "\n")
+    return record
+
+
+def read_ui_graph_history(workspace: Path, limit: int = 20) -> dict[str, Any]:
+    path = _history_path(workspace)
+    if limit <= 0:
+        return {"path": str(path), "entries": []}
+    if not path.exists():
+        return {"path": str(path), "entries": []}
+
+    entries: list[dict[str, Any]] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            value = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(value, dict):
+            entries.append(value)
+    return {"path": str(path), "entries": list(reversed(entries))[:limit]}
 
 
 def build_ui_workflow_from_plan(
@@ -399,3 +477,7 @@ def _bounding_box(nodes: list[dict[str, Any]]) -> list[int]:
 
 def _title_from_key(key: str) -> str:
     return " ".join(part.capitalize() for part in key.split("_"))
+
+
+def _history_path(workspace: Path) -> Path:
+    return workspace / ".comfydex" / HISTORY_FILENAME

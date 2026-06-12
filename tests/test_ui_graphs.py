@@ -1,5 +1,13 @@
+from pathlib import Path
+
 from comfydex_mcp.generation import plan_workflow_generation
-from comfydex_mcp.ui_graphs import build_ui_workflow_from_plan, summarize_ui_graph
+from comfydex_mcp.ui_graphs import (
+    append_ui_graph_history,
+    build_ui_workflow_from_plan,
+    read_ui_graph_history,
+    save_generated_ui_workflow,
+    summarize_ui_graph,
+)
 
 
 TEXT_TO_IMAGE_OBJECT_INFO = {
@@ -99,3 +107,41 @@ def test_summarize_ui_graph_reports_layout_and_recipe_metadata():
     assert summary["template_id"] == "lora-text-to-image"
     assert summary["recipe_id"] == "text-to-image-lora"
     assert summary["has_layout"] is True
+
+
+def test_save_generated_ui_workflow_writes_ui_json_metadata_and_history(
+    tmp_path: Path,
+):
+    plan = plan_workflow_generation(
+        "text to image",
+        {"checkpoint_name": "sdxl.safetensors", "positive_prompt": "a quiet lake"},
+    )
+
+    result = save_generated_ui_workflow(
+        tmp_path,
+        tmp_path / "workflows",
+        "lake.ui.json",
+        plan,
+        object_info=TEXT_TO_IMAGE_OBJECT_INFO,
+    )
+
+    assert result["status"] == "saved"
+    assert result["workflow_name"] == "lake.ui.json"
+    assert result["summary"]["template_id"] == "basic-text-to-image"
+    assert (tmp_path / "workflows" / "lake.ui.json").exists()
+    assert (
+        tmp_path / "workflows" / ".metadata" / "lake.ui.metadata.json"
+    ).exists()
+    history = read_ui_graph_history(tmp_path)
+    assert history["entries"][0]["workflow_name"] == "lake.ui.json"
+    assert history["entries"][0]["template_id"] == "basic-text-to-image"
+    assert history["entries"][0]["status"] == "saved"
+
+
+def test_read_ui_graph_history_honors_limit(tmp_path: Path):
+    append_ui_graph_history(tmp_path, {"workflow_name": "a.ui.json", "status": "saved"})
+    append_ui_graph_history(tmp_path, {"workflow_name": "b.ui.json", "status": "pushed"})
+
+    history = read_ui_graph_history(tmp_path, limit=1)
+
+    assert history["entries"] == [{"workflow_name": "b.ui.json", "status": "pushed"}]
