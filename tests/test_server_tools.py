@@ -860,6 +860,94 @@ async def test_comfy_generate_workflow_draft_does_not_overwrite_without_policy(
 
 
 @pytest.mark.asyncio
+async def test_comfy_build_ui_workflow_tool_returns_ui_graph(
+    monkeypatch,
+    tmp_path: Path,
+):
+    _write_config(tmp_path)
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+    monkeypatch.setattr(
+        server,
+        "ComfyClient",
+        object_info_client(TEXT_TO_IMAGE_OBJECT_INFO),
+    )
+
+    result = await server.comfy_build_ui_workflow(
+        "text to image",
+        {"checkpoint_name": "sdxl.safetensors", "positive_prompt": "a quiet lake"},
+    )
+
+    assert result["status"] == "valid"
+    assert result["workflow"]["extra"]["comfydex"]["template_id"] == "basic-text-to-image"
+    assert result["summary"]["node_count"] == 7
+
+
+@pytest.mark.asyncio
+async def test_comfy_generate_ui_workflow_saves_history(
+    monkeypatch,
+    tmp_path: Path,
+):
+    _write_config(tmp_path)
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+    monkeypatch.setattr(
+        server,
+        "ComfyClient",
+        object_info_client(TEXT_TO_IMAGE_OBJECT_INFO),
+    )
+
+    result = await server.comfy_generate_ui_workflow(
+        "lake.ui.json",
+        "text to image",
+        {"checkpoint_name": "sdxl.safetensors", "positive_prompt": "a quiet lake"},
+    )
+    history = await server.comfy_read_ui_graph_history()
+
+    assert result["status"] == "saved"
+    assert result["workflow_name"] == "lake.ui.json"
+    assert history["entries"][0]["workflow_name"] == "lake.ui.json"
+
+
+@pytest.mark.asyncio
+async def test_comfy_generate_ui_workflow_requires_confirmation_before_overwrite(
+    monkeypatch,
+    tmp_path: Path,
+):
+    _write_config(tmp_path)
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+    save_workflow(tmp_path / "workflows", "lake.ui.json", UI_WORKFLOW)
+    monkeypatch.setattr(
+        server,
+        "ComfyClient",
+        object_info_client(TEXT_TO_IMAGE_OBJECT_INFO),
+    )
+
+    result = await server.comfy_generate_ui_workflow(
+        "lake.ui.json",
+        "text to image",
+        {"checkpoint_name": "sdxl.safetensors", "positive_prompt": "a quiet lake"},
+    )
+
+    assert result["status"] == "requires_confirmation"
+    assert result["policy"]["reasons"] == ["workflow_overwrite"]
+
+
+@pytest.mark.asyncio
+async def test_comfy_read_ui_graph_history_tool_is_registered_with_mcp(
+    monkeypatch,
+    tmp_path: Path,
+):
+    _write_config(tmp_path)
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+
+    _content, structured = await server.mcp.call_tool(
+        "comfy_read_ui_graph_history",
+        {"limit": 1},
+    )
+
+    assert structured["entries"] == []
+
+
+@pytest.mark.asyncio
 async def test_comfy_evaluate_submit_policy_tool_blocks_invalid_workflow(
     monkeypatch,
     tmp_path: Path,

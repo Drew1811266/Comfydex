@@ -105,6 +105,11 @@ from .templates import (
     list_workflow_templates,
     suggest_workflow_template,
 )
+from .ui_graphs import (
+    build_ui_workflow_from_plan,
+    read_ui_graph_history,
+    save_generated_ui_workflow,
+)
 from .ui_workflows import classify_workflow_payload, import_ui_workflow
 from .validation import validate_api_workflow
 from .workflows import list_workflows, read_workflow, save_workflow
@@ -1087,6 +1092,75 @@ async def comfy_generate_workflow(
         result["draft_saved"] = False
         result["draft_save_blocked"] = "workflow_overwrite"
     return result
+
+
+@mcp.tool()
+async def comfy_build_ui_workflow(
+    intent: str,
+    parameters: dict[str, Any] | None = None,
+    template_id: str | None = None,
+) -> dict[str, Any]:
+    ctx = tool_context()
+    plan = plan_workflow_generation(intent, parameters, template_id)
+    async with ComfyClient(
+        ctx.config.base_url,
+        ctx.config.headers,
+        ctx.config.request_timeout_seconds,
+    ) as client:
+        object_info = await client.get_object_info()
+    result = build_ui_workflow_from_plan(plan, object_info=object_info)
+    result["plan"] = plan
+    return result
+
+
+@mcp.tool()
+async def comfy_generate_ui_workflow(
+    name: str,
+    intent: str,
+    parameters: dict[str, Any] | None = None,
+    template_id: str | None = None,
+    confirm_overwrite: bool = False,
+) -> dict[str, Any]:
+    ctx = tool_context()
+    target_path = safe_json_path(ctx.config.workflows_dir, name)
+    if target_path.exists() and not confirm_overwrite:
+        return {
+            "status": "requires_confirmation",
+            "workflow_name": name,
+            "policy": {
+                "decision": "requires_confirmation",
+                "reasons": ["workflow_overwrite"],
+            },
+        }
+
+    plan = plan_workflow_generation(intent, parameters, template_id)
+    async with ComfyClient(
+        ctx.config.base_url,
+        ctx.config.headers,
+        ctx.config.request_timeout_seconds,
+    ) as client:
+        object_info = await client.get_object_info()
+    result = save_generated_ui_workflow(
+        ctx.workspace,
+        ctx.config.workflows_dir,
+        name,
+        plan,
+        object_info=object_info,
+    )
+    result["plan"] = plan
+    if result["status"] == "saved":
+        index_result, index_warning = _try_reindex(ctx)
+        if index_result is not None:
+            result["index"] = index_result
+        if index_warning is not None:
+            result["index_warning"] = index_warning
+    return result
+
+
+@mcp.tool()
+async def comfy_read_ui_graph_history(limit: int = 20) -> dict[str, Any]:
+    ctx = tool_context()
+    return read_ui_graph_history(ctx.workspace, limit)
 
 
 @mcp.tool()
