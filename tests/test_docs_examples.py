@@ -17,6 +17,10 @@ def test_workflow_skill_mentions_new_tool_order():
     assert "comfy_reindex_project" in text
     assert "comfy_plan_workflow_generation" in text
     assert "comfy_generate_workflow" in text
+    assert "comfy_build_ui_workflow" in text
+    assert "comfy_generate_ui_workflow" in text
+    assert "comfy_generate_push_ui_workflow" in text
+    assert "comfy_read_ui_graph_history" in text
     assert "comfy_evaluate_submit_policy" in text
     assert "comfy_reindex_assets" in text
     assert "comfy_search_assets" in text
@@ -80,6 +84,7 @@ def test_usage_docs_cover_new_capabilities():
         "run-diagnostics.md": "comfy_diagnose_run",
         "project-index.md": "comfy_reindex_project",
         "workflow-generation.md": "comfy_generate_workflow",
+        "ui-graph-builder.md": "comfy_generate_push_ui_workflow",
         "end-to-end-automation.md": "comfy_generate_run_fetch",
         "asset-library.md": "comfy_search_assets",
         "desktop-app.md": "Tauri",
@@ -479,6 +484,69 @@ def test_release_checklist_1_5_covers_recipe_release_gates():
         "npm run build",
         "cargo check",
         "version files report `1.5.0`",
+    ):
+        assert marker in checklist
+
+
+def test_ui_graph_builder_docs_cover_generated_graphs():
+    usage = (ROOT / "docs" / "usage" / "ui-graph-builder.md").read_text(
+        encoding="utf-8"
+    )
+    desktop = (ROOT / "docs" / "usage" / "desktop-app.md").read_text(
+        encoding="utf-8"
+    )
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    skill = (ROOT / "skills" / "comfyui-workflows" / "SKILL.md").read_text(
+        encoding="utf-8"
+    )
+
+    for marker in (
+        "UI Graph Builder",
+        "generated UI workflow",
+        "readable graph",
+        "stable node ids",
+        "comfy_build_ui_workflow",
+        "comfy_generate_ui_workflow",
+        "comfy_generate_push_ui_workflow",
+        "comfy_read_ui_graph_history",
+        "Live Bridge push",
+        "no full visual editor",
+    ):
+        assert marker in usage
+
+    for marker in (
+        "Generated Graphs",
+        "generated UI workflow history",
+        "push_ui_workflow",
+    ):
+        assert marker in desktop
+
+    for marker in (
+        "UI Graph Builder",
+        "Generated Graphs",
+        "comfy_generate_push_ui_workflow",
+    ):
+        assert marker in readme
+        assert marker in skill
+
+
+def test_release_checklist_1_6_covers_ui_graph_release_gates():
+    checklist = (ROOT / "docs" / "release" / "1.6-release-checklist.md").read_text(
+        encoding="utf-8"
+    )
+
+    for marker in (
+        "python -m pytest -q",
+        "UI graph builder tests",
+        "MCP UI graph tools",
+        "desktop bridge operations",
+        "Generated Graphs desktop view",
+        "Live Bridge push",
+        "npm run typecheck",
+        "npm run build",
+        "cargo check",
+        "validate_release_package.py",
+        "version files report `1.6.0`",
     ):
         assert marker in checklist
 

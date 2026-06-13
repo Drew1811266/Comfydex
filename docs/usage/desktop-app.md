@@ -1,6 +1,6 @@
 # Comfydex Desktop App
 
-Comfydex `1.2.0` provides a Windows-first Tauri desktop app shell under `desktop/`. The desktop app is a local project workbench for browsing Comfydex project state, asset gallery records, reports, cleanup plans, comparisons, batch records, and Live Bridge readiness; it does not replace Codex or the Python MCP server.
+Comfydex `1.6.0` provides a Windows-first Tauri desktop app shell under `desktop/`. The desktop app is a local project workbench for browsing Comfydex project state, asset gallery records, reports, cleanup plans, comparisons, batch records, generated UI workflow history, Generated Graphs, and Live Bridge readiness; it does not replace Codex or the Python MCP server.
 
 The app uses a Python desktop bridge:
 
@@ -147,6 +147,23 @@ The Child runs table shows each child run index, status, run id, and error. The 
 
 Batch submission remains an MCP/Codex operation in `0.8.0`; the desktop UI reads and inspects existing batch records.
 
+## Generated Graphs
+
+The Generated Graphs view reads generated UI workflow history from `.comfydex/ui_graph_history.jsonl` through `read_ui_graph_history`.
+
+The generated graph list shows:
+
+- workflow name,
+- status,
+- template id,
+- recipe id,
+- node count,
+- timestamp.
+
+The selected graph panel shows graph metadata, path, link count, and push result when present. Use Push to call `push_ui_workflow` through the Python desktop bridge. The push path loads a generated UI workflow from local workflow storage and sends it to Live Bridge.
+
+Generated Graphs is an action and history surface for UI Graph Builder output. It does not implement node dragging, graph rewiring, automatic model downloads, or automatic custom node installation.
+
 ## Settings
 
 The Settings view shows:
@@ -187,6 +204,10 @@ read_batch
 live_bridge_status
 live_bridge_reload_client
 live_bridge_reload_backend
+build_ui_workflow
+generate_ui_workflow
+read_ui_graph_history
+push_ui_workflow
 ```
 
 Tauri commands return stable envelopes:
@@ -221,6 +242,7 @@ The `0.8.0` desktop app shell intentionally does not include:
 - full offline packaging,
 - full gallery grid interactions,
 - batch task management UI,
+- full visual generated graph editor,
 - ComfyUI workflow graph editing,
 - running ComfyUI itself,
 - replacing Codex as the intelligent workflow and debugging layer.

@@ -6,9 +6,9 @@ The plugin is installed in Codex, not in ComfyUI. ComfyUI remains the runtime se
 
 ## Status
 
-Current version: `1.5.0`
+Current version: `1.6.0`
 
-This 1.5 Scenario Recipe Registry Release focuses on a practical local ComfyUI workflow:
+This 1.6 UI Graph Builder Release focuses on a practical local ComfyUI workflow:
 
 - connect to a local or remote ComfyUI server
 - manage workflow JSON files from a Codex workspace
@@ -19,6 +19,10 @@ This 1.5 Scenario Recipe Registry Release focuses on a practical local ComfyUI w
 - run safe one-call generate-run-fetch automation for low-risk single-run requests
 - build generated workflows from deterministic generation plans
 - choose built-in workflow scenarios through the Scenario Recipe Registry
+- build readable UI workflow graphs from supported recipes with the UI Graph Builder
+- save generated UI workflow files with stable node ids and generated graph history
+- push generated UI workflows directly into the ComfyUI canvas with `comfy_generate_push_ui_workflow`
+- review generated UI workflow history in the desktop Generated Graphs view
 - expose recipe candidates and the selected recipe id in generated workflow plans
 - run recipe-aware capability checks before relying on local models or custom nodes
 - validate generated workflows and classify submit policy before running
@@ -102,6 +106,7 @@ Codex is strong at reading code, editing structured files, following tool workfl
 │       ├── runs.py              # Run record persistence
 │       ├── server.py            # FastMCP tool server
 │       ├── templates.py         # Workflow templates and suggestions
+│       ├── ui_graphs.py         # UI Graph Builder and generated graph history
 │       ├── workflows.py         # Workflow storage and summaries
 │       └── ws.py                # WebSocket waiting helpers
 └── tests/                       # Unit and integration-style tests
@@ -130,7 +135,7 @@ The Skill explains how Codex should work with ComfyUI workflows, including the d
 - UI workflow JSON, exported for the ComfyUI visual editor
 - API prompt JSON, submitted to ComfyUI `/prompt`
 
-Version `1.5.0` can import UI workflow files and help convert them, but submission still requires validated API prompt JSON. It also provides the shared project index, workflow generation engine, Scenario Recipe Registry, Node Semantic Registry, Capability Resolver, complete custom node loop, local asset library for generated outputs, desktop app shell backed by a Python desktop bridge with Gallery And Batch UI surfaces and desktop Install Plan review, safe end-to-end automation, Windows install helper, release checklist, security/path review, release package validation, and a productized ComfyUI-side Live Bridge for direct desktop canvas workflow loading.
+Version `1.6.0` can import UI workflow files and help convert them, but submission still requires validated API prompt JSON. It also provides the shared project index, workflow generation engine, UI Graph Builder, Scenario Recipe Registry, Node Semantic Registry, Capability Resolver, complete custom node loop, local asset library for generated outputs, desktop app shell backed by a Python desktop bridge with Gallery And Batch UI surfaces, Generated Graphs history, desktop Install Plan review, safe end-to-end automation, Windows install helper, release checklist, security/path review, release package validation, and a productized ComfyUI-side Live Bridge for direct desktop canvas workflow loading.
 
 Unknown nodes are not treated as first-class supported nodes.
 
@@ -139,6 +144,7 @@ Unknown nodes are not treated as first-class supported nodes.
 | Group | What it adds | Primary tools |
 | --- | --- | --- |
 | Workflow generation | Plan, generate, validate, repair, and classify submit policy for generated API workflows. | `comfy_plan_workflow_generation`, `comfy_generate_workflow`, `comfy_evaluate_submit_policy` |
+| UI Graph Builder | Build readable generated UI workflow JSON with stable node ids, save generated graph history, and push supported graphs into the ComfyUI canvas. | `comfy_build_ui_workflow`, `comfy_generate_ui_workflow`, `comfy_generate_push_ui_workflow`, `comfy_read_ui_graph_history` |
 | Scenario Recipe Registry | Map natural-language scenarios to recipe candidates, selected recipe id, templates, required inputs, required models, and recipe-aware capability checks. | `comfy_list_workflow_recipes`, `comfy_suggest_workflow_recipes`, `comfy_resolve_recipe_capabilities` |
 | End-to-end automation | Generate, save, submit, wait, fetch outputs, and reindex for low-risk single-run requests. | `comfy_generate_run_fetch` |
 | Project index | Build and inspect a local SQLite index for workflows, runs, outputs, batches, and index errors. | `comfy_project_status`, `comfy_reindex_project` |
@@ -151,7 +157,7 @@ Unknown nodes are not treated as first-class supported nodes.
 | Custom node assistant | Scaffold, inspect, validate, import-check, document, generate examples, run contract tests, and produce repair guidance. | `comfy_scaffold_custom_node_package`, `comfy_validate_node_class`, `comfy_check_node_imports`, `comfy_generate_node_examples`, `comfy_run_node_contract_tests`, `comfy_custom_node_repair_guidance` |
 | Run diagnostics | Diagnose, report, compare, and inspect run outputs. | `comfy_diagnose_run`, `comfy_export_run_report`, `comfy_compare_runs`, `comfy_list_outputs` |
 | Batch runs | Submit parameter variations and read batch records. | `comfy_batch_submit`, `comfy_read_batch` |
-| Desktop shell | Browse project status, workflows, runs, assets, Gallery And Batch UI, reports, comparisons, cleanup plans, and settings through the local Tauri app. | `desktop/`, Python desktop bridge |
+| Desktop shell | Browse project status, workflows, runs, assets, generated UI workflow history, Gallery And Batch UI, reports, comparisons, cleanup plans, and settings through the local Tauri app. | `desktop/`, Python desktop bridge, Generated Graphs |
 | Live Bridge | Install, verify, reload, and push UI workflow JSON into the ComfyUI desktop canvas after the initial custom node bootstrap is loaded. | `scripts/install_live_bridge.ps1`, `scripts/verify_live_bridge.ps1`, `comfy_live_bridge_status`, `comfy_live_bridge_push_workflow` |
 
 ## Configuration
@@ -245,6 +251,10 @@ Comfydex exposes these tools:
 | `comfy_build_workflow` | Build and save a workflow from a plan. |
 | `comfy_plan_workflow_generation` | Create a scored generation plan from intent, parameters, template choice, and constraints. |
 | `comfy_generate_workflow` | Build, validate, repair, and save a generated workflow when submit policy allows. |
+| `comfy_build_ui_workflow` | Build a readable generated UI workflow graph without saving. |
+| `comfy_generate_ui_workflow` | Save a generated UI workflow and append generated graph history. |
+| `comfy_generate_push_ui_workflow` | Save a generated UI workflow and push it into the ComfyUI canvas through Live Bridge. |
+| `comfy_read_ui_graph_history` | Read newest generated UI workflow history records. |
 | `comfy_generate_run_fetch` | Generate, save, submit, wait, fetch outputs, and reindex for low-risk single-run requests. |
 | `comfy_evaluate_submit_policy` | Evaluate whether an existing workflow is allowed, requires confirmation, or is blocked. |
 | `comfy_scaffold_custom_node_package` | Create a workspace-local custom node package. |
@@ -330,6 +340,17 @@ comfy_evaluate_submit_policy
 ```
 
 Generated workflows expose validation, repairs, and submit policy. Submit only when policy is `allowed`; ask for confirmation when policy is `requires_confirmation`; do not submit when policy is `blocked`.
+
+### UI Graph Builder
+
+```text
+comfy_build_ui_workflow
+comfy_generate_ui_workflow
+comfy_generate_push_ui_workflow
+comfy_read_ui_graph_history
+```
+
+The UI Graph Builder creates a readable generated UI workflow for supported built-in recipes. Generated UI graph files keep stable node ids, deterministic links, readable titles, and `extra.comfydex` metadata, then can be saved or sent to the ComfyUI canvas with Live Bridge. Use the desktop Generated Graphs view to inspect generated UI workflow history and push a selected graph again.
 
 ### Scenario recipes
 
@@ -561,6 +582,15 @@ Desktop Live Bridge status terms:
 Use Reload client from Settings when the frontend client needs to reconnect. Use Reload backend after changing bridge Python/runtime files and restarting ComfyUI is not required for the backend reload path.
 
 ## Release Notes
+
+### 1.6.0 - UI Graph Builder And Live Canvas UX
+
+- Added the UI Graph Builder for readable generated UI workflow JSON with stable node ids, deterministic link ids, readable titles, layout metadata, and `extra.comfydex` provenance.
+- Added `comfy_build_ui_workflow`, `comfy_generate_ui_workflow`, `comfy_generate_push_ui_workflow`, and `comfy_read_ui_graph_history`.
+- Added generated UI workflow history in `.comfydex/ui_graph_history.jsonl` for saved and pushed graphs.
+- Added Python desktop bridge operations for generated UI workflow build, save, history read, and Live Bridge push.
+- Added the desktop Generated Graphs view for generated UI workflow history and selected graph push actions.
+- Kept the release bounded to supported templates and recipes: no full visual editor, no arbitrary unknown-node graph generation, no automatic downloads, and no automatic custom node installation.
 
 ### 1.5.0 - Scenario Recipe Registry
 

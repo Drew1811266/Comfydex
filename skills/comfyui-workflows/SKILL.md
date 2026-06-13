@@ -16,7 +16,7 @@ ComfyUI has two common workflow JSON shapes:
 
 Comfydex can classify, import, and convert UI workflow JSON, but `comfy_submit_workflow` requires validated API prompt JSON.
 
-Comfydex `1.5.0` is a Windows-first local developer toolchain. Use MCP tools for workflow generation, the Scenario Recipe Registry, capability resolution, validation, safe submission, queue waiting, output fetching, diagnostics, asset management, custom node validation, and project indexing. Use `scripts/install_windows.ps1` and `docs/release/windows-install.md` for local install verification when the user asks how to install or validate the local release.
+Comfydex `1.6.0` is a Windows-first local developer toolchain. Use MCP tools for workflow generation, the UI Graph Builder, the Scenario Recipe Registry, capability resolution, validation, safe submission, queue waiting, output fetching, diagnostics, asset management, custom node validation, and project indexing. Use `scripts/install_windows.ps1` and `docs/release/windows-install.md` for local install verification when the user asks how to install or validate the local release.
 
 ## Standard Tool Order
 
@@ -29,19 +29,23 @@ For a normal run:
 5. Otherwise, call `comfy_suggest_workflow_recipes` to inspect recipe candidates when the user describes a scenario.
 6. Call `comfy_resolve_recipe_capabilities` for recipe-aware capability checks before relying on named local models or installed custom nodes.
 7. Call `comfy_plan_workflow_generation` before creating a new workflow and inspect the selected recipe id.
-8. Call `comfy_generate_workflow` when required generation inputs are present.
-9. Call `comfy_evaluate_submit_policy` before submitting an existing or generated workflow.
-10. Call `comfy_check_connection`.
-11. Call `comfy_get_object_info` when node metadata is needed.
-12. Call `comfy_model_inventory` and `comfy_resolve_capabilities` before relying on named local models or installed custom nodes outside a recipe path.
-13. Call `comfy_create_install_plan` when capability resolution reports missing requirements; record the user's accepted/rejected decision with `comfy_record_install_audit`.
-14. Call `comfy_list_workflows`.
-15. Call `comfy_read_workflow` for the selected file.
-16. Call `comfy_analyze_workflow`.
-17. Call `comfy_submit_workflow` only when submit policy is `allowed`.
-18. Call `comfy_wait_for_run`.
-19. Call `comfy_fetch_outputs`.
-20. Call `comfy_read_run`.
+8. Call `comfy_build_ui_workflow` when the user wants a readable generated UI workflow graph without saving.
+9. Call `comfy_generate_ui_workflow` when the user wants to save a generated UI workflow for ComfyUI canvas review.
+10. Call `comfy_generate_push_ui_workflow` when the user wants to save and perform a Live Bridge push into the ComfyUI canvas.
+11. Call `comfy_read_ui_graph_history` when Codex or Desktop needs generated UI workflow history.
+12. Call `comfy_generate_workflow` when required generation inputs are present and the target is API prompt JSON.
+13. Call `comfy_evaluate_submit_policy` before submitting an existing or generated workflow.
+14. Call `comfy_check_connection`.
+15. Call `comfy_get_object_info` when node metadata is needed.
+16. Call `comfy_model_inventory` and `comfy_resolve_capabilities` before relying on named local models or installed custom nodes outside a recipe path.
+17. Call `comfy_create_install_plan` when capability resolution reports missing requirements; record the user's accepted/rejected decision with `comfy_record_install_audit`.
+18. Call `comfy_list_workflows`.
+19. Call `comfy_read_workflow` for the selected file.
+20. Call `comfy_analyze_workflow`.
+21. Call `comfy_submit_workflow` only when submit policy is `allowed`.
+22. Call `comfy_wait_for_run`.
+23. Call `comfy_fetch_outputs`.
+24. Call `comfy_read_run`.
 
 ## Scenario Recipe Registry
 
@@ -87,6 +91,8 @@ The `0.8.0` desktop gallery can help the user review assets, compare outputs, ge
 
 The batch task view reads batch records and child run status. Submit new batches through `comfy_batch_submit`, inspect the batch task view afterward, and use `comfy_read_batch` when Codex needs the authoritative JSON record.
 
+The Generated Graphs view reads generated UI workflow history and can push a selected generated UI workflow through the Python desktop bridge operation `push_ui_workflow`. Treat Generated Graphs as an action and history surface for UI Graph Builder output, not as a visual node editor.
+
 Do not assume the desktop shell can edit ComfyUI workflow graphs, run ComfyUI itself, package Python offline, or replace Codex reasoning. Use MCP tools for authoritative workflow generation, validation, submission, queue waiting, output collection, diagnostics, and asset metadata updates.
 
 ## Workflow Generation
@@ -102,6 +108,14 @@ Use `comfy_generate_run_fetch` only for low-risk single-run requests. It can gen
 If `comfy_generate_run_fetch` returns `requires_confirmation`, review `policy.reasons` before passing `confirm_risky_actions=True`. Common reasons include workflow overwrite and `object_info_unavailable`; unknown validation must not be silently auto-run.
 
 Use `wait_for_completion=False` to stop after submission. Use `fetch_outputs=False` to wait without output download. After a fetch or manual output change, use `comfy_reindex_project` or the automation result's reindex data to keep the project index current.
+
+## UI Graph Builder
+
+Use the UI Graph Builder when the user wants a generated UI workflow that can be inspected in ComfyUI's visual editor. Call `comfy_build_ui_workflow` first when Codex should inspect a readable graph without saving.
+
+Use `comfy_generate_ui_workflow` to save a generated UI workflow and append generated graph history. Use `comfy_generate_push_ui_workflow` only when Live Bridge is ready and the user wants the generated graph pushed to the ComfyUI canvas. Use `comfy_read_ui_graph_history` to review saved and pushed generated graph records.
+
+Generated UI workflow files are for canvas review and editing. They are not API prompt JSON and should not be submitted through `/prompt` without conversion and validation.
 
 ## Workflow Editing Rules
 
