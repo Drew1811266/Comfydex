@@ -17,13 +17,14 @@ EXPECTED_TEMPLATE_IDS = {
     "sdxl-text-to-image",
     "lora-text-to-image",
     "controlnet-skeleton",
+    "inpaint-basic",
 }
 
 
 def test_list_workflow_templates_returns_initial_catalog():
     templates = list_workflow_templates()
 
-    assert len(templates) == 6
+    assert len(templates) == 7
     assert {template["id"] for template in templates} == EXPECTED_TEMPLATE_IDS
 
 
@@ -89,6 +90,8 @@ def test_template_accessors_return_deep_copies():
         ("add lora", "lora-text-to-image"),
         ("controlnet pose", "controlnet-skeleton"),
         ("upscale this image", "upscale"),
+        ("inpaint the masked area", "inpaint-basic"),
+        ("replace the background", "inpaint-basic"),
     ],
 )
 def test_suggest_workflow_template_matches_common_intents(intent, expected_template_id):
@@ -139,6 +142,19 @@ def test_build_template_plan_selects_template_when_id_is_not_provided():
     plan = build_template_plan("upscale this image", parameters={"image": "input.png"})
 
     assert plan["template"]["id"] == "upscale"
+
+
+def test_build_template_plan_reports_missing_inpaint_mask():
+    plan = build_template_plan(
+        "inpaint masked area",
+        "inpaint-basic",
+        {"image": "input.png", "checkpoint_name": "model.safetensors"},
+    )
+
+    assert plan["template"]["id"] == "inpaint-basic"
+    assert plan["parameters"]["grow_mask_by"] == 6
+    assert "mask" in plan["missing_information"]
+    assert "positive_prompt" in plan["missing_information"]
 
 
 def test_build_template_plan_raises_for_unknown_template_id():

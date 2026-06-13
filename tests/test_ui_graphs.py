@@ -109,6 +109,31 @@ def test_summarize_ui_graph_reports_layout_and_recipe_metadata():
     assert summary["has_layout"] is True
 
 
+def test_build_ui_workflow_from_plan_creates_readable_inpaint_graph():
+    plan = plan_workflow_generation(
+        "inpaint masked area",
+        {
+            "checkpoint_name": "model.safetensors",
+            "image": "input.png",
+            "mask": "mask.png",
+            "positive_prompt": "remove object",
+        },
+    )
+
+    result = build_ui_workflow_from_plan(plan)
+
+    assert result["status"] == "valid"
+    assert result["summary"]["template_id"] == "inpaint-basic"
+    assert result["summary"]["recipe_id"] == "inpainting-basic"
+    node_types = {node["type"] for node in result["workflow"]["nodes"]}
+    assert {
+        "LoadImage",
+        "LoadImageMask",
+        "VAEEncodeForInpaint",
+        "KSampler",
+    }.issubset(node_types)
+
+
 def test_save_generated_ui_workflow_writes_ui_json_metadata_and_history(
     tmp_path: Path,
 ):

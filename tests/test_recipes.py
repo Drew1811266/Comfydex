@@ -19,6 +19,19 @@ def test_list_workflow_recipes_includes_core_scenarios():
     assert "controlnet-pose" in recipe_ids
 
 
+def test_list_workflow_recipes_includes_2_0_first_class_scenarios():
+    recipes = list_workflow_recipes()
+    recipe_ids = {recipe["recipe_id"] for recipe in recipes}
+
+    assert {
+        "portrait-basic",
+        "character-consistency-lora",
+        "product-image-basic",
+        "inpainting-basic",
+        "background-replacement-inpaint",
+    }.issubset(recipe_ids)
+
+
 def test_get_workflow_recipe_returns_template_and_requirements():
     recipe = get_workflow_recipe("text-to-image-lora")
 
@@ -54,6 +67,54 @@ def test_suggest_workflow_recipes_scores_lora_prompt():
     assert suggestions[0]["recipe_id"] == "text-to-image-lora"
     assert suggestions[0]["score"] > suggestions[-1]["score"]
     assert any("lora_name parameter" in reason for reason in suggestions[0]["reasons"])
+
+
+def test_suggest_workflow_recipes_scores_2_0_scenarios():
+    cases = [
+        (
+            "portrait photo",
+            {"checkpoint_name": "model.safetensors", "positive_prompt": "portrait"},
+            "portrait-basic",
+        ),
+        (
+            "consistent character sheet",
+            {
+                "checkpoint_name": "model.safetensors",
+                "lora_name": "character.safetensors",
+                "positive_prompt": "same character",
+            },
+            "character-consistency-lora",
+        ),
+        (
+            "product image on white background",
+            {"checkpoint_name": "model.safetensors", "positive_prompt": "clean product"},
+            "product-image-basic",
+        ),
+        (
+            "inpaint masked area",
+            {
+                "checkpoint_name": "model.safetensors",
+                "image": "input.png",
+                "mask": "mask.png",
+                "positive_prompt": "remove object",
+            },
+            "inpainting-basic",
+        ),
+        (
+            "replace image background",
+            {
+                "checkpoint_name": "model.safetensors",
+                "image": "input.png",
+                "mask": "mask.png",
+                "positive_prompt": "studio background",
+            },
+            "background-replacement-inpaint",
+        ),
+    ]
+
+    for intent, parameters, expected_recipe_id in cases:
+        suggestions = suggest_workflow_recipes(intent, parameters)
+        assert suggestions[0]["recipe_id"] == expected_recipe_id
 
 
 def test_suggest_workflow_recipes_honors_limit():

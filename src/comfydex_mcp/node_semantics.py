@@ -383,6 +383,7 @@ _REGISTRY: dict[str, NodeSemanticEntry] = {
             _port("pixels", "Source image pixels.", "IMAGE"),
             _port("vae", "VAE used for encoding.", "VAE"),
             _port("mask", "Inpaint mask.", "MASK"),
+            _port("grow_mask_by", "Pixels used to expand the inpaint mask.", "INT", required=False),
         ),
         outputs=(_port("latent", "Masked latent image for sampling.", "LATENT"),),
         parameter_strategies=("Use with masks that clearly identify the editable region.",),

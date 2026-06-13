@@ -9,7 +9,7 @@ from .generation import plan_workflow_generation
 from .recipes import get_workflow_recipe
 from .ui_graphs import build_ui_workflow_from_plan
 
-READINESS_VERSION = "1.9.0"
+READINESS_VERSION = "2.0.0"
 
 
 @dataclass(frozen=True)
@@ -53,23 +53,33 @@ FIRST_CLASS_SCENARIOS: tuple[FirstClassScenario, ...] = (
     FirstClassScenario(
         "portrait",
         "Portrait",
-        (),
+        ("portrait-basic",),
         "portrait photo",
-        {"positive_prompt": "portrait photo"},
+        {
+            "checkpoint_name": "model.safetensors",
+            "positive_prompt": "portrait photo",
+        },
     ),
     FirstClassScenario(
         "character-consistency",
         "Character Consistency",
-        (),
+        ("character-consistency-lora",),
         "consistent character sheet",
-        {"positive_prompt": "consistent character"},
+        {
+            "checkpoint_name": "model.safetensors",
+            "lora_name": "character.safetensors",
+            "positive_prompt": "consistent character",
+        },
     ),
     FirstClassScenario(
         "product-image",
         "Product Image",
-        (),
+        ("product-image-basic",),
         "product image on white background",
-        {"positive_prompt": "product on white background"},
+        {
+            "checkpoint_name": "model.safetensors",
+            "positive_prompt": "product on white background",
+        },
     ),
     FirstClassScenario(
         "controlnet",
@@ -86,9 +96,10 @@ FIRST_CLASS_SCENARIOS: tuple[FirstClassScenario, ...] = (
     FirstClassScenario(
         "inpainting",
         "Inpainting",
-        (),
+        ("inpainting-basic",),
         "inpaint masked area",
         {
+            "checkpoint_name": "model.safetensors",
             "image": "input.png",
             "mask": "mask.png",
             "positive_prompt": "remove object",
@@ -104,9 +115,14 @@ FIRST_CLASS_SCENARIOS: tuple[FirstClassScenario, ...] = (
     FirstClassScenario(
         "background-replacement",
         "Background Replacement",
-        (),
+        ("background-replacement-inpaint",),
         "replace image background",
-        {"image": "input.png", "positive_prompt": "studio background"},
+        {
+            "checkpoint_name": "model.safetensors",
+            "image": "input.png",
+            "mask": "mask.png",
+            "positive_prompt": "studio background",
+        },
     ),
 )
 
@@ -338,7 +354,7 @@ def _desktop_visibility_status() -> str:
 
 def _release_doc_status() -> str:
     root = _repo_root()
-    checklist = root / "docs" / "release" / "1.9-release-checklist.md"
+    checklist = root / "docs" / "release" / "2.0-release-checklist.md"
     tests = root / "tests" / "test_readiness.py"
     return "ready" if checklist.is_file() and tests.is_file() else "needs_work"
 

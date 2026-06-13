@@ -150,6 +150,35 @@ def test_plan_workflow_generation_includes_recipe_context():
     assert plan["selected_template_id"] == "lora-text-to-image"
 
 
+def test_plan_workflow_generation_supports_inpainting_and_background_replacement():
+    inpaint_plan = plan_workflow_generation(
+        "inpaint masked area",
+        {
+            "checkpoint_name": "model.safetensors",
+            "image": "input.png",
+            "mask": "mask.png",
+            "positive_prompt": "remove object",
+        },
+    )
+    background_plan = plan_workflow_generation(
+        "replace image background",
+        {
+            "checkpoint_name": "model.safetensors",
+            "image": "input.png",
+            "mask": "mask.png",
+            "positive_prompt": "studio background",
+        },
+    )
+
+    assert inpaint_plan["selected_template_id"] == "inpaint-basic"
+    assert inpaint_plan["selected_recipe_id"] == "inpainting-basic"
+    assert inpaint_plan["parameters"]["mask"] == "mask.png"
+    assert inpaint_plan["parameters"]["mask_channel"] == "alpha"
+    assert inpaint_plan["parameters"]["grow_mask_by"] == 6
+    assert background_plan["selected_template_id"] == "inpaint-basic"
+    assert background_plan["selected_recipe_id"] == "background-replacement-inpaint"
+
+
 def test_plan_workflow_generation_applies_user_presets():
     plan = plan_workflow_generation(
         "z image text to image",

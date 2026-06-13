@@ -26,7 +26,7 @@ CONFIRMATION_ISSUES = {
     "high_step_count",
 }
 
-INT_PARAMETER_KEYS = {"width", "height", "steps", "seed"}
+INT_PARAMETER_KEYS = {"width", "height", "steps", "seed", "grow_mask_by"}
 FLOAT_PARAMETER_KEYS = {
     "cfg",
     "denoise",
@@ -40,6 +40,8 @@ TEXT_PARAMETER_KEYS = {
     "negative_prompt",
     "lora_name",
     "image",
+    "mask",
+    "mask_channel",
     "pose_image",
     "controlnet_name",
     "upscale_model_name",
@@ -64,6 +66,17 @@ _KEYWORD_RULES: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
             ("upscaler", "intent mentions upscale"),
             ("enlarge", "intent mentions enlarge"),
             ("enhance", "intent mentions enhance"),
+        ),
+    ),
+    (
+        "inpaint-basic",
+        (
+            ("inpaint", "intent mentions inpaint"),
+            ("inpainting", "intent mentions inpainting"),
+            ("masked", "intent mentions masked edit"),
+            ("replace background", "intent mentions background replacement"),
+            ("replace the background", "intent mentions background replacement"),
+            ("background replacement", "intent mentions background replacement"),
         ),
     ),
     (
@@ -452,6 +465,8 @@ def _score_template(
 def _mode_from_template_id(template_id: str) -> str:
     if template_id == "basic-image-to-image":
         return "image-to-image"
+    if template_id == "inpaint-basic":
+        return "inpaint"
     if template_id == "upscale":
         return "upscale"
     if template_id == "controlnet-skeleton":

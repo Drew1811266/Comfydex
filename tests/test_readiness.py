@@ -22,28 +22,23 @@ def test_first_class_scenarios_match_2_0_acceptance_list():
     assert len(FIRST_CLASS_SCENARIOS) == 9
 
 
-def test_readiness_report_marks_existing_graph_scenarios_ready():
+def test_readiness_report_marks_all_first_class_scenarios_ready():
     report = build_20_readiness_report()
-    by_id = {item["scenario_id"]: item for item in report["scenarios"]}
 
-    assert report["readiness_version"] == "1.9.0"
-    assert report["status"] == "needs_work"
-    assert by_id["text-to-image"]["status"] == "ready"
-    assert by_id["image-to-image"]["status"] == "ready"
-    assert by_id["controlnet"]["status"] == "ready"
-    assert by_id["upscaling"]["status"] == "ready"
-    assert by_id["inpainting"]["status"] == "missing_recipe"
-    assert "recipe" in by_id["inpainting"]["gaps"]
-    assert report["summary"]["ready_count"] >= 4
-    assert report["summary"]["scenario_count"] == 9
+    assert report["readiness_version"] == "2.0.0"
+    assert report["status"] == "ready_for_2_0"
+    assert report["summary"] == {
+        "scenario_count": 9,
+        "ready_count": 9,
+        "needs_work_count": 0,
+    }
+    assert {item["status"] for item in report["scenarios"]} == {"ready"}
 
 
 def test_readiness_report_tracks_acceptance_criteria():
     report = build_20_readiness_report()
     criteria = {item["criterion_id"]: item for item in report["acceptance_criteria"]}
 
-    assert criteria["ordinary_user_docs"]["status"] in {"ready", "needs_work"}
-    assert criteria["scenario_coverage"]["status"] == "needs_work"
-    assert criteria["live_bridge_push"]["status"] == "ready"
-    assert criteria["repair_loop"]["status"] == "ready"
-    assert "Scenario coverage is not complete." in report["next_steps"]
+    assert {item["status"] for item in criteria.values()} == {"ready"}
+    assert criteria["scenario_coverage"]["status"] == "ready"
+    assert "Prepare the final 2.0 release candidate." in report["next_steps"]
