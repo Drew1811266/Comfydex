@@ -134,6 +134,15 @@ fn create_install_plan(app: AppHandle, payload: Value) -> Value {
 }
 
 #[tauri::command]
+fn list_generation_presets(app: AppHandle) -> Value {
+    match current_workspace(&app) {
+        Ok(Some(workspace)) => run_bridge("list_generation_presets", &workspace, json!({})),
+        Ok(None) => ok(json!({ "quality": {}, "speed": {}, "aspect_ratio": {}, "style": {} })),
+        Err(message) => bridge_error("WorkspaceError", message),
+    }
+}
+
+#[tauri::command]
 fn record_install_audit(app: AppHandle, payload: Value) -> Value {
     match current_workspace(&app) {
         Ok(Some(workspace)) => run_bridge("record_install_audit", &workspace, payload),
@@ -227,6 +236,26 @@ fn search_assets(app: AppHandle, payload: Value) -> Value {
 }
 
 #[tauri::command]
+fn summarize_assets(app: AppHandle, payload: Value) -> Value {
+    match current_workspace(&app) {
+        Ok(Some(workspace)) => run_bridge("summarize_assets", &workspace, payload),
+        Ok(None) => ok(json!({
+            "total": 0,
+            "assets": [],
+            "summary": {
+                "title": "No outputs indexed",
+                "summary": "No generated outputs have been indexed yet.",
+                "severity": "warn",
+                "bullets": [],
+                "next_actions": ["Run a workflow and reindex the project."],
+                "technical": {}
+            }
+        })),
+        Err(message) => bridge_error("WorkspaceError", message),
+    }
+}
+
+#[tauri::command]
 fn update_asset_metadata(app: AppHandle, payload: Value) -> Value {
     match current_workspace(&app) {
         Ok(Some(workspace)) => run_bridge("update_asset_metadata", &workspace, payload),
@@ -295,6 +324,7 @@ fn main() {
             live_bridge_reload_backend,
             capability_report,
             create_install_plan,
+            list_generation_presets,
             record_install_audit,
             read_install_audit,
             read_ui_graph_history,
@@ -305,6 +335,7 @@ fn main() {
             read_repair_history,
             retry_run_repair,
             search_assets,
+            summarize_assets,
             update_asset_metadata,
             plan_asset_cleanup,
             export_asset_library_report,

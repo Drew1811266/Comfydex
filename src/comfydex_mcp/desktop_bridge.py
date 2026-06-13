@@ -16,6 +16,7 @@ from .assets import (
     export_asset_library_report,
     plan_asset_cleanup,
     search_assets,
+    summarize_asset_library,
     update_asset_metadata,
 )
 from .batches import read_batch_record
@@ -38,6 +39,7 @@ from .live_bridge import (
     verify_live_bridge,
 )
 from .paths import is_redirected_path, safe_json_path
+from .presets import list_generation_presets
 from .recipes import (
     list_workflow_recipes,
     resolve_recipe_capabilities,
@@ -150,6 +152,8 @@ def _dispatch(
         }
     if operation == "resolve_recipe_capabilities":
         return asyncio.run(_resolve_recipe_capabilities(config, payload))
+    if operation == "list_generation_presets":
+        return list_generation_presets()
     if operation == "build_ui_workflow":
         return asyncio.run(_build_ui_workflow(config, payload))
     if operation == "generate_ui_workflow":
@@ -221,6 +225,8 @@ def _dispatch(
         )
     if operation == "search_assets":
         return search_assets(project, payload)
+    if operation == "summarize_assets":
+        return summarize_asset_library(project, payload)
     if operation == "update_asset_metadata":
         return _update_asset_metadata(project, payload)
     if operation == "plan_asset_cleanup":

@@ -31,6 +31,15 @@ export type RunRow = {
   output_count: number;
 };
 
+export type UserGuidance = {
+  title: string;
+  summary: string;
+  severity: "ok" | "warn" | "blocked" | string;
+  bullets: string[];
+  next_actions: string[];
+  technical?: Record<string, unknown>;
+};
+
 export type RunDiagnosis = {
   run_id?: string | null;
   status?: string;
@@ -91,6 +100,7 @@ export type RunRepairResult = {
   history_record?: RunRepairHistoryEntry;
   repair_history_record?: RunRepairHistoryEntry;
   retry_result?: Record<string, unknown>;
+  user_guidance?: UserGuidance;
   next_actions?: string[];
 };
 
@@ -178,6 +188,7 @@ export type AssetSearchFilters = {
 export type AssetSearchResult = {
   total: number;
   assets: AssetRow[];
+  summary?: UserGuidance;
 };
 
 export type AssetMetadataPatch = {
@@ -203,6 +214,7 @@ export type AssetComparison = {
   left: AssetRow;
   right: AssetRow;
   differences: Record<string, { left: unknown; right: unknown; changed: boolean }>;
+  summary?: UserGuidance;
 };
 
 export type BatchSummary = {
@@ -336,7 +348,15 @@ export type UiGraphPushResult = {
   status: string;
   workflow_name: string;
   push_result: Record<string, unknown>;
+  canvas_replacement?: UserGuidance & { requires_confirmation?: boolean };
   history_record?: UiGraphHistoryEntry;
+};
+
+export type GenerationPresets = {
+  quality: Record<string, Record<string, unknown>>;
+  speed: Record<string, Record<string, unknown>>;
+  aspect_ratio: Record<string, Record<string, unknown>>;
+  style: Record<string, Record<string, unknown>>;
 };
 
 export type LoadState = "loading" | "empty" | "error" | "loaded";

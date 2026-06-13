@@ -14,6 +14,7 @@ import type {
   CleanupPlan,
   ConfigState,
   ConnectionResult,
+  GenerationPresets,
   InstallAudit,
   InstallAuditEntry,
   InstallPlan,
@@ -259,6 +260,40 @@ const fallbackRepairHistory: RunRepairHistory = {
   ]
 };
 
+const fallbackGenerationPresets: GenerationPresets = {
+  quality: {
+    draft: { steps: 16 },
+    balanced: { steps: 24 },
+    high: { steps: 32 }
+  },
+  speed: {
+    fast: { steps: 16 },
+    balanced: { steps: 24 },
+    quality: { steps: 30 }
+  },
+  aspect_ratio: {
+    square: { width: 1024, height: 1024 },
+    portrait: { width: 832, height: 1216 },
+    landscape: { width: 1216, height: 832 },
+    wide: { width: 1344, height: 768 }
+  },
+  style: {
+    photographic: { positive: "photographic, natural light, detailed" },
+    cinematic: { positive: "cinematic lighting, rich contrast" },
+    illustration: { positive: "polished illustration, clean composition" },
+    product: { positive: "studio product photo, clean background" }
+  }
+};
+
+const fallbackAssetSummary = {
+  title: "2 outputs indexed",
+  summary: "2 outputs indexed; 1 favorite; average rating 4.5.",
+  severity: "ok",
+  bullets: ["Model used: sdxl.safetensors", "Model used: portrait-lora.safetensors"],
+  next_actions: [],
+  technical: { total: 2, asset_count: 2, favorite_count: 1 }
+};
+
 function hasTauri(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
@@ -360,6 +395,15 @@ export function pushUiWorkflow(workflowName: string, force = false): Promise<UiG
     status: "pushed",
     workflow_name: workflowName,
     push_result: { ok: true, desktop_preview: true },
+    canvas_replacement: {
+      title: "Canvas replacement is ready",
+      summary: `Comfydex will load ${workflowName} into the visible ComfyUI canvas.`,
+      severity: "ok",
+      requires_confirmation: false,
+      bullets: [],
+      next_actions: [],
+      technical: { diagnostic_codes: [], force }
+    },
     history_record: {
       timestamp: new Date().toISOString(),
       workflow_name: workflowName,
@@ -419,9 +463,14 @@ export function retryRunRepair(runId: string, confirm = false): Promise<RunRepai
   });
 }
 
+export function listGenerationPresets(): Promise<GenerationPresets> {
+  return call("list_generation_presets", fallbackGenerationPresets);
+}
+
 export function searchAssets(filters: AssetSearchFilters = {}): Promise<AssetSearchResult> {
   return call("search_assets", {
     total: 2,
+    summary: fallbackAssetSummary,
     assets: [
       {
         asset_id: "asset-1",
@@ -452,6 +501,30 @@ export function searchAssets(filters: AssetSearchFilters = {}): Promise<AssetSea
         model_references: ["portrait-lora.safetensors"],
         size_bytes: 3072,
         modified_time: 1780928400
+      }
+    ]
+  }, { payload: filters });
+}
+
+export function summarizeAssets(filters: AssetSearchFilters = {}): Promise<AssetSearchResult> {
+  return call("summarize_assets", {
+    total: 2,
+    summary: fallbackAssetSummary,
+    assets: [
+      {
+        asset_id: "asset-1",
+        filename: "city.png",
+        path: "C:/Users/Drew/Comfydex Demo Workspace/runs/demo/outputs/city.png",
+        workflow_name: "sdxl-city.json",
+        status: "completed",
+        rating: 5,
+        favorite: true,
+        tags: ["city", "keeper"],
+        notes: "High contrast keeper",
+        prompt_text: "cinematic city at night",
+        model_references: ["sdxl.safetensors"],
+        size_bytes: 2048,
+        modified_time: 1780924800
       }
     ]
   }, { payload: filters });
@@ -516,6 +589,14 @@ export function compareAssets(leftAssetId: string, rightAssetId: string): Promis
       workflow_name: { left: left.workflow_name, right: right.workflow_name, changed: true },
       rating: { left: left.rating, right: right.rating, changed: true },
       favorite: { left: left.favorite, right: right.favorite, changed: true }
+    },
+    summary: {
+      title: "Outputs are different",
+      summary: "Changed fields: workflow_name, rating, favorite.",
+      severity: "warn",
+      bullets: ["Changed: workflow_name", "Changed: rating", "Changed: favorite"],
+      next_actions: [],
+      technical: { changed_fields: ["workflow_name", "rating", "favorite"] }
     }
   }, { payload: { left_asset_id: leftAssetId, right_asset_id: rightAssetId } });
 }

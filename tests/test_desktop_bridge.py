@@ -734,6 +734,25 @@ def test_bridge_rejects_malformed_batch_id(tmp_path: Path):
     assert result["error"]["type"] == "ValueError"
 
 
+def test_bridge_lists_generation_presets(tmp_path: Path):
+    _write_workspace(tmp_path)
+
+    result = run_bridge_operation("list_generation_presets", tmp_path)
+
+    assert result["ok"] is True
+    assert "quality" in result["data"]
+    assert "high" in result["data"]["quality"]
+
+
+def test_bridge_summarizes_assets(tmp_path: Path):
+    _write_workspace(tmp_path)
+
+    result = run_bridge_operation("summarize_assets", tmp_path, {"limit": 10})
+
+    assert result["ok"] is True
+    assert result["data"]["summary"]["title"] == "1 output indexed"
+
+
 def test_bridge_unknown_operation_returns_error_envelope(tmp_path: Path):
     result = run_bridge_operation("missing", tmp_path)
 
