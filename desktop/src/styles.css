@@ -579,6 +579,38 @@ textarea {
   margin-top: 12px;
 }
 
+.generated-workbench {
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
+}
+
+.generated-table th:nth-child(1) {
+  width: 24%;
+}
+
+.generated-table th:nth-child(2),
+.generated-table th:nth-child(5) {
+  width: 86px;
+}
+
+.generated-table th:nth-child(3),
+.generated-table th:nth-child(4) {
+  width: 17%;
+}
+
+.generated-table th:nth-child(6) {
+  width: 180px;
+}
+
+.generated-detail h2 {
+  margin-bottom: 10px;
+}
+
+.generated-actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
 .tool-panel {
   min-width: 0;
   border: 1px solid #2a3038;
@@ -791,6 +823,7 @@ pre {
     .install-summary-grid,
     .install-list-grid,
     .asset-workbench,
+    .generated-workbench,
     .panel-grid {
     grid-template-columns: 1fr;
   }
@@ -876,5 +909,59 @@ pre {
 
   .install-table td:nth-child(4)::before {
     content: "Mode";
+  }
+
+  .generated-table,
+  .generated-table tbody,
+  .generated-table tr,
+  .generated-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .generated-table thead {
+    display: none;
+  }
+
+  .generated-table tr {
+    border-bottom: 1px solid #2a3038;
+    padding: 8px 10px;
+  }
+
+  .generated-table td {
+    display: grid;
+    grid-template-columns: 82px minmax(0, 1fr);
+    gap: 8px;
+    border: 0;
+    padding: 4px 0;
+  }
+
+  .generated-table td::before {
+    color: #8d98a7;
+    font-size: 12px;
+  }
+
+  .generated-table td:nth-child(1)::before {
+    content: "Workflow";
+  }
+
+  .generated-table td:nth-child(2)::before {
+    content: "Status";
+  }
+
+  .generated-table td:nth-child(3)::before {
+    content: "Template";
+  }
+
+  .generated-table td:nth-child(4)::before {
+    content: "Recipe";
+  }
+
+  .generated-table td:nth-child(5)::before {
+    content: "Nodes";
+  }
+
+  .generated-table td:nth-child(6)::before {
+    content: "Timestamp";
   }
 }

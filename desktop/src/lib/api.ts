@@ -21,6 +21,8 @@ import type {
   LiveBridgeStatus,
   ProjectStatus,
   RunRow,
+  UiGraphHistory,
+  UiGraphPushResult,
   WorkflowRow
 } from "./types";
 
@@ -172,6 +174,33 @@ const fallbackInstallAudit: InstallAudit = {
   entries: []
 };
 
+const fallbackUiGraphHistory: UiGraphHistory = {
+  path: ".comfydex/ui_graph_history.jsonl",
+  entries: [
+    {
+      timestamp: "2026-06-08T00:20:00+00:00",
+      workflow_name: "lake.ui.json",
+      path: "workflows/lake.ui.json",
+      status: "pushed",
+      template_id: "basic-text-to-image",
+      recipe_id: "text-to-image-basic",
+      node_count: 7,
+      link_count: 9,
+      push_result: { ok: true, acknowledged: true }
+    },
+    {
+      timestamp: "2026-06-08T00:15:00+00:00",
+      workflow_name: "lake.ui.json",
+      path: "workflows/lake.ui.json",
+      status: "saved",
+      template_id: "basic-text-to-image",
+      recipe_id: "text-to-image-basic",
+      node_count: 7,
+      link_count: 9
+    }
+  ]
+};
+
 function hasTauri(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
@@ -262,6 +291,23 @@ export function recordInstallAudit(
 
 export function readInstallAudit(): Promise<InstallAudit> {
   return call("read_install_audit", fallbackInstallAudit);
+}
+
+export function readUiGraphHistory(limit = 20): Promise<UiGraphHistory> {
+  return call("read_ui_graph_history", fallbackUiGraphHistory, { payload: { limit } });
+}
+
+export function pushUiWorkflow(workflowName: string, force = false): Promise<UiGraphPushResult> {
+  return call("push_ui_workflow", {
+    status: "pushed",
+    workflow_name: workflowName,
+    push_result: { ok: true, desktop_preview: true },
+    history_record: {
+      timestamp: new Date().toISOString(),
+      workflow_name: workflowName,
+      status: "pushed"
+    }
+  }, { payload: { workflow_name: workflowName, force } });
 }
 
 export function reloadLiveBridgeClient(): Promise<Record<string, unknown>> {

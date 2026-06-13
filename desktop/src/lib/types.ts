@@ -252,4 +252,28 @@ export type InstallAudit = {
   entries: InstallAuditEntry[];
 };
 
+export type UiGraphHistoryEntry = {
+  timestamp: string;
+  workflow_name: string;
+  path?: string;
+  status: string;
+  template_id?: string | null;
+  recipe_id?: string | null;
+  node_count?: number | null;
+  link_count?: number | null;
+  push_result?: Record<string, unknown>;
+};
+
+export type UiGraphHistory = {
+  path: string;
+  entries: UiGraphHistoryEntry[];
+};
+
+export type UiGraphPushResult = {
+  status: string;
+  workflow_name: string;
+  push_result: Record<string, unknown>;
+  history_record?: UiGraphHistoryEntry;
+};
+
 export type LoadState = "loading" | "empty" | "error" | "loaded";

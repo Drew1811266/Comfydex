@@ -155,6 +155,24 @@ fn read_install_audit(app: AppHandle) -> Value {
 }
 
 #[tauri::command]
+fn read_ui_graph_history(app: AppHandle, payload: Value) -> Value {
+    match current_workspace(&app) {
+        Ok(Some(workspace)) => run_bridge("read_ui_graph_history", &workspace, payload),
+        Ok(None) => ok(json!({ "path": ".comfydex/ui_graph_history.jsonl", "entries": [] })),
+        Err(message) => bridge_error("WorkspaceError", message),
+    }
+}
+
+#[tauri::command]
+fn push_ui_workflow(app: AppHandle, payload: Value) -> Value {
+    match current_workspace(&app) {
+        Ok(Some(workspace)) => run_bridge("push_ui_workflow", &workspace, payload),
+        Ok(None) => bridge_error("WorkspaceError", "workspace must be selected before pushing generated graphs"),
+        Err(message) => bridge_error("WorkspaceError", message),
+    }
+}
+
+#[tauri::command]
 fn list_workflows(app: AppHandle) -> Value {
     match current_workspace(&app) {
         Ok(Some(workspace)) => run_bridge("list_workflows", &workspace, json!({})),
@@ -252,6 +270,8 @@ fn main() {
             create_install_plan,
             record_install_audit,
             read_install_audit,
+            read_ui_graph_history,
+            push_ui_workflow,
             list_workflows,
             list_runs,
             search_assets,

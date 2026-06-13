@@ -3,6 +3,7 @@ import {
   Activity,
   Database,
   FolderOpen,
+  GitBranch,
   Image,
   ListChecks,
   RefreshCw,
@@ -18,6 +19,8 @@ import {
   listBatches,
   listRuns,
   listWorkflows,
+  pushUiWorkflow,
+  readUiGraphHistory,
   readInstallAudit,
   reloadLiveBridgeBackend,
   reloadLiveBridgeClient,
@@ -37,16 +40,18 @@ import type {
   LoadState,
   ProjectStatus,
   RunRow,
+  UiGraphHistory,
   WorkflowRow
 } from "./lib/types";
 import { AssetsView } from "./views/AssetsView";
 import { BatchesView } from "./views/BatchesView";
 import { DashboardView } from "./views/DashboardView";
+import { GeneratedGraphsView } from "./views/GeneratedGraphsView";
 import { RunsView } from "./views/RunsView";
 import { SettingsView } from "./views/SettingsView";
 import { WorkflowsView } from "./views/WorkflowsView";
 
-type View = "dashboard" | "workflows" | "runs" | "assets" | "batches" | "settings";
+type View = "dashboard" | "workflows" | "runs" | "assets" | "generated" | "batches" | "settings";
 type InstallDecision = "accepted" | "rejected";
 
 const navItems: Array<{ id: View; label: string; icon: typeof Activity }> = [
@@ -54,6 +59,7 @@ const navItems: Array<{ id: View; label: string; icon: typeof Activity }> = [
   { id: "workflows", label: "Workflows", icon: FolderOpen },
   { id: "runs", label: "Runs", icon: ListChecks },
   { id: "assets", label: "Assets", icon: Image },
+  { id: "generated", label: "Generated", icon: GitBranch },
   { id: "batches", label: "Batches", icon: ListChecks },
   { id: "settings", label: "Settings", icon: Settings }
 ];
@@ -101,6 +107,7 @@ export function App() {
   const [workflows, setWorkflows] = useState<WorkflowRow[]>([]);
   const [runs, setRuns] = useState<RunRow[]>([]);
   const [assets, setAssets] = useState<AssetRow[]>([]);
+  const [uiGraphHistory, setUiGraphHistory] = useState<UiGraphHistory | null>(null);
   const [batches, setBatches] = useState<BatchSummary[]>([]);
   const [config, setConfigState] = useState<ConfigState | null>(null);
   const [liveBridgeStatus, setLiveBridgeStatus] = useState<LiveBridgeStatus | null>(null);
@@ -118,6 +125,7 @@ export function App() {
         workflowRows,
         runRows,
         assetResult,
+        generatedHistory,
         batchRows,
         configState,
         connectionState,
@@ -129,6 +137,7 @@ export function App() {
           listWorkflows(),
           listRuns(),
           searchAssets(),
+          readUiGraphHistory(),
           listBatches(),
           getConfig(),
           checkConnection(),
@@ -140,6 +149,7 @@ export function App() {
       setWorkflows(workflowRows);
       setRuns(runRows);
       setAssets(assetResult.assets);
+      setUiGraphHistory(generatedHistory);
       setBatches(batchRows);
       setConfigState(configState);
       setConnection(connectionState);
@@ -262,10 +272,40 @@ export function App() {
     }
   }
 
+  async function handlePushGeneratedGraph(workflowName: string) {
+    setActionBusy(true);
+    setError(null);
+    try {
+      await pushUiWorkflow(workflowName, true);
+      const [history, bridgeState] = await Promise.all([
+        readUiGraphHistory(),
+        getLiveBridgeStatusOrNull()
+      ]);
+      setUiGraphHistory(history);
+      setLiveBridgeStatus(bridgeState);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
   const currentView = (() => {
     if (view === "workflows") return <WorkflowsView error={error} state={loadState} workflows={workflows} />;
     if (view === "runs") return <RunsView error={error} runs={runs} state={loadState} />;
     if (view === "assets") return <AssetsView assets={assets} error={error} state={loadState} />;
+    if (view === "generated") {
+      return (
+        <GeneratedGraphsView
+          busy={actionBusy}
+          error={error}
+          history={uiGraphHistory}
+          onPush={handlePushGeneratedGraph}
+          onRefresh={() => void refresh()}
+          state={loadState}
+        />
+      );
+    }
     if (view === "batches") return <BatchesView batches={batches} error={error} state={loadState} />;
     if (view === "settings") {
       return (
