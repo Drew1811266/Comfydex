@@ -463,6 +463,63 @@ def test_bridge_resolve_recipe_capabilities_uses_payload_and_config(
     assert result["data"]["recipe"]["recipe_id"] == "text-to-image-basic"
 
 
+def test_bridge_ui_graph_history_and_push(monkeypatch, tmp_path: Path):
+    _write_workspace(tmp_path)
+    monkeypatch.setattr(
+        desktop_bridge,
+        "ComfyClient",
+        object_info_client(TEXT_TO_IMAGE_OBJECT_INFO),
+    )
+    pushed: dict[str, object] = {}
+
+    async def fake_push(config, workflow, **kwargs):
+        pushed["workflow"] = workflow
+        pushed["kwargs"] = kwargs
+        return {"ok": True, "acknowledged": True}
+
+    monkeypatch.setattr(desktop_bridge, "push_live_workflow", fake_push)
+
+    generated = run_bridge_operation(
+        "generate_ui_workflow",
+        tmp_path,
+        {
+            "name": "lake.ui.json",
+            "intent": "text to image",
+            "parameters": {
+                "checkpoint_name": "sdxl.safetensors",
+                "positive_prompt": "a quiet lake",
+            },
+        },
+    )
+    history = run_bridge_operation("read_ui_graph_history", tmp_path)
+    pushed_result = run_bridge_operation(
+        "push_ui_workflow",
+        tmp_path,
+        {"workflow_name": "lake.ui.json", "force": True},
+    )
+
+    assert generated["ok"] is True
+    assert generated["data"]["status"] == "saved"
+    assert history["data"]["entries"][0]["workflow_name"] == "lake.ui.json"
+    assert pushed_result["ok"] is True
+    assert pushed_result["data"]["status"] == "pushed"
+    assert pushed["workflow"]["nodes"]
+    assert pushed["kwargs"]["name"] == "lake.ui.json"
+
+
+def test_bridge_push_ui_workflow_rejects_api_workflow(tmp_path: Path):
+    _write_workspace(tmp_path)
+
+    result = run_bridge_operation(
+        "push_ui_workflow",
+        tmp_path,
+        {"workflow_name": "cat.json"},
+    )
+
+    assert result["ok"] is False
+    assert "workflow_not_ui_json" in result["error"]["message"]
+
+
 def test_bridge_updates_asset_metadata(tmp_path: Path):
     _write_workspace(tmp_path)
     asset_id = _asset_ids(tmp_path)[0]

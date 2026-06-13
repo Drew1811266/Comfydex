@@ -26,6 +26,7 @@ from .capabilities import (
 from .comfy_client import ComfyClient
 from .config import ComfydexConfig, load_config, redact_config, save_config
 from .core import project_context_from_config, project_status, reindex_project
+from .generation import plan_workflow_generation
 from .live_bridge import (
     get_live_bridge_status,
     push_live_workflow,
@@ -33,7 +34,7 @@ from .live_bridge import (
     reload_live_bridge_client,
     verify_live_bridge,
 )
-from .paths import is_redirected_path
+from .paths import is_redirected_path, safe_json_path
 from .recipes import (
     list_workflow_recipes,
     resolve_recipe_capabilities,
@@ -41,6 +42,13 @@ from .recipes import (
     suggest_workflow_recipes,
 )
 from .runs import list_runs
+from .ui_graphs import (
+    append_ui_graph_history,
+    build_ui_workflow_from_plan,
+    read_ui_graph_history,
+    save_generated_ui_workflow,
+    summarize_ui_graph,
+)
 from .workflows import list_workflows, read_workflow
 
 
@@ -139,6 +147,14 @@ def _dispatch(
         }
     if operation == "resolve_recipe_capabilities":
         return asyncio.run(_resolve_recipe_capabilities(config, payload))
+    if operation == "build_ui_workflow":
+        return asyncio.run(_build_ui_workflow(config, payload))
+    if operation == "generate_ui_workflow":
+        return asyncio.run(_generate_ui_workflow(config, payload))
+    if operation == "read_ui_graph_history":
+        return read_ui_graph_history(config.workspace, int(payload.get("limit", 20)))
+    if operation == "push_ui_workflow":
+        return asyncio.run(_push_ui_workflow(config, payload))
     if operation == "live_bridge_status":
         return asyncio.run(get_live_bridge_status(config))
     if operation == "live_bridge_reload_client":
@@ -299,6 +315,109 @@ async def _resolve_recipe_capabilities(
         object_info,
         model_inventory,
     )
+
+
+async def _build_ui_workflow(
+    config: ComfydexConfig,
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    intent = str(payload.get("intent") or "").strip()
+    if not intent:
+        raise ValueError("intent is required")
+    plan = plan_workflow_generation(
+        intent,
+        _optional_dict(payload.get("parameters"), "parameters"),
+        _optional_string(payload.get("template_id")),
+    )
+    async with ComfyClient(
+        config.base_url,
+        config.headers,
+        config.request_timeout_seconds,
+    ) as client:
+        object_info = await client.get_object_info()
+    result = build_ui_workflow_from_plan(plan, object_info=object_info)
+    result["plan"] = plan
+    return result
+
+
+async def _generate_ui_workflow(
+    config: ComfydexConfig,
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    name = str(payload.get("name") or "").strip()
+    if not name:
+        raise ValueError("name is required")
+    target_path = safe_json_path(config.workflows_dir, name)
+    if target_path.exists() and not bool(payload.get("confirm_overwrite", False)):
+        return {
+            "status": "requires_confirmation",
+            "workflow_name": name,
+            "policy": {
+                "decision": "requires_confirmation",
+                "reasons": ["workflow_overwrite"],
+            },
+        }
+
+    intent = str(payload.get("intent") or "").strip()
+    if not intent:
+        raise ValueError("intent is required")
+    plan = plan_workflow_generation(
+        intent,
+        _optional_dict(payload.get("parameters"), "parameters"),
+        _optional_string(payload.get("template_id")),
+    )
+    async with ComfyClient(
+        config.base_url,
+        config.headers,
+        config.request_timeout_seconds,
+    ) as client:
+        object_info = await client.get_object_info()
+    result = save_generated_ui_workflow(
+        config.workspace,
+        config.workflows_dir,
+        name,
+        plan,
+        object_info=object_info,
+    )
+    result["plan"] = plan
+    return result
+
+
+async def _push_ui_workflow(
+    config: ComfydexConfig,
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    workflow_name = str(payload.get("workflow_name") or "").strip()
+    if not workflow_name:
+        raise ValueError("workflow_name is required")
+    workflow = _read_ui_workflow_for_live_bridge(config, workflow_name)
+    push_result = await push_live_workflow(
+        config,
+        workflow,
+        name=workflow_name,
+        activate=bool(payload.get("activate", True)),
+        force=bool(payload.get("force", False)),
+        wait_for_ack=bool(payload.get("wait_for_ack", True)),
+    )
+    summary = summarize_ui_graph(workflow)
+    history_record = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "workflow_name": workflow_name,
+        "path": str(safe_json_path(config.workflows_dir, workflow_name)),
+        "status": "pushed",
+        "template_id": summary.get("template_id"),
+        "recipe_id": summary.get("recipe_id"),
+        "node_count": summary.get("node_count"),
+        "link_count": summary.get("link_count"),
+        "push_result": push_result,
+    }
+    append_ui_graph_history(config.workspace, history_record)
+    return {
+        "status": "pushed" if push_result.get("ok") else "push_failed",
+        "workflow_name": workflow_name,
+        "push_result": push_result,
+        "history_record": history_record,
+    }
 
 
 def _capability_report_payload(payload: dict[str, Any]) -> dict[str, Any]:

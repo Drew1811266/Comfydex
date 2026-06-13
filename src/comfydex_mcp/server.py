@@ -7,6 +7,7 @@ import re
 import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -106,6 +107,7 @@ from .templates import (
     suggest_workflow_template,
 )
 from .ui_graphs import (
+    append_ui_graph_history,
     build_ui_workflow_from_plan,
     read_ui_graph_history,
     save_generated_ui_workflow,
@@ -1161,6 +1163,56 @@ async def comfy_generate_ui_workflow(
 async def comfy_read_ui_graph_history(limit: int = 20) -> dict[str, Any]:
     ctx = tool_context()
     return read_ui_graph_history(ctx.workspace, limit)
+
+
+@mcp.tool()
+async def comfy_generate_push_ui_workflow(
+    name: str,
+    intent: str,
+    parameters: dict[str, Any] | None = None,
+    template_id: str | None = None,
+    confirm_overwrite: bool = False,
+    force: bool = False,
+    activate: bool = True,
+    wait_for_ack: bool = True,
+) -> dict[str, Any]:
+    ctx = tool_context()
+    saved = await comfy_generate_ui_workflow(
+        name,
+        intent,
+        parameters,
+        template_id,
+        confirm_overwrite=confirm_overwrite,
+    )
+    if saved.get("status") != "saved":
+        return saved
+
+    workflow = saved["workflow"]
+    push_result = await push_live_workflow(
+        ctx.config,
+        workflow,
+        name=name,
+        activate=activate,
+        force=force,
+        wait_for_ack=wait_for_ack,
+    )
+    summary = saved.get("summary", {})
+    history_record = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "workflow_name": name,
+        "path": saved.get("path"),
+        "status": "pushed",
+        "template_id": summary.get("template_id"),
+        "recipe_id": summary.get("recipe_id"),
+        "node_count": summary.get("node_count"),
+        "link_count": summary.get("link_count"),
+        "push_result": push_result,
+    }
+    append_ui_graph_history(ctx.workspace, history_record)
+    saved["status"] = "pushed" if push_result.get("ok") else "push_failed"
+    saved["push_result"] = push_result
+    saved["push_history_record"] = history_record
+    return saved
 
 
 @mcp.tool()

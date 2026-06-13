@@ -948,6 +948,43 @@ async def test_comfy_read_ui_graph_history_tool_is_registered_with_mcp(
 
 
 @pytest.mark.asyncio
+async def test_comfy_generate_push_ui_workflow_saves_and_pushes(
+    monkeypatch,
+    tmp_path: Path,
+):
+    _write_config(tmp_path)
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+    monkeypatch.setattr(
+        server,
+        "ComfyClient",
+        object_info_client(TEXT_TO_IMAGE_OBJECT_INFO),
+    )
+    pushed: dict[str, object] = {}
+
+    async def fake_push(config, workflow, **kwargs):
+        pushed["workflow"] = workflow
+        pushed["kwargs"] = kwargs
+        return {"ok": True, "acknowledged": True}
+
+    monkeypatch.setattr(server, "push_live_workflow", fake_push)
+
+    result = await server.comfy_generate_push_ui_workflow(
+        "lake.ui.json",
+        "text to image",
+        {"checkpoint_name": "sdxl.safetensors", "positive_prompt": "a quiet lake"},
+        force=True,
+    )
+    history = await server.comfy_read_ui_graph_history()
+
+    assert result["status"] == "pushed"
+    assert result["push_result"]["acknowledged"] is True
+    assert pushed["workflow"]["nodes"]
+    assert pushed["kwargs"]["name"] == "lake.ui.json"
+    assert pushed["kwargs"]["force"] is True
+    assert [entry["status"] for entry in history["entries"][:2]] == ["pushed", "saved"]
+
+
+@pytest.mark.asyncio
 async def test_comfy_evaluate_submit_policy_tool_blocks_invalid_workflow(
     monkeypatch,
     tmp_path: Path,
