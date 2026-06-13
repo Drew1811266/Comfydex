@@ -6,9 +6,9 @@ The plugin is installed in Codex, not in ComfyUI. ComfyUI remains the runtime se
 
 ## Status
 
-Current version: `1.6.0`
+Current version: `1.7.0`
 
-This 1.6 UI Graph Builder Release focuses on a practical local ComfyUI workflow:
+This 1.7 Execution And Repair Loop Release focuses on a practical local ComfyUI workflow:
 
 - connect to a local or remote ComfyUI server
 - manage workflow JSON files from a Codex workspace
@@ -23,6 +23,8 @@ This 1.6 UI Graph Builder Release focuses on a practical local ComfyUI workflow:
 - save generated UI workflow files with stable node ids and generated graph history
 - push generated UI workflows directly into the ComfyUI canvas with `comfy_generate_push_ui_workflow`
 - review generated UI workflow history in the desktop Generated Graphs view
+- classify run failures, generate `repair_plan` payloads, and retry safe recovery operations through the Execution And Repair Loop
+- show failure class, repair actions, retry state, and repair history in the desktop Runs repair panel
 - expose recipe candidates and the selected recipe id in generated workflow plans
 - run recipe-aware capability checks before relying on local models or custom nodes
 - validate generated workflows and classify submit policy before running
@@ -102,6 +104,7 @@ Codex is strong at reading code, editing structured files, following tool workfl
 │       ├── outputs.py           # Output listing and cleanup
 │       ├── paths.py             # Path safety helpers
 │       ├── recipes.py           # Scenario Recipe Registry and recipe scoring
+│       ├── repairs.py           # Run failure classification and repair plans
 │       ├── reports.py           # Markdown run reports
 │       ├── runs.py              # Run record persistence
 │       ├── server.py            # FastMCP tool server
@@ -135,7 +138,7 @@ The Skill explains how Codex should work with ComfyUI workflows, including the d
 - UI workflow JSON, exported for the ComfyUI visual editor
 - API prompt JSON, submitted to ComfyUI `/prompt`
 
-Version `1.6.0` can import UI workflow files and help convert them, but submission still requires validated API prompt JSON. It also provides the shared project index, workflow generation engine, UI Graph Builder, Scenario Recipe Registry, Node Semantic Registry, Capability Resolver, complete custom node loop, local asset library for generated outputs, desktop app shell backed by a Python desktop bridge with Gallery And Batch UI surfaces, Generated Graphs history, desktop Install Plan review, safe end-to-end automation, Windows install helper, release checklist, security/path review, release package validation, and a productized ComfyUI-side Live Bridge for direct desktop canvas workflow loading.
+Version `1.7.0` can import UI workflow files and help convert them, but submission still requires validated API prompt JSON. It also provides the shared project index, workflow generation engine, UI Graph Builder, Execution And Repair Loop, Scenario Recipe Registry, Node Semantic Registry, Capability Resolver, complete custom node loop, local asset library for generated outputs, desktop app shell backed by a Python desktop bridge with Gallery And Batch UI surfaces, Generated Graphs history, Runs repair panel, desktop Install Plan review, safe end-to-end automation, Windows install helper, release checklist, security/path review, release package validation, and a productized ComfyUI-side Live Bridge for direct desktop canvas workflow loading.
 
 Unknown nodes are not treated as first-class supported nodes.
 
@@ -145,6 +148,7 @@ Unknown nodes are not treated as first-class supported nodes.
 | --- | --- | --- |
 | Workflow generation | Plan, generate, validate, repair, and classify submit policy for generated API workflows. | `comfy_plan_workflow_generation`, `comfy_generate_workflow`, `comfy_evaluate_submit_policy` |
 | UI Graph Builder | Build readable generated UI workflow JSON with stable node ids, save generated graph history, and push supported graphs into the ComfyUI canvas. | `comfy_build_ui_workflow`, `comfy_generate_ui_workflow`, `comfy_generate_push_ui_workflow`, `comfy_read_ui_graph_history` |
+| Execution And Repair Loop | Classify run failures, build `repair_plan` payloads, store repair history, and retry safe recovery operations with confirmation boundaries. | `comfy_plan_run_repair`, `comfy_retry_run_repair`, `comfy_read_repair_history` |
 | Scenario Recipe Registry | Map natural-language scenarios to recipe candidates, selected recipe id, templates, required inputs, required models, and recipe-aware capability checks. | `comfy_list_workflow_recipes`, `comfy_suggest_workflow_recipes`, `comfy_resolve_recipe_capabilities` |
 | End-to-end automation | Generate, save, submit, wait, fetch outputs, and reindex for low-risk single-run requests. | `comfy_generate_run_fetch` |
 | Project index | Build and inspect a local SQLite index for workflows, runs, outputs, batches, and index errors. | `comfy_project_status`, `comfy_reindex_project` |
@@ -267,6 +271,9 @@ Comfydex exposes these tools:
 | `comfy_custom_node_repair_guidance` | Aggregate mapping, class, import, and contract readiness guidance for a package. |
 | `comfy_generate_node_docs` | Generate deterministic node package documentation. |
 | `comfy_diagnose_run` | Produce structured run diagnostics and a short summary. |
+| `comfy_plan_run_repair` | Build a structured `repair_plan` for a failed or incomplete run. |
+| `comfy_retry_run_repair` | Retry supported repair operations such as `fetch_outputs` or confirmed workflow resubmit. |
+| `comfy_read_repair_history` | Read newest `.comfydex/repair_history.jsonl` entries first. |
 | `comfy_export_run_report` | Write `runs/<run_id>/report.md`. |
 | `comfy_compare_runs` | Compare two runs by status, output count, node inputs, and model references. |
 | `comfy_list_outputs` | List output files across valid run directories. |
@@ -351,6 +358,16 @@ comfy_read_ui_graph_history
 ```
 
 The UI Graph Builder creates a readable generated UI workflow for supported built-in recipes. Generated UI graph files keep stable node ids, deterministic links, readable titles, and `extra.comfydex` metadata, then can be saved or sent to the ComfyUI canvas with Live Bridge. Use the desktop Generated Graphs view to inspect generated UI workflow history and push a selected graph again.
+
+### Execution repair loop
+
+```text
+comfy_plan_run_repair
+comfy_retry_run_repair
+comfy_read_repair_history
+```
+
+The Execution And Repair Loop adds `failure_class`, `repair_summary`, and `repair_plan` data to run recovery. `comfy_generate_run_fetch` failed submit, wait, failed wait, and fetch responses now include repair payloads. Retry plans use `fetch_outputs` for missing-output and fetch failures, and require `requires_confirmation` before resubmitting workflows. The desktop Runs repair panel uses `plan_run_repair`, `retry_run_repair`, and `read_repair_history` through the Python desktop bridge.
 
 ### Scenario recipes
 
@@ -582,6 +599,16 @@ Desktop Live Bridge status terms:
 Use Reload client from Settings when the frontend client needs to reconnect. Use Reload backend after changing bridge Python/runtime files and restarting ComfyUI is not required for the backend reload path.
 
 ## Release Notes
+
+### 1.7.0 - Execution And Repair Loop
+
+- Added failure classification and `repair_plan` generation for missing models, missing nodes, missing outputs, resource failures, invalid parameters, invalid links, fetch failures, execution errors, and unknown failures.
+- Added `comfy_plan_run_repair`, `comfy_retry_run_repair`, and `comfy_read_repair_history`.
+- Added `.comfydex/repair_history.jsonl` history records for planned, retried, and automation failure repair payloads.
+- Added `diagnosis` and `repair_plan` payloads to `comfy_generate_run_fetch` submit, wait, failed wait, and fetch failure responses.
+- Added Python desktop bridge operations `plan_run_repair`, `retry_run_repair`, and `read_repair_history`.
+- Added the desktop Runs repair panel for failure class, repair summary, actions, retry state, and recent history.
+- Kept the release bounded to conservative recovery: no silent downloads, no automatic downloads, no automatic custom node installation, and no unconfirmed resubmission.
 
 ### 1.6.0 - UI Graph Builder And Live Canvas UX
 

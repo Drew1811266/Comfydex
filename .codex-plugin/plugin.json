@@ -1,6 +1,6 @@
 {
   "name": "comfydex",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "description": "Connect Codex to a usable local ComfyUI developer toolchain for workflows, safe automation, runs, assets, desktop review, and custom nodes.",
   "author": {
     "name": "Local developer"
@@ -17,7 +17,7 @@
   "interface": {
     "displayName": "Comfydex",
     "shortDescription": "Control ComfyUI workflows from Codex.",
-    "longDescription": "Comfydex helps Codex generate and inspect ComfyUI workflows, build readable generated UI workflow graphs, choose workflow recipes through a Scenario Recipe Registry, explain supported ComfyUI nodes through a Node Semantic Registry, run safe generate-run-fetch automation, submit prompts, follow queue execution, collect run outputs, maintain a local project index through a Python MCP server, validate custom node packages, productize the ComfyUI Live Bridge, and browse project assets, generated graph history, reports, cleanup plans, comparisons, batches, and Live Bridge status through a Windows-first desktop shell.",
+    "longDescription": "Comfydex helps Codex generate and inspect ComfyUI workflows, build readable generated UI workflow graphs, choose workflow recipes through a Scenario Recipe Registry, explain supported ComfyUI nodes through a Node Semantic Registry, run safe generate-run-fetch automation, classify run failures with an Execution And Repair Loop, submit prompts, follow queue execution, collect run outputs, maintain a local project index through a Python MCP server, validate custom node packages, productize the ComfyUI Live Bridge, and browse project assets, generated graph history, repair plans, reports, cleanup plans, comparisons, batches, and Live Bridge status through a Windows-first desktop shell.",
     "developerName": "Local developer",
     "category": "Productivity",
     "capabilities": [
@@ -33,6 +33,7 @@
       "Reindex my ComfyUI project records.",
       "Generate a safe ComfyUI workflow from this request.",
       "Build a readable ComfyUI UI workflow graph from this request.",
+      "Plan a repair for this failed ComfyUI run.",
       "Suggest ComfyUI workflow recipes for this request.",
       "Run a low-risk generate-run-fetch automation.",
       "Verify my ComfyUI Live Bridge status.",

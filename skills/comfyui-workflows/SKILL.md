@@ -16,7 +16,7 @@ ComfyUI has two common workflow JSON shapes:
 
 Comfydex can classify, import, and convert UI workflow JSON, but `comfy_submit_workflow` requires validated API prompt JSON.
 
-Comfydex `1.6.0` is a Windows-first local developer toolchain. Use MCP tools for workflow generation, the UI Graph Builder, the Scenario Recipe Registry, capability resolution, validation, safe submission, queue waiting, output fetching, diagnostics, asset management, custom node validation, and project indexing. Use `scripts/install_windows.ps1` and `docs/release/windows-install.md` for local install verification when the user asks how to install or validate the local release.
+Comfydex `1.7.0` is a Windows-first local developer toolchain. Use MCP tools for workflow generation, the UI Graph Builder, the Execution And Repair Loop, the Scenario Recipe Registry, capability resolution, validation, safe submission, queue waiting, output fetching, diagnostics, asset management, custom node validation, and project indexing. Use `scripts/install_windows.ps1` and `docs/release/windows-install.md` for local install verification when the user asks how to install or validate the local release.
 
 ## Standard Tool Order
 
@@ -46,6 +46,9 @@ For a normal run:
 22. Call `comfy_wait_for_run`.
 23. Call `comfy_fetch_outputs`.
 24. Call `comfy_read_run`.
+25. If a run fails or completes without outputs, call `comfy_plan_run_repair`.
+26. Call `comfy_retry_run_repair` only for supported retry operations and only pass `confirm=True` after the user confirms confirmation-required retries.
+27. Call `comfy_read_repair_history` to inspect recent repair decisions.
 
 ## Scenario Recipe Registry
 
@@ -93,6 +96,8 @@ The batch task view reads batch records and child run status. Submit new batches
 
 The Generated Graphs view reads generated UI workflow history and can push a selected generated UI workflow through the Python desktop bridge operation `push_ui_workflow`. Treat Generated Graphs as an action and history surface for UI Graph Builder output, not as a visual node editor.
 
+The Runs repair panel reads repair plans through `plan_run_repair`, retries through `retry_run_repair`, and reads recent repair history through `read_repair_history`. Treat it as a failure review and conservative retry surface, not as an automatic installer, model downloader, or graph editor.
+
 Do not assume the desktop shell can edit ComfyUI workflow graphs, run ComfyUI itself, package Python offline, or replace Codex reasoning. Use MCP tools for authoritative workflow generation, validation, submission, queue waiting, output collection, diagnostics, and asset metadata updates.
 
 ## Workflow Generation
@@ -107,7 +112,25 @@ Use `comfy_generate_run_fetch` only for low-risk single-run requests. It can gen
 
 If `comfy_generate_run_fetch` returns `requires_confirmation`, review `policy.reasons` before passing `confirm_risky_actions=True`. Common reasons include workflow overwrite and `object_info_unavailable`; unknown validation must not be silently auto-run.
 
+If `comfy_generate_run_fetch` fails during submit, wait, failed wait, or fetch, inspect the returned `diagnosis`, `failure_class`, `repair_summary`, and `repair_plan`. Fetch failures use a repair plan with `retry.operation == "fetch_outputs"`. Resubmit repair plans require `requires_confirmation` before retry.
+
 Use `wait_for_completion=False` to stop after submission. Use `fetch_outputs=False` to wait without output download. After a fetch or manual output change, use `comfy_reindex_project` or the automation result's reindex data to keep the project index current.
+
+## Execution And Repair Loop
+
+Use the Execution And Repair Loop when a run fails or completes without registered outputs:
+
+1. `comfy_read_run`
+2. `comfy_diagnose_run`
+3. `comfy_plan_run_repair`
+4. `comfy_retry_run_repair`
+5. `comfy_read_repair_history`
+
+Repair data uses `failure_class`, `repair_summary`, `repair_plan`, `actions`, `retry`, `requires_confirmation`, and `retry_result` consistently across MCP, automation failure responses, and desktop bridge operations.
+
+Retry `fetch_outputs` only when the repair plan supports it. Do not resubmit a workflow unless the plan says retry is supported and the user has confirmed confirmation-required retry.
+
+Repair plans do not grant permission for model installation, custom node installation, or downloads. Keep no silent downloads, no automatic downloads, and no automatic custom node installation.
 
 ## UI Graph Builder
 
@@ -157,6 +180,8 @@ When a workflow fails:
 - Check missing model references in the workflow summary.
 - Check `/history` through `comfy_get_history` for ComfyUI error data.
 - Check the run record with `comfy_read_run` before retrying.
+- Use `comfy_plan_run_repair` before deciding whether a retry is safe.
+- Use `comfy_read_repair_history` when comparing recent recovery attempts.
 - Do not claim output download success until `comfy_fetch_outputs` returns downloaded paths or registered output references.
 
 ## Safety

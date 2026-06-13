@@ -551,6 +551,64 @@ def test_release_checklist_1_6_covers_ui_graph_release_gates():
         assert marker in checklist
 
 
+def test_execution_repair_loop_docs_cover_repair_tools_and_desktop():
+    usage = (ROOT / "docs" / "usage" / "execution-repair-loop.md").read_text(
+        encoding="utf-8"
+    )
+    desktop = (ROOT / "docs" / "usage" / "desktop-app.md").read_text(
+        encoding="utf-8"
+    )
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    skill = (ROOT / "skills" / "comfyui-workflows" / "SKILL.md").read_text(
+        encoding="utf-8"
+    )
+
+    for marker in (
+        "Execution And Repair Loop",
+        "failure_class",
+        "repair_plan",
+        "comfy_plan_run_repair",
+        "comfy_retry_run_repair",
+        "comfy_read_repair_history",
+        "comfy_generate_run_fetch",
+        "fetch_outputs",
+        "requires_confirmation",
+        "no silent downloads",
+    ):
+        assert marker in usage
+        assert marker in readme
+        assert marker in skill
+
+    for marker in (
+        "Runs repair panel",
+        "plan_run_repair",
+        "retry_run_repair",
+        "read_repair_history",
+    ):
+        assert marker in desktop
+
+
+def test_release_checklist_1_7_covers_execution_repair_release_gates():
+    checklist = (ROOT / "docs" / "release" / "1.7-release-checklist.md").read_text(
+        encoding="utf-8"
+    )
+
+    for marker in (
+        "python -m pytest -q",
+        "repair planner tests",
+        "MCP repair tools",
+        "automation failure repair payloads",
+        "desktop bridge repair operations",
+        "Runs repair panel",
+        "npm run typecheck",
+        "npm run build",
+        "cargo check",
+        "validate_release_package.py",
+        "version files report `1.7.0`",
+    ):
+        assert marker in checklist
+
+
 def test_workflow_generation_doc_explains_submit_policy():
     text = (ROOT / "docs" / "usage" / "workflow-generation.md").read_text(
         encoding="utf-8"
