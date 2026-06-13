@@ -653,6 +653,43 @@ def test_release_checklist_1_8_covers_ordinary_user_release_gates():
         assert marker in checklist
 
 
+def test_20_readiness_gate_doc_covers_1_9_release():
+    usage = (ROOT / "docs" / "usage" / "2.0-readiness-gate.md").read_text(
+        encoding="utf-8"
+    )
+
+    for marker in (
+        "1.9.0",
+        "2.0 Readiness Gate",
+        "comfy_20_readiness_report",
+        "comfy_list_20_scenarios",
+        "first-class scenarios",
+        "ready",
+        "missing_recipe",
+        "needs_work",
+        "Desktop",
+    ):
+        assert marker in usage
+
+
+def test_release_checklist_1_9_covers_readiness_release_gates():
+    checklist = (ROOT / "docs" / "release" / "1.9-release-checklist.md").read_text(
+        encoding="utf-8"
+    )
+
+    for marker in (
+        "1.9.0",
+        "2.0 Readiness Gate",
+        "comfy_20_readiness_report",
+        "tests/test_readiness.py",
+        "npm run typecheck",
+        "npm run build",
+        "cargo check",
+        "v1.9.0",
+    ):
+        assert marker in checklist
+
+
 def test_workflow_generation_doc_explains_submit_policy():
     text = (ROOT / "docs" / "usage" / "workflow-generation.md").read_text(
         encoding="utf-8"

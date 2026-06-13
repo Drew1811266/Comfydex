@@ -25,6 +25,7 @@ REQUIRED_FILES = (
     Path("README.md"),
     Path("pyproject.toml"),
     Path("src/comfydex_mcp/__init__.py"),
+    Path("src/comfydex_mcp/readiness.py"),
     Path("src/comfydex_mcp/server.py"),
     Path("scripts/validate_plugin.py"),
     Path("scripts/validate_release_package.py"),
@@ -33,7 +34,9 @@ REQUIRED_FILES = (
     Path(".mcp.json"),
     Path("docs/release/windows-install.md"),
     Path("docs/release/1.0-release-checklist.md"),
+    Path("docs/release/1.9-release-checklist.md"),
     Path("docs/release/security-path-review.md"),
+    Path("docs/usage/2.0-readiness-gate.md"),
     Path("desktop/package.json"),
     Path("desktop/package-lock.json"),
     Path("desktop/src/App.tsx"),
@@ -258,6 +261,33 @@ def validate_release_package(root: Path) -> list[str]:
             "header redaction",
             "cleanup confirmation",
             "desktop bridge",
+        ),
+        errors,
+    )
+    _require_markers(
+        root,
+        Path("docs/usage/2.0-readiness-gate.md"),
+        (
+            "1.9.0",
+            "2.0 Readiness Gate",
+            "comfy_list_20_scenarios",
+            "comfy_20_readiness_report",
+            "missing_recipe",
+            "Desktop",
+        ),
+        errors,
+    )
+    _require_markers(
+        root,
+        Path("docs/release/1.9-release-checklist.md"),
+        (
+            "1.9.0",
+            "2.0 Readiness Gate",
+            "tests/test_readiness.py",
+            "npm run typecheck",
+            "npm run build",
+            "cargo check",
+            "v1.9.0",
         ),
         errors,
     )

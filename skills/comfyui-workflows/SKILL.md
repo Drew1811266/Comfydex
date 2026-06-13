@@ -16,7 +16,7 @@ ComfyUI has two common workflow JSON shapes:
 
 Comfydex can classify, import, and convert UI workflow JSON, but `comfy_submit_workflow` requires validated API prompt JSON.
 
-Comfydex `1.8.0` is a Windows-first local developer toolchain. Use MCP tools for Ordinary User Guidance, workflow generation, the UI Graph Builder, the Execution And Repair Loop, the Scenario Recipe Registry, capability resolution, validation, safe submission, queue waiting, output fetching, diagnostics, asset management, custom node validation, and project indexing. Use `scripts/install_windows.ps1` and `docs/release/windows-install.md` for local install verification when the user asks how to install or validate the local release.
+Comfydex `1.9.0` is a Windows-first local developer toolchain. Use MCP tools for the 2.0 Readiness Gate, Ordinary User Guidance, workflow generation, the UI Graph Builder, the Execution And Repair Loop, the Scenario Recipe Registry, capability resolution, validation, safe submission, queue waiting, output fetching, diagnostics, asset management, custom node validation, and project indexing. Use `scripts/install_windows.ps1` and `docs/release/windows-install.md` for local install verification when the user asks how to install or validate the local release.
 
 ## Standard Tool Order
 
@@ -25,32 +25,33 @@ For a normal run:
 1. Call `comfy_project_status`.
 2. Call `comfy_reindex_project` when project counts are stale or files were changed outside Comfydex.
 3. Call `comfy_reindex_assets` when output assets should be searchable or sidecars are needed.
-4. Call `comfy_list_generation_presets` when the user wants simple quality, speed, aspect ratio, or style choices.
-5. For low-risk one-call generation, call `comfy_generate_run_fetch`.
-6. Otherwise, call `comfy_suggest_workflow_recipes` to inspect recipe candidates when the user describes a scenario.
-7. Call `comfy_resolve_recipe_capabilities` for recipe-aware capability checks before relying on named local models or installed custom nodes.
-8. Call `comfy_plan_workflow_generation` before creating a new workflow and inspect the selected recipe id, `user_guidance`, and `resolved_defaults`.
-9. Call `comfy_explain_user_plan` when a plain-language summary is needed for an existing plan.
-10. Call `comfy_build_ui_workflow` when the user wants a readable generated UI workflow graph without saving.
-11. Call `comfy_generate_ui_workflow` when the user wants to save a generated UI workflow for ComfyUI canvas review.
-12. Call `comfy_generate_push_ui_workflow` when the user wants to save and perform a Live Bridge push into the ComfyUI canvas.
-13. Call `comfy_read_ui_graph_history` when Codex or Desktop needs generated UI workflow history.
-14. Call `comfy_generate_workflow` when required generation inputs are present and the target is API prompt JSON.
-15. Call `comfy_evaluate_submit_policy` before submitting an existing or generated workflow.
-16. Call `comfy_check_connection`.
-17. Call `comfy_get_object_info` when node metadata is needed.
-18. Call `comfy_model_inventory` and `comfy_resolve_capabilities` before relying on named local models or installed custom nodes outside a recipe path.
-19. Call `comfy_create_install_plan` when capability resolution reports missing requirements; record the user's accepted/rejected decision with `comfy_record_install_audit`.
-20. Call `comfy_list_workflows`.
-21. Call `comfy_read_workflow` for the selected file.
-22. Call `comfy_analyze_workflow`.
-23. Call `comfy_submit_workflow` only when submit policy is `allowed`.
-24. Call `comfy_wait_for_run`.
-25. Call `comfy_fetch_outputs`.
-26. Call `comfy_read_run`.
-27. If a run fails or completes without outputs, call `comfy_plan_run_repair`.
-28. Call `comfy_retry_run_repair` only for supported retry operations and only pass `confirm=True` after the user confirms confirmation-required retries.
-29. Call `comfy_read_repair_history` to inspect recent repair decisions.
+4. Call `comfy_list_20_scenarios` or `comfy_20_readiness_report` when checking 2.0 first-class scenario coverage or release readiness.
+5. Call `comfy_list_generation_presets` when the user wants simple quality, speed, aspect ratio, or style choices.
+6. For low-risk one-call generation, call `comfy_generate_run_fetch`.
+7. Otherwise, call `comfy_suggest_workflow_recipes` to inspect recipe candidates when the user describes a scenario.
+8. Call `comfy_resolve_recipe_capabilities` for recipe-aware capability checks before relying on named local models or installed custom nodes.
+9. Call `comfy_plan_workflow_generation` before creating a new workflow and inspect the selected recipe id, `user_guidance`, and `resolved_defaults`.
+10. Call `comfy_explain_user_plan` when a plain-language summary is needed for an existing plan.
+11. Call `comfy_build_ui_workflow` when the user wants a readable generated UI workflow graph without saving.
+12. Call `comfy_generate_ui_workflow` when the user wants to save a generated UI workflow for ComfyUI canvas review.
+13. Call `comfy_generate_push_ui_workflow` when the user wants to save and perform a Live Bridge push into the ComfyUI canvas.
+14. Call `comfy_read_ui_graph_history` when Codex or Desktop needs generated UI workflow history.
+15. Call `comfy_generate_workflow` when required generation inputs are present and the target is API prompt JSON.
+16. Call `comfy_evaluate_submit_policy` before submitting an existing or generated workflow.
+17. Call `comfy_check_connection`.
+18. Call `comfy_get_object_info` when node metadata is needed.
+19. Call `comfy_model_inventory` and `comfy_resolve_capabilities` before relying on named local models or installed custom nodes outside a recipe path.
+20. Call `comfy_create_install_plan` when capability resolution reports missing requirements; record the user's accepted/rejected decision with `comfy_record_install_audit`.
+21. Call `comfy_list_workflows`.
+22. Call `comfy_read_workflow` for the selected file.
+23. Call `comfy_analyze_workflow`.
+24. Call `comfy_submit_workflow` only when submit policy is `allowed`.
+25. Call `comfy_wait_for_run`.
+26. Call `comfy_fetch_outputs`.
+27. Call `comfy_read_run`.
+28. If a run fails or completes without outputs, call `comfy_plan_run_repair`.
+29. Call `comfy_retry_run_repair` only for supported retry operations and only pass `confirm=True` after the user confirms confirmation-required retries.
+30. Call `comfy_read_repair_history` to inspect recent repair decisions.
 
 ## Scenario Recipe Registry
 
