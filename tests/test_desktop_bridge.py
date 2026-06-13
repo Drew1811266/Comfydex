@@ -753,6 +753,16 @@ def test_bridge_summarizes_assets(tmp_path: Path):
     assert result["data"]["summary"]["title"] == "1 output indexed"
 
 
+def test_bridge_twenty_readiness_report(tmp_path: Path):
+    _write_workspace(tmp_path)
+
+    result = run_bridge_operation("twenty_readiness_report", tmp_path)
+
+    assert result["ok"] is True
+    assert result["data"]["readiness_version"] == "1.9.0"
+    assert result["data"]["summary"]["scenario_count"] == 9
+
+
 def test_bridge_unknown_operation_returns_error_envelope(tmp_path: Path):
     result = run_bridge_operation("missing", tmp_path)
 

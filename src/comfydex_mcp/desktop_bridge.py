@@ -40,6 +40,7 @@ from .live_bridge import (
 )
 from .paths import is_redirected_path, safe_json_path
 from .presets import list_generation_presets
+from .readiness import build_20_readiness_report
 from .recipes import (
     list_workflow_recipes,
     resolve_recipe_capabilities,
@@ -154,6 +155,8 @@ def _dispatch(
         return asyncio.run(_resolve_recipe_capabilities(config, payload))
     if operation == "list_generation_presets":
         return list_generation_presets()
+    if operation == "twenty_readiness_report":
+        return build_20_readiness_report()
     if operation == "build_ui_workflow":
         return asyncio.run(_build_ui_workflow(config, payload))
     if operation == "generate_ui_workflow":

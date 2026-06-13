@@ -515,6 +515,30 @@ async def test_comfy_workflow_recipe_tool_is_registered_with_mcp():
 
 
 @pytest.mark.asyncio
+async def test_comfy_20_readiness_tools_return_report():
+    scenarios = await server.comfy_list_20_scenarios()
+    report = await server.comfy_20_readiness_report()
+
+    assert scenarios["scenario_count"] == 9
+    assert {item["scenario_id"] for item in scenarios["scenarios"]} >= {
+        "text-to-image",
+        "inpainting",
+    }
+    assert report["readiness_version"] == "1.9.0"
+    assert report["summary"]["scenario_count"] == 9
+    assert report["status"] in {"needs_work", "ready_for_2_0"}
+
+
+@pytest.mark.asyncio
+async def test_comfy_20_readiness_tools_are_registered_with_mcp():
+    _content, scenarios = await server.mcp.call_tool("comfy_list_20_scenarios", {})
+    _content, report = await server.mcp.call_tool("comfy_20_readiness_report", {})
+
+    assert scenarios["scenario_count"] == 9
+    assert report["readiness_version"] == "1.9.0"
+
+
+@pytest.mark.asyncio
 async def test_comfy_custom_node_tools_use_package_name(
     monkeypatch,
     tmp_path: Path,

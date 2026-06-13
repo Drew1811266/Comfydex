@@ -87,6 +87,7 @@ from .node_scaffold import scaffold_custom_node_package, safe_custom_nodes_dir
 from .patching import patch_workflow
 from .paths import is_redirected_path, safe_json_path, safe_output_path, safe_package_dir
 from .presets import list_generation_presets
+from .readiness import build_20_readiness_report, list_first_class_scenarios
 from .recipes import (
     get_workflow_recipe,
     list_workflow_recipes,
@@ -986,6 +987,17 @@ async def comfy_resolve_recipe_capabilities(
         object_info,
         model_inventory,
     )
+
+
+@mcp.tool()
+async def comfy_list_20_scenarios() -> dict[str, Any]:
+    scenarios = list_first_class_scenarios()
+    return {"scenario_count": len(scenarios), "scenarios": scenarios}
+
+
+@mcp.tool()
+async def comfy_20_readiness_report() -> dict[str, Any]:
+    return build_20_readiness_report()
 
 
 @mcp.tool()
