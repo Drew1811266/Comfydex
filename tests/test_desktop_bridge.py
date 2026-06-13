@@ -7,13 +7,13 @@ from pathlib import Path
 import httpx
 import respx
 
-from comfydex_mcp import desktop_bridge
+from comfydex_mcp import desktop_bridge, server
 from comfydex_mcp.config import ComfydexConfig, save_config
 from comfydex_mcp.batches import create_batch_record
 from comfydex_mcp.core.indexer import reindex_project
 from comfydex_mcp.core.project import project_context_from_config
 from comfydex_mcp.desktop_bridge import main, run_bridge_operation
-from comfydex_mcp.runs import create_run, register_outputs, update_status
+from comfydex_mcp.runs import append_event, create_run, register_outputs, update_status
 from comfydex_mcp.workflows import save_workflow
 
 
@@ -613,6 +613,116 @@ def test_bridge_lists_and_reads_batches(tmp_path: Path):
     assert listed["data"][0]["run_count"] == 1
     assert read["ok"] is True
     assert read["data"]["batch_id"] == older["batch_id"]
+
+
+def test_bridge_plan_run_repair_returns_repair_plan(tmp_path: Path):
+    _write_workspace(tmp_path)
+    cfg = _config(tmp_path)
+    run = create_run(
+        cfg.runs_dir,
+        "cat.json",
+        API_WORKFLOW,
+        cfg.base_url,
+        "prompt-failed",
+    )
+    append_event(
+        cfg.runs_dir,
+        run["run_id"],
+        {"type": "execution_error", "message": "CUDA out of memory"},
+    )
+    update_status(cfg.runs_dir, run["run_id"], "failed")
+
+    result = run_bridge_operation(
+        "plan_run_repair",
+        tmp_path,
+        {"run_id": run["run_id"], "use_object_info": False},
+    )
+
+    assert result["ok"] is True
+    assert result["data"]["status"] == "planned"
+    assert result["data"]["repair_plan"]["failure_class"] == "resource_failure"
+
+
+def test_bridge_read_repair_history_returns_newest_entries(tmp_path: Path):
+    _write_workspace(tmp_path)
+    cfg = _config(tmp_path)
+    run = create_run(
+        cfg.runs_dir,
+        "cat.json",
+        API_WORKFLOW,
+        cfg.base_url,
+        "prompt-failed",
+    )
+    update_status(cfg.runs_dir, run["run_id"], "failed")
+    run_bridge_operation(
+        "plan_run_repair",
+        tmp_path,
+        {"run_id": run["run_id"], "use_object_info": False},
+    )
+
+    result = run_bridge_operation("read_repair_history", tmp_path, {"limit": 1})
+
+    assert result["ok"] is True
+    assert result["data"]["entries"][0]["run_id"] == run["run_id"]
+
+
+def test_bridge_retry_run_repair_requires_confirmation_for_resubmit(tmp_path: Path):
+    _write_workspace(tmp_path)
+    cfg = _config(tmp_path)
+    run = create_run(
+        cfg.runs_dir,
+        "cat.json",
+        API_WORKFLOW,
+        cfg.base_url,
+        "prompt-failed",
+    )
+    append_event(
+        cfg.runs_dir,
+        run["run_id"],
+        {"type": "execution_error", "message": "node failed"},
+    )
+    update_status(cfg.runs_dir, run["run_id"], "failed")
+
+    result = run_bridge_operation(
+        "retry_run_repair",
+        tmp_path,
+        {"run_id": run["run_id"], "confirm": False, "use_object_info": False},
+    )
+
+    assert result["ok"] is True
+    assert result["data"]["status"] == "requires_confirmation"
+    assert result["data"]["repair_plan"]["retry"]["requires_confirmation"] is True
+
+
+def test_bridge_retry_run_repair_can_fetch_missing_outputs(monkeypatch, tmp_path: Path):
+    _write_workspace(tmp_path)
+    cfg = _config(tmp_path)
+    run = create_run(
+        cfg.runs_dir,
+        "cat.json",
+        API_WORKFLOW,
+        cfg.base_url,
+        "prompt-no-outputs",
+    )
+    update_status(cfg.runs_dir, run["run_id"], "completed")
+    fetched: list[str] = []
+
+    async def fake_fetch_outputs(run_id: str, download: bool = True):
+        fetched.append(run_id)
+        return {"run_id": run_id, "outputs": [{"filename": "fixed.png"}]}
+
+    monkeypatch.setattr(server, "comfy_fetch_outputs", fake_fetch_outputs)
+
+    result = run_bridge_operation(
+        "retry_run_repair",
+        tmp_path,
+        {"run_id": run["run_id"], "confirm": False, "use_object_info": False},
+    )
+
+    assert result["ok"] is True
+    assert result["data"]["status"] == "retried"
+    assert result["data"]["retry_result"]["outputs"][0]["filename"] == "fixed.png"
+    assert fetched == [run["run_id"]]
 
 
 def test_bridge_rejects_malformed_batch_id(tmp_path: Path):

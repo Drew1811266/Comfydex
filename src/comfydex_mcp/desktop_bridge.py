@@ -3,11 +3,14 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 import sys
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from . import server
 from .assets import (
     compare_assets,
     export_asset_library_report,
@@ -194,6 +197,28 @@ def _dispatch(
         return list_workflows(config.workflows_dir)
     if operation == "list_runs":
         return list_runs(config.runs_dir)
+    if operation == "plan_run_repair":
+        return _run_server_operation(
+            config.workspace,
+            server.comfy_plan_run_repair(
+                str(payload.get("run_id", "")),
+                use_object_info=bool(payload.get("use_object_info", True)),
+            ),
+        )
+    if operation == "read_repair_history":
+        return _run_server_operation(
+            config.workspace,
+            server.comfy_read_repair_history(int(payload.get("limit", 20))),
+        )
+    if operation == "retry_run_repair":
+        return _run_server_operation(
+            config.workspace,
+            server.comfy_retry_run_repair(
+                str(payload.get("run_id", "")),
+                confirm=bool(payload.get("confirm", False)),
+                use_object_info=bool(payload.get("use_object_info", True)),
+            ),
+        )
     if operation == "search_assets":
         return search_assets(project, payload)
     if operation == "update_asset_metadata":
@@ -558,6 +583,24 @@ def _is_relative_to(child: Path, parent: Path) -> bool:
         return True
     except ValueError:
         return False
+
+
+def _run_server_operation(workspace: Path, coroutine: Any) -> dict[str, Any]:
+    with _temporary_workspace_env(workspace):
+        return asyncio.run(coroutine)
+
+
+@contextmanager
+def _temporary_workspace_env(workspace: Path):
+    previous = os.environ.get("CODEX_WORKSPACE")
+    os.environ["CODEX_WORKSPACE"] = str(workspace)
+    try:
+        yield
+    finally:
+        if previous is None:
+            os.environ.pop("CODEX_WORKSPACE", None)
+        else:
+            os.environ["CODEX_WORKSPACE"] = previous
 
 
 def _workspace_path(value: str | Path) -> Path:
