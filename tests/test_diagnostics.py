@@ -175,6 +175,21 @@ def test_diagnose_run_detects_missing_model_references_from_history_text():
     assert "base.safetensors" in result["summary"]
 
 
+def test_diagnose_run_exposes_failure_class_and_repair_summary():
+    run = {
+        "run_id": "r9",
+        "status": "failed",
+        "events": [{"type": "execution_error", "message": "CUDA out of memory"}],
+        "outputs": [],
+    }
+
+    result = diagnose_run(run)
+
+    assert result["failure_class"] == "resource_failure"
+    assert result["retryable"] is True
+    assert "reduce" in result["repair_summary"].lower()
+
+
 def test_compare_runs_reports_changed_seed_status_and_output_count():
     left_run = {"run_id": "left", "status": "completed", "outputs": [{"filename": "left.png"}]}
     right_run = {

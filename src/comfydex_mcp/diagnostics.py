@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from .repairs import classify_run_failure
 from .workflows import summarize_workflow
 
 SUMMARY_MAX_LENGTH = 360
@@ -304,7 +305,7 @@ def diagnose_run(
         signals.add("missing_model_reference")
     sorted_signals = sorted(signals)
 
-    return {
+    result = {
         "run_id": normalized_run_record.get("run_id"),
         "status": status,
         "signals": sorted_signals,
@@ -322,6 +323,11 @@ def diagnose_run(
             missing_model_references,
         ),
     }
+    classification = classify_run_failure(result)
+    result["failure_class"] = classification["failure_class"]
+    result["repair_summary"] = classification["summary"]
+    result["retryable"] = classification["retryable"]
+    return result
 
 
 def compare_runs(
