@@ -6,9 +6,9 @@ The plugin is installed in Codex, not in ComfyUI. ComfyUI remains the runtime se
 
 ## Status
 
-Current version: `1.9.0`
+Current version: `2.0.0`
 
-This 1.9 2.0 Readiness Gate Release focuses on a practical local ComfyUI workflow:
+This 2.0 Conversational Workflow System release focuses on a practical local ComfyUI workflow:
 
 - connect to a local or remote ComfyUI server
 - manage workflow JSON files from a Codex workspace
@@ -19,6 +19,7 @@ This 1.9 2.0 Readiness Gate Release focuses on a practical local ComfyUI workflo
 - run safe one-call generate-run-fetch automation for low-risk single-run requests
 - build generated workflows from deterministic generation plans
 - choose built-in workflow scenarios through the Scenario Recipe Registry
+- describe first-class text-to-image, image-to-image, portrait, character consistency, product image, ControlNet, inpainting, upscaling, and background replacement workflows in ordinary language
 - build readable UI workflow graphs from supported recipes with the UI Graph Builder
 - save generated UI workflow files with stable node ids and generated graph history
 - push generated UI workflows directly into the ComfyUI canvas with `comfy_generate_push_ui_workflow`
@@ -30,7 +31,7 @@ This 1.9 2.0 Readiness Gate Release focuses on a practical local ComfyUI workflo
 - review `canvas_replacement` before or after Live Bridge canvas replacement
 - inspect `output_summary` after one-call generate-run-fetch automation completes
 - summarize indexed outputs with `comfy_summarize_assets`
-- audit 2.0 first-class scenario coverage with `comfy_20_readiness_report`
+- audit final 2.0 first-class scenario coverage with `comfy_20_readiness_report`
 - expose recipe candidates and the selected recipe id in generated workflow plans
 - run recipe-aware capability checks before relying on local models or custom nodes
 - validate generated workflows and classify submit policy before running
@@ -144,7 +145,7 @@ The Skill explains how Codex should work with ComfyUI workflows, including the d
 - UI workflow JSON, exported for the ComfyUI visual editor
 - API prompt JSON, submitted to ComfyUI `/prompt`
 
-Version `1.9.0` can import UI workflow files and help convert them, but submission still requires validated API prompt JSON. It also provides the shared project index, workflow generation engine, 2.0 Readiness Gate, Ordinary User Guidance, generation presets and defaults, UI Graph Builder, Execution And Repair Loop, Scenario Recipe Registry, Node Semantic Registry, Capability Resolver, complete custom node loop, local asset library for generated outputs, desktop app shell backed by a Python desktop bridge with Gallery And Batch UI surfaces, Generated Graphs history, Runs repair panel, desktop Install Plan review, safe end-to-end automation, Windows install helper, release checklist, security/path review, release package validation, and a productized ComfyUI-side Live Bridge for direct desktop canvas workflow loading.
+Version `2.0.0` can import UI workflow files and help convert them, but submission still requires validated API prompt JSON. It also provides the shared project index, workflow generation engine, 2.0 Readiness Gate, Ordinary User Guidance, generation presets and defaults, UI Graph Builder, Execution And Repair Loop, Scenario Recipe Registry, Node Semantic Registry, Capability Resolver, complete custom node loop, local asset library for generated outputs, desktop app shell backed by a Python desktop bridge with Gallery And Batch UI surfaces, Generated Graphs history, Runs repair panel, desktop Install Plan review, safe end-to-end automation, Windows install helper, release checklist, security/path review, release package validation, and a productized ComfyUI-side Live Bridge for direct desktop canvas workflow loading.
 
 Unknown nodes are not treated as first-class supported nodes.
 
@@ -152,7 +153,7 @@ Unknown nodes are not treated as first-class supported nodes.
 
 | Group | What it adds | Primary tools |
 | --- | --- | --- |
-| 2.0 Readiness Gate | Audit first-class scenario coverage, recipe buildability, UI graph dry runs, acceptance criteria, Desktop visibility, and remaining 2.0 gaps. | `comfy_list_20_scenarios`, `comfy_20_readiness_report` |
+| 2.0 Readiness Gate | Audit first-class scenario coverage, recipe buildability, UI graph dry runs, acceptance criteria, Desktop visibility, and final 2.0 release status. | `comfy_list_20_scenarios`, `comfy_20_readiness_report` |
 | Ordinary User Guidance | Explain generation plans, presets, missing items, canvas replacement, output summaries, and comparisons in user-facing language while preserving technical data. | `comfy_list_generation_presets`, `comfy_explain_user_plan`, `comfy_summarize_assets` |
 | Workflow generation | Plan, generate, validate, repair, and classify submit policy for generated API workflows. | `comfy_plan_workflow_generation`, `comfy_generate_workflow`, `comfy_evaluate_submit_policy` |
 | UI Graph Builder | Build readable generated UI workflow JSON with stable node ids, save generated graph history, and push supported graphs into the ComfyUI canvas. | `comfy_build_ui_workflow`, `comfy_generate_ui_workflow`, `comfy_generate_push_ui_workflow`, `comfy_read_ui_graph_history` |
@@ -358,7 +359,7 @@ comfy_list_20_scenarios
 comfy_20_readiness_report
 ```
 
-The 2.0 Readiness Gate lists the first-class scenarios required for the final ordinary-user workflow system and reports whether each scenario is `ready`, `partial`, or `missing_recipe`. The report also includes acceptance criteria and next steps, so 1.9 can expose remaining 2.0 gaps without claiming unsupported scenarios are complete.
+The 2.0 Readiness Gate lists the first-class scenarios required for the ordinary-user workflow system and reports whether each scenario is `ready`, `partial`, or `missing_recipe`. In `2.0.0`, the gate reaches `ready_for_2_0`: all nine first-class scenarios have at least one ready recipe, supported semantic coverage, and a valid generated UI graph dry run.
 
 The desktop Settings view shows the same readiness report with scenario totals, status badges, acceptance criteria, and next steps.
 
@@ -635,6 +636,14 @@ Desktop Live Bridge status terms:
 Use Reload client from Settings when the frontend client needs to reconnect. Use Reload backend after changing bridge Python/runtime files and restarting ComfyUI is not required for the backend reload path.
 
 ## Release Notes
+
+### 2.0.0 - Conversational Workflow System
+
+- Added ready recipes for portrait, character consistency, product image, inpainting, and background replacement.
+- Added the `inpaint-basic` generated UI workflow template for mask-driven image edits and background replacement.
+- Updated `comfy_20_readiness_report` to return `ready_for_2_0` with 9 ready scenarios and 0 remaining scenario gaps.
+- Added `docs/usage/conversational-workflow-system.md` and `docs/release/2.0-release-checklist.md`.
+- Kept the release bounded by explicit safety rules: no silent downloads, no automatic downloads, no automatic custom node installation, and no unvalidated API submission.
 
 ### 1.9.0 - 2.0 Readiness Gate
 

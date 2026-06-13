@@ -147,7 +147,7 @@ fn twenty_readiness_report(app: AppHandle) -> Value {
     match current_workspace(&app) {
         Ok(Some(workspace)) => run_bridge("twenty_readiness_report", &workspace, json!({})),
         Ok(None) => ok(json!({
-            "readiness_version": "1.9.0",
+            "readiness_version": "2.0.0",
             "status": "needs_work",
             "summary": {
                 "scenario_count": 9,

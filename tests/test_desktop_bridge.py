@@ -759,7 +759,8 @@ def test_bridge_twenty_readiness_report(tmp_path: Path):
     result = run_bridge_operation("twenty_readiness_report", tmp_path)
 
     assert result["ok"] is True
-    assert result["data"]["readiness_version"] == "1.9.0"
+    assert result["data"]["readiness_version"] == "2.0.0"
+    assert result["data"]["status"] == "ready_for_2_0"
     assert result["data"]["summary"]["scenario_count"] == 9
 
 

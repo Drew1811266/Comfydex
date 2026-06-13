@@ -653,23 +653,46 @@ def test_release_checklist_1_8_covers_ordinary_user_release_gates():
         assert marker in checklist
 
 
-def test_20_readiness_gate_doc_covers_1_9_release():
+def test_20_readiness_gate_doc_covers_2_0_release():
     usage = (ROOT / "docs" / "usage" / "2.0-readiness-gate.md").read_text(
         encoding="utf-8"
     )
 
     for marker in (
-        "1.9.0",
+        "2.0.0",
         "2.0 Readiness Gate",
         "comfy_20_readiness_report",
         "comfy_list_20_scenarios",
         "first-class scenarios",
         "ready",
-        "missing_recipe",
-        "needs_work",
+        "ready_for_2_0",
         "Desktop",
     ):
         assert marker in usage
+
+
+def test_conversational_workflow_system_docs_cover_2_0_release():
+    usage = (
+        ROOT / "docs" / "usage" / "conversational-workflow-system.md"
+    ).read_text(encoding="utf-8")
+    checklist = (ROOT / "docs" / "release" / "2.0-release-checklist.md").read_text(
+        encoding="utf-8"
+    )
+
+    for marker in (
+        "2.0.0",
+        "ready_for_2_0",
+        "portrait",
+        "character consistency",
+        "product image",
+        "inpainting",
+        "background replacement",
+        "no automatic downloads",
+    ):
+        assert marker in usage
+
+    for marker in ("v2.0.0", "ready_for_2_0", "git push origin main v2.0.0"):
+        assert marker in checklist
 
 
 def test_release_checklist_1_9_covers_readiness_release_gates():

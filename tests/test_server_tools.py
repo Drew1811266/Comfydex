@@ -524,9 +524,9 @@ async def test_comfy_20_readiness_tools_return_report():
         "text-to-image",
         "inpainting",
     }
-    assert report["readiness_version"] == "1.9.0"
+    assert report["readiness_version"] == "2.0.0"
     assert report["summary"]["scenario_count"] == 9
-    assert report["status"] in {"needs_work", "ready_for_2_0"}
+    assert report["status"] == "ready_for_2_0"
 
 
 @pytest.mark.asyncio
@@ -535,7 +535,7 @@ async def test_comfy_20_readiness_tools_are_registered_with_mcp():
     _content, report = await server.mcp.call_tool("comfy_20_readiness_report", {})
 
     assert scenarios["scenario_count"] == 9
-    assert report["readiness_version"] == "1.9.0"
+    assert report["readiness_version"] == "2.0.0"
 
 
 @pytest.mark.asyncio

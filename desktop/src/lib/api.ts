@@ -296,12 +296,12 @@ const fallbackAssetSummary = {
 };
 
 const fallbackTwentyReadinessReport: TwentyReadinessReport = {
-  readiness_version: "1.9.0",
-  status: "needs_work",
+  readiness_version: "2.0.0",
+  status: "ready_for_2_0",
   summary: {
     scenario_count: 9,
-    ready_count: 4,
-    needs_work_count: 5
+    ready_count: 9,
+    needs_work_count: 0
   },
   scenarios: [
     {
@@ -323,11 +323,47 @@ const fallbackTwentyReadinessReport: TwentyReadinessReport = {
       build_checks: []
     },
     {
+      scenario_id: "portrait",
+      name: "Portrait",
+      status: "ready",
+      recipe_ids: ["portrait-basic"],
+      ready_recipe_ids: ["portrait-basic"],
+      gaps: [],
+      build_checks: []
+    },
+    {
+      scenario_id: "character-consistency",
+      name: "Character Consistency",
+      status: "ready",
+      recipe_ids: ["character-consistency-lora"],
+      ready_recipe_ids: ["character-consistency-lora"],
+      gaps: [],
+      build_checks: []
+    },
+    {
+      scenario_id: "product-image",
+      name: "Product Image",
+      status: "ready",
+      recipe_ids: ["product-image-basic"],
+      ready_recipe_ids: ["product-image-basic"],
+      gaps: [],
+      build_checks: []
+    },
+    {
       scenario_id: "controlnet",
       name: "ControlNet",
       status: "ready",
       recipe_ids: ["controlnet-pose"],
       ready_recipe_ids: ["controlnet-pose"],
+      gaps: [],
+      build_checks: []
+    },
+    {
+      scenario_id: "inpainting",
+      name: "Inpainting",
+      status: "ready",
+      recipe_ids: ["inpainting-basic"],
+      ready_recipe_ids: ["inpainting-basic"],
       gaps: [],
       build_checks: []
     },
@@ -341,48 +377,12 @@ const fallbackTwentyReadinessReport: TwentyReadinessReport = {
       build_checks: []
     },
     {
-      scenario_id: "portrait",
-      name: "Portrait",
-      status: "missing_recipe",
-      recipe_ids: [],
-      ready_recipe_ids: [],
-      gaps: ["recipe"],
-      build_checks: []
-    },
-    {
-      scenario_id: "character-consistency",
-      name: "Character Consistency",
-      status: "missing_recipe",
-      recipe_ids: [],
-      ready_recipe_ids: [],
-      gaps: ["recipe"],
-      build_checks: []
-    },
-    {
-      scenario_id: "product-image",
-      name: "Product Image",
-      status: "missing_recipe",
-      recipe_ids: [],
-      ready_recipe_ids: [],
-      gaps: ["recipe"],
-      build_checks: []
-    },
-    {
-      scenario_id: "inpainting",
-      name: "Inpainting",
-      status: "missing_recipe",
-      recipe_ids: [],
-      ready_recipe_ids: [],
-      gaps: ["recipe"],
-      build_checks: []
-    },
-    {
       scenario_id: "background-replacement",
       name: "Background Replacement",
-      status: "missing_recipe",
-      recipe_ids: [],
-      ready_recipe_ids: [],
-      gaps: ["recipe"],
+      status: "ready",
+      recipe_ids: ["background-replacement-inpaint"],
+      ready_recipe_ids: ["background-replacement-inpaint"],
+      gaps: [],
       build_checks: []
     }
   ],
@@ -390,14 +390,14 @@ const fallbackTwentyReadinessReport: TwentyReadinessReport = {
     {
       criterion_id: "ordinary_user_docs",
       label: "Ordinary-user documentation",
-      status: "needs_work",
-      details: ["Readiness docs are completed during release packaging."]
+      status: "ready",
+      details: ["README and usage docs explain the final 2.0 workflow system."]
     },
     {
       criterion_id: "scenario_coverage",
       label: "First-class scenario coverage",
-      status: "needs_work",
-      details: ["Some 2.0 scenarios still need ready recipes."]
+      status: "ready",
+      details: ["All 2.0 first-class scenarios have ready recipes and valid UI graph dry runs."]
     },
     {
       criterion_id: "capability_reports",
@@ -432,11 +432,11 @@ const fallbackTwentyReadinessReport: TwentyReadinessReport = {
     {
       criterion_id: "release_validation",
       label: "Release validation metadata",
-      status: "needs_work",
-      details: ["Release checklist is completed during packaging."]
+      status: "ready",
+      details: ["2.0 release checklist and readiness tests are present."]
     }
   ],
-  next_steps: ["Scenario coverage is not complete."]
+  next_steps: ["Prepare the final 2.0 release candidate."]
 };
 
 function hasTauri(): boolean {
@@ -470,7 +470,7 @@ function isBridgeEnvelope<T>(value: T | BridgeEnvelope<T>): value is BridgeEnvel
 }
 
 export function getAppInfo(): Promise<AppInfo> {
-  return call("app_info", { name: "Comfydex", version: "1.9.0" });
+  return call("app_info", { name: "Comfydex", version: "2.0.0" });
 }
 
 export function setWorkspace(path: string): Promise<ProjectStatus> {

@@ -1,6 +1,6 @@
 # Comfydex Desktop App
 
-Comfydex `1.9.0` provides a Windows-first Tauri desktop app shell under `desktop/`. The desktop app is a local project workbench for browsing Comfydex project state, plain output summaries, asset gallery records, reports, cleanup plans, comparisons, batch records, generated UI workflow history, Generated Graphs, run repair plans, Live Bridge readiness, and the 2.0 Readiness Gate; it does not replace Codex or the Python MCP server.
+Comfydex `2.0.0` provides a Windows-first Tauri desktop app shell under `desktop/`. The desktop app is a local project workbench for browsing Comfydex project state, plain output summaries, asset gallery records, reports, cleanup plans, comparisons, batch records, generated UI workflow history, Generated Graphs, run repair plans, Live Bridge readiness, and the 2.0 Readiness Gate; it does not replace Codex or the Python MCP server.
 
 The app uses a Python desktop bridge:
 
@@ -102,7 +102,7 @@ It shows run id, workflow name, status, output count, updated time, and a select
 
 Comfydex `1.8.0` adds ordinary-user summaries on top of the existing Project, Generated, Runs, and Assets views. The Project view displays the current output library summary, Generated shows preset groups and canvas replacement summaries, Runs can display plain repair guidance when present, and Assets shows output and comparison summaries while keeping the technical rows and JSON available.
 
-Comfydex `1.9.0` adds the Settings 2.0 Readiness Gate panel. It reads `twenty_readiness_report` from the Python desktop bridge and shows first-class scenario coverage, ready counts, remaining gaps, acceptance criteria, and next steps.
+Comfydex `2.0.0` shows the Settings 2.0 Readiness Gate panel. It reads `twenty_readiness_report` from the Python desktop bridge and shows first-class scenario coverage, ready counts, remaining gaps, acceptance criteria, and next steps.
 
 Comfydex `1.7.0` added the Runs repair panel. Select a run, use Plan repair to call `plan_run_repair`, inspect the failure class, repair summary, repair actions, retry state, and recent repair history, then use the retry action when the returned plan supports it.
 
