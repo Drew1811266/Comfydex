@@ -35,6 +35,12 @@ def classify_run_failure(
             False,
             f"Missing node types: {', '.join(missing_nodes[:5])}.",
         )
+    if stage == "fetch":
+        return _classification(
+            "fetch_failure",
+            True,
+            "Output fetch failed; retry output fetch after checking file access.",
+        )
     if "missing_outputs" in signals:
         return _classification(
             "missing_outputs",
@@ -58,12 +64,6 @@ def classify_run_failure(
             "invalid_link",
             True,
             "Inspect graph links and reconnect mismatched node outputs before retrying.",
-        )
-    if stage == "fetch":
-        return _classification(
-            "fetch_failure",
-            True,
-            "Output fetch failed; retry output fetch after checking file access.",
         )
     if any(signal in signals for signal in ("execution_error", "history_failed")):
         return _classification(

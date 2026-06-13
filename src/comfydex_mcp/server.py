@@ -367,6 +367,62 @@ def _read_run_if_available(runs_dir: Path, run_id: str | None) -> dict[str, Any]
         return None
 
 
+def _failure_repair_payload(
+    ctx: ToolContext,
+    *,
+    run: dict[str, Any] | None,
+    stage: str,
+    error: str | None = None,
+    workflow_name: str | None = None,
+    object_info: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    if not isinstance(run, dict):
+        return {}
+    run_id = run.get("run_id")
+    if not isinstance(run_id, str) or not run_id:
+        return {}
+
+    snapshot = _read_workflow_snapshot(ctx.config.runs_dir, run_id, required=False)
+    workflow = snapshot if isinstance(snapshot, dict) else None
+    workflow_analysis = (
+        analyze_workflow(workflow, object_info) if isinstance(workflow, dict) else None
+    )
+    diagnosis = diagnose_run(
+        run,
+        workflow,
+        object_info,
+        workflow_analysis=workflow_analysis,
+    )
+    actual_workflow_name = run.get("workflow_name")
+    if not isinstance(actual_workflow_name, str) or not actual_workflow_name:
+        actual_workflow_name = workflow_name
+    repair_plan = build_run_repair_plan(
+        run_id,
+        diagnosis,
+        workflow_name=actual_workflow_name,
+        stage=stage,
+        error=error,
+    )
+    diagnosis = {
+        **diagnosis,
+        "failure_class": repair_plan["failure_class"],
+        "repair_summary": repair_plan["summary"],
+        "retryable": bool(repair_plan.get("retry", {}).get("supported")),
+    }
+    history_record = _append_repair_history(
+        ctx,
+        run_id=run_id,
+        workflow_name=actual_workflow_name,
+        status=f"{stage}_failed",
+        repair_plan=repair_plan,
+    )
+    return {
+        "diagnosis": diagnosis,
+        "repair_plan": repair_plan,
+        "repair_history_record": history_record,
+    }
+
+
 def _try_reindex(ctx: ToolContext) -> tuple[dict[str, Any] | None, str | None]:
     try:
         return reindex_project(project_context_from_config(ctx.config)), None
@@ -1411,12 +1467,21 @@ async def comfy_generate_run_fetch(
     except Exception as exc:
         run_id = getattr(exc, "run_id", None)
         run = _read_run_if_available(ctx.config.runs_dir, run_id)
+        repair_payload = _failure_repair_payload(
+            ctx,
+            run=run,
+            stage="submit",
+            error=str(exc),
+            workflow_name=saved.name,
+            object_info=object_info,
+        )
         response.update(
             {
                 "status": "failed",
                 "stage": "submit",
                 "error": str(exc),
                 "run": run,
+                **repair_payload,
                 "next_actions": _automation_next_actions(
                     status="failed",
                     run_id=run_id if isinstance(run_id, str) else None,
@@ -1454,12 +1519,21 @@ async def comfy_generate_run_fetch(
         waited = await comfy_wait_for_run(run_id)
     except Exception as exc:
         run = _read_run_if_available(ctx.config.runs_dir, run_id)
+        repair_payload = _failure_repair_payload(
+            ctx,
+            run=run,
+            stage="wait",
+            error=str(exc),
+            workflow_name=saved.name,
+            object_info=object_info,
+        )
         response.update(
             {
                 "status": "failed",
                 "stage": "wait",
                 "error": str(exc),
                 "run": run,
+                **repair_payload,
                 "next_actions": _automation_next_actions(
                     status="failed",
                     run_id=run_id,
@@ -1471,10 +1545,22 @@ async def comfy_generate_run_fetch(
     response["run"] = waited
     run_status = waited.get("status") if isinstance(waited, dict) else None
     if run_status != "completed":
+        repair_payload = (
+            _failure_repair_payload(
+                ctx,
+                run=waited,
+                stage="wait",
+                workflow_name=saved.name,
+                object_info=object_info,
+            )
+            if run_status == "failed"
+            else {}
+        )
         response.update(
             {
                 "status": "failed" if run_status == "failed" else "submitted",
                 "stage": "wait",
+                **repair_payload,
                 "next_actions": _automation_next_actions(
                     status="failed" if run_status == "failed" else "submitted",
                     run_id=run_id,
@@ -1490,12 +1576,22 @@ async def comfy_generate_run_fetch(
                 download=download_outputs,
             )
         except Exception as exc:
+            run = _read_run_if_available(ctx.config.runs_dir, run_id) or waited
+            repair_payload = _failure_repair_payload(
+                ctx,
+                run=run,
+                stage="fetch",
+                error=str(exc),
+                workflow_name=saved.name,
+                object_info=object_info,
+            )
             response.update(
                 {
                     "status": "failed",
                     "stage": "fetch",
                     "error": str(exc),
-                    "run": _read_run_if_available(ctx.config.runs_dir, run_id) or waited,
+                    "run": run,
+                    **repair_payload,
                     "next_actions": [
                         f"Run comfy_fetch_outputs with run_id {run_id} after resolving the fetch error.",
                         f"Run comfy_read_run with run_id {run_id}.",

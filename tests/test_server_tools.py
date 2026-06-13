@@ -1183,6 +1183,9 @@ async def test_comfy_generate_run_fetch_returns_failed_submit_recovery(
     assert result["stage"] == "submit"
     assert result["run"]["status"] == "failed"
     assert "submit failed" in result["error"]
+    assert result["diagnosis"]["failure_class"] == "execution_error"
+    assert result["repair_plan"]["failure_class"] == "execution_error"
+    assert result["repair_plan"]["retry"]["operation"] == "resubmit_workflow"
 
 
 @pytest.mark.asyncio
@@ -1256,6 +1259,64 @@ async def test_comfy_generate_run_fetch_returns_failed_fetch_recovery(
     assert result["run"]["status"] == "completed"
     assert "download failed" in result["error"]
     assert "comfy_fetch_outputs" in result["next_actions"][0]
+    assert result["diagnosis"]["failure_class"] == "fetch_failure"
+    assert result["repair_plan"]["failure_class"] == "fetch_failure"
+    assert result["repair_plan"]["retry"]["operation"] == "fetch_outputs"
+
+
+@pytest.mark.asyncio
+async def test_comfy_generate_run_fetch_returns_failed_wait_repair_plan(
+    monkeypatch,
+    tmp_path: Path,
+):
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+
+    class SubmitSucceeds:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            pass
+
+        async def get_object_info(self):
+            return TEXT_TO_IMAGE_OBJECT_INFO
+
+        async def submit_prompt(self, workflow, client_id):
+            return {"prompt_id": "prompt-wait"}
+
+    async def fake_wait_for_run(run_id: str):
+        append_event(
+            tmp_path / "runs",
+            run_id,
+            {
+                "type": "wait_result",
+                "history_status": "failed",
+                "messages": ["KSampler sampler_name not in list"],
+            },
+        )
+        update_status(tmp_path / "runs", run_id, "failed")
+        return read_run(tmp_path / "runs", run_id)
+
+    monkeypatch.setattr(server, "ComfyClient", SubmitSucceeds)
+    monkeypatch.setattr(server, "comfy_wait_for_run", fake_wait_for_run)
+
+    result = await server.comfy_generate_run_fetch(
+        "city.json",
+        "text to image",
+        parameters={
+            "checkpoint_name": "model.safetensors",
+            "positive_prompt": "city",
+        },
+    )
+
+    assert result["status"] == "failed"
+    assert result["stage"] == "wait"
+    assert result["diagnosis"]["failure_class"] == "invalid_parameter"
+    assert result["repair_plan"]["failure_class"] == "invalid_parameter"
+    assert result["repair_plan"]["retry"]["operation"] == "resubmit_workflow"
 
 
 @pytest.mark.asyncio
