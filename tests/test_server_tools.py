@@ -4,7 +4,13 @@ from pathlib import Path
 import pytest
 
 from comfydex_mcp import server
-from comfydex_mcp.runs import create_run, read_run, register_outputs, update_status
+from comfydex_mcp.runs import (
+    append_event,
+    create_run,
+    read_run,
+    register_outputs,
+    update_status,
+)
 from comfydex_mcp.server import resolve_workspace, tool_context
 from comfydex_mcp.workflows import save_workflow
 
@@ -2623,6 +2629,123 @@ async def test_comfy_diagnose_run_uses_object_info_when_requested(
     assert result["run_id"] == run["run_id"]
     assert result["missing_node_types"] == ["MissingNode"]
     assert "MissingNode" in result["summary"]
+
+
+@pytest.mark.asyncio
+async def test_comfy_plan_run_repair_tool_records_history(monkeypatch, tmp_path: Path):
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+    run = create_run(
+        tmp_path / "runs",
+        "wf.json",
+        API_WORKFLOW,
+        "http://127.0.0.1:8188",
+        "p1",
+        "client-1",
+    )
+    update_status(tmp_path / "runs", run["run_id"], "failed")
+    append_event(
+        tmp_path / "runs",
+        run["run_id"],
+        {"type": "execution_error", "message": "CUDA out of memory"},
+    )
+
+    result = await server.comfy_plan_run_repair(run["run_id"], use_object_info=False)
+    history = await server.comfy_read_repair_history()
+    _content, structured = await server.mcp.call_tool(
+        "comfy_plan_run_repair",
+        {"run_id": run["run_id"], "use_object_info": False},
+    )
+
+    assert result["status"] == "planned"
+    assert result["repair_plan"]["failure_class"] == "resource_failure"
+    assert result["diagnosis"]["failure_class"] == "resource_failure"
+    assert history["entries"][0]["run_id"] == run["run_id"]
+    assert structured["repair_plan"]["retry"]["requires_confirmation"] is True
+
+
+@pytest.mark.asyncio
+async def test_comfy_retry_run_repair_fetches_outputs_without_confirmation(
+    monkeypatch,
+    tmp_path: Path,
+):
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+    run = create_run(
+        tmp_path / "runs",
+        "wf.json",
+        API_WORKFLOW,
+        "http://127.0.0.1:8188",
+        "p1",
+        "client-1",
+    )
+    update_status(tmp_path / "runs", run["run_id"], "completed")
+    fetched: list[str] = []
+
+    async def fake_fetch_outputs(run_id: str, download: bool = True):
+        fetched.append(run_id)
+        return {"run_id": run_id, "outputs": [{"filename": "image.png"}]}
+
+    monkeypatch.setattr(server, "comfy_fetch_outputs", fake_fetch_outputs)
+
+    result = await server.comfy_retry_run_repair(
+        run["run_id"],
+        confirm=False,
+        use_object_info=False,
+    )
+
+    assert result["status"] == "retried"
+    assert result["repair_plan"]["failure_class"] == "missing_outputs"
+    assert result["retry_result"]["outputs"][0]["filename"] == "image.png"
+    assert fetched == [run["run_id"]]
+
+
+@pytest.mark.asyncio
+async def test_comfy_retry_run_repair_requires_confirmation_for_resubmit(
+    monkeypatch,
+    tmp_path: Path,
+):
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+    save_workflow(tmp_path / "workflows", "wf.json", API_WORKFLOW, require_api=True)
+    run = create_run(
+        tmp_path / "runs",
+        "wf.json",
+        API_WORKFLOW,
+        "http://127.0.0.1:8188",
+        "p1",
+        "client-1",
+    )
+    update_status(tmp_path / "runs", run["run_id"], "failed")
+    append_event(
+        tmp_path / "runs",
+        run["run_id"],
+        {"type": "execution_error", "message": "node failed"},
+    )
+    submitted: list[str] = []
+
+    async def fake_submit_workflow(
+        name: str,
+        run_label: str | None = None,
+        client_id: str | None = None,
+    ):
+        submitted.append(name)
+        return {"run_id": "retry-run", "workflow_name": name, "status": "queued"}
+
+    monkeypatch.setattr(server, "comfy_submit_workflow", fake_submit_workflow)
+
+    blocked = await server.comfy_retry_run_repair(
+        run["run_id"],
+        confirm=False,
+        use_object_info=False,
+    )
+    retried = await server.comfy_retry_run_repair(
+        run["run_id"],
+        confirm=True,
+        use_object_info=False,
+    )
+
+    assert blocked["status"] == "requires_confirmation"
+    assert submitted == ["wf.json"]
+    assert retried["status"] == "retried"
+    assert retried["retry_result"]["run_id"] == "retry-run"
 
 
 @pytest.mark.asyncio

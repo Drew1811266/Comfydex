@@ -1,10 +1,15 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from typing import Any
+
+from .paths import ensure_directory
 
 RESOURCE_MARKERS = ("out of memory", "cuda out of memory", "vram", "allocation")
 INVALID_PARAMETER_MARKERS = ("invalid", "bad value", "not in list", "expected")
 INVALID_LINK_MARKERS = ("link", "type mismatch", "cannot connect")
+REPAIR_HISTORY_FILENAME = "repair_history.jsonl"
 
 
 def classify_run_failure(
@@ -107,6 +112,34 @@ def build_run_repair_plan(
         "actions": actions,
         "retry": retry,
     }
+
+
+def append_repair_history(workspace: Path, record: dict[str, Any]) -> dict[str, Any]:
+    path = _history_path(workspace)
+    ensure_directory(path.parent)
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(record, sort_keys=True) + "\n")
+    return record
+
+
+def read_repair_history(workspace: Path, limit: int = 20) -> dict[str, Any]:
+    path = _history_path(workspace)
+    if limit <= 0:
+        return {"path": str(path), "entries": []}
+    if not path.exists():
+        return {"path": str(path), "entries": []}
+
+    entries: list[dict[str, Any]] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            value = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(value, dict):
+            entries.append(value)
+    return {"path": str(path), "entries": list(reversed(entries))[:limit]}
 
 
 def _classification(
@@ -239,3 +272,7 @@ def _string_list(value: Any) -> list[str]:
     if not isinstance(value, list):
         return []
     return [item for item in value if isinstance(item, str) and item]
+
+
+def _history_path(workspace: Path) -> Path:
+    return workspace / ".comfydex" / REPAIR_HISTORY_FILENAME

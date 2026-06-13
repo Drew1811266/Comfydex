@@ -1,4 +1,9 @@
-from comfydex_mcp.repairs import build_run_repair_plan, classify_run_failure
+from comfydex_mcp.repairs import (
+    append_repair_history,
+    build_run_repair_plan,
+    classify_run_failure,
+    read_repair_history,
+)
 
 
 def test_classify_missing_model_from_diagnosis():
@@ -106,3 +111,37 @@ def test_repair_plan_for_fetch_failure_retries_outputs():
     assert result["failure_class"] == "fetch_failure"
     assert result["retry"]["operation"] == "fetch_outputs"
     assert result["retry"]["requires_confirmation"] is False
+
+
+def test_repair_history_returns_newest_entries_first(tmp_path):
+    append_repair_history(
+        tmp_path,
+        {
+            "timestamp": "2026-06-13T00:00:00+00:00",
+            "run_id": "old",
+            "workflow_name": "old.json",
+            "status": "planned",
+            "failure_class": "execution_error",
+            "retry_supported": True,
+            "action_count": 1,
+        },
+    )
+    append_repair_history(
+        tmp_path,
+        {
+            "timestamp": "2026-06-13T00:01:00+00:00",
+            "run_id": "new",
+            "workflow_name": "new.json",
+            "status": "retried",
+            "failure_class": "missing_outputs",
+            "retry_supported": True,
+            "action_count": 1,
+        },
+    )
+
+    history = read_repair_history(tmp_path, limit=1)
+
+    assert history["entries"][0]["run_id"] == "new"
+    assert history["path"].endswith(".comfydex\\repair_history.jsonl") or history[
+        "path"
+    ].endswith(".comfydex/repair_history.jsonl")

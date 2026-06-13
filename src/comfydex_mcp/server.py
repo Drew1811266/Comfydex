@@ -92,6 +92,11 @@ from .recipes import (
     suggest_workflow_recipes,
 )
 from .reports import export_run_report
+from .repairs import (
+    append_repair_history,
+    build_run_repair_plan,
+    read_repair_history,
+)
 from .runs import (
     append_event,
     create_run,
@@ -486,6 +491,50 @@ def _read_workflow_snapshot(
             raise ValueError(f"workflow snapshot missing for run_id: {run_id}")
         return None
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+async def _diagnose_run_record(
+    ctx: ToolContext,
+    record: dict[str, Any],
+    *,
+    use_object_info: bool = True,
+) -> dict[str, Any]:
+    run_id = str(record.get("run_id") or "")
+    workflow = _read_workflow_snapshot(ctx.config.runs_dir, run_id, required=False)
+    object_info = None
+    if use_object_info:
+        async with ComfyClient(
+            ctx.config.base_url,
+            ctx.config.headers,
+            ctx.config.request_timeout_seconds,
+        ) as client:
+            object_info = await client.get_object_info()
+    workflow_analysis = (
+        analyze_workflow(workflow, object_info) if isinstance(workflow, dict) else None
+    )
+    return diagnose_run(record, workflow, object_info, workflow_analysis=workflow_analysis)
+
+
+def _append_repair_history(
+    ctx: ToolContext,
+    *,
+    run_id: str,
+    workflow_name: str | None,
+    status: str,
+    repair_plan: dict[str, Any],
+) -> dict[str, Any]:
+    retry = repair_plan.get("retry")
+    actions = repair_plan.get("actions")
+    record = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "run_id": run_id,
+        "workflow_name": workflow_name,
+        "status": status,
+        "failure_class": repair_plan.get("failure_class"),
+        "retry_supported": bool(isinstance(retry, dict) and retry.get("supported")),
+        "action_count": len(actions) if isinstance(actions, list) else 0,
+    }
+    return append_repair_history(ctx.workspace, record)
 
 
 def _read_ui_workflow_for_live_bridge(
@@ -2049,17 +2098,113 @@ async def comfy_diagnose_run(
 ) -> dict[str, Any]:
     ctx = tool_context()
     record = read_run(ctx.config.runs_dir, run_id)
-    workflow = _read_workflow_snapshot(ctx.config.runs_dir, run_id, required=False)
-    object_info = None
-    if use_object_info:
-        async with ComfyClient(
-            ctx.config.base_url,
-            ctx.config.headers,
-            ctx.config.request_timeout_seconds,
-        ) as client:
-            object_info = await client.get_object_info()
-    workflow_analysis = analyze_workflow(workflow, object_info) if isinstance(workflow, dict) else None
-    return diagnose_run(record, workflow, object_info, workflow_analysis=workflow_analysis)
+    return await _diagnose_run_record(ctx, record, use_object_info=use_object_info)
+
+
+@mcp.tool()
+async def comfy_plan_run_repair(
+    run_id: str,
+    use_object_info: bool = True,
+) -> dict[str, Any]:
+    ctx = tool_context()
+    record = read_run(ctx.config.runs_dir, run_id)
+    diagnosis = await _diagnose_run_record(ctx, record, use_object_info=use_object_info)
+    workflow_name = record.get("workflow_name")
+    repair_plan = build_run_repair_plan(
+        run_id,
+        diagnosis,
+        workflow_name=workflow_name if isinstance(workflow_name, str) else None,
+    )
+    history_record = _append_repair_history(
+        ctx,
+        run_id=run_id,
+        workflow_name=workflow_name if isinstance(workflow_name, str) else None,
+        status="planned",
+        repair_plan=repair_plan,
+    )
+    return {
+        "status": "planned",
+        "run_id": run_id,
+        "diagnosis": diagnosis,
+        "repair_plan": repair_plan,
+        "history_record": history_record,
+    }
+
+
+@mcp.tool()
+async def comfy_read_repair_history(limit: int = 20) -> dict[str, Any]:
+    return read_repair_history(tool_context().workspace, limit)
+
+
+@mcp.tool()
+async def comfy_retry_run_repair(
+    run_id: str,
+    confirm: bool = False,
+    use_object_info: bool = True,
+) -> dict[str, Any]:
+    ctx = tool_context()
+    planned = await comfy_plan_run_repair(run_id, use_object_info=use_object_info)
+    repair_plan = planned["repair_plan"]
+    retry = repair_plan.get("retry", {})
+    if not isinstance(retry, dict) or not retry.get("supported"):
+        return {
+            "status": "blocked",
+            "run_id": run_id,
+            "diagnosis": planned["diagnosis"],
+            "repair_plan": repair_plan,
+            "next_actions": ["Review repair_plan.actions before retrying."],
+        }
+    if retry.get("requires_confirmation") and not confirm:
+        return {
+            "status": "requires_confirmation",
+            "run_id": run_id,
+            "diagnosis": planned["diagnosis"],
+            "repair_plan": repair_plan,
+        }
+
+    operation = retry.get("operation")
+    if operation == "fetch_outputs":
+        retry_result = await comfy_fetch_outputs(run_id)
+    elif operation == "resubmit_workflow":
+        workflow_name = repair_plan.get("workflow_name")
+        if not isinstance(workflow_name, str) or not workflow_name:
+            return {
+                "status": "blocked",
+                "run_id": run_id,
+                "diagnosis": planned["diagnosis"],
+                "repair_plan": repair_plan,
+                "next_actions": ["Repair retry requires a workflow_name."],
+            }
+        retry_result = await comfy_submit_workflow(
+            workflow_name,
+            run_label=f"{run_id}-repair",
+        )
+    else:
+        return {
+            "status": "blocked",
+            "run_id": run_id,
+            "diagnosis": planned["diagnosis"],
+            "repair_plan": repair_plan,
+            "next_actions": [f"Unsupported repair retry operation: {operation}"],
+        }
+
+    history_record = _append_repair_history(
+        ctx,
+        run_id=run_id,
+        workflow_name=repair_plan.get("workflow_name")
+        if isinstance(repair_plan.get("workflow_name"), str)
+        else None,
+        status="retried",
+        repair_plan=repair_plan,
+    )
+    return {
+        "status": "retried",
+        "run_id": run_id,
+        "diagnosis": planned["diagnosis"],
+        "repair_plan": repair_plan,
+        "retry_result": retry_result,
+        "history_record": history_record,
+    }
 
 
 @mcp.tool()
