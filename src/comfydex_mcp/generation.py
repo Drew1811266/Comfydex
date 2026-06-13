@@ -5,8 +5,10 @@ from copy import deepcopy
 from typing import Any
 
 from .node_semantics import get_node_semantics
+from .presets import resolve_generation_defaults
 from .recipes import suggest_workflow_recipes
 from .templates import get_workflow_template, list_workflow_templates
+from .user_guidance import explain_generation_plan_for_user
 
 DEFAULT_CONSTRAINTS = {
     "allow_overwrite": False,
@@ -176,6 +178,9 @@ def plan_workflow_generation(
     constraints: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     normalized_parameters = normalize_parameters(parameters)
+    defaulted = resolve_generation_defaults(normalized_parameters)
+    normalized_parameters = normalize_parameters(defaulted["parameters"])
+    resolved_defaults = defaulted["resolved_defaults"]
     candidates, recipe_candidates = _candidate_templates_with_recipes(
         intent,
         normalized_parameters,
@@ -193,7 +198,7 @@ def plan_workflow_generation(
         if not _has_parameter_value(merged_parameters, input_name)
     ]
 
-    return {
+    plan = {
         "intent": intent,
         "mode": _mode_from_template_id(selected_template_id),
         "selected_template_id": selected_template_id,
@@ -207,11 +212,14 @@ def plan_workflow_generation(
         "required_nodes": deepcopy(template["required_nodes"]),
         "semantic_coverage": _semantic_coverage_for_template(template),
         "parameters": merged_parameters,
+        "resolved_defaults": resolved_defaults,
         "constraints": normalize_constraints(constraints),
         "assumptions": deepcopy(template["assumptions"]),
         "missing_information": missing_information,
         "issues": [],
     }
+    plan["user_guidance"] = explain_generation_plan_for_user(plan)
+    return plan
 
 
 def _boost_candidates_from_recipes(

@@ -150,6 +150,27 @@ def test_plan_workflow_generation_includes_recipe_context():
     assert plan["selected_template_id"] == "lora-text-to-image"
 
 
+def test_plan_workflow_generation_applies_user_presets():
+    plan = plan_workflow_generation(
+        "z image text to image",
+        parameters={
+            "checkpoint_name": "z-image.safetensors",
+            "positive_prompt": "a studio product",
+            "quality_preset": "high",
+            "aspect_ratio": "landscape",
+            "style_preset": "product",
+        },
+    )
+
+    assert plan["parameters"]["width"] == 1216
+    assert plan["parameters"]["height"] == 832
+    assert plan["parameters"]["steps"] == 32
+    assert plan["parameters"]["cfg"] == 4.0
+    assert plan["resolved_defaults"]["model_family"] == "z-image"
+    assert plan["resolved_defaults"]["aspect_ratio"] == "landscape"
+    assert plan["user_guidance"]["title"] == "Ready to create an image"
+
+
 def test_candidate_templates_keeps_explicit_template_id_authoritative():
     candidates = candidate_templates(
         "upscale this image",
