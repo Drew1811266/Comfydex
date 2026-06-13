@@ -943,6 +943,92 @@ textarea {
   overflow-wrap: anywhere;
 }
 
+.readiness-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.readiness-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.readiness-summary-grid > div {
+  display: grid;
+  gap: 4px;
+  border: 1px solid #2a3038;
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: #151a20;
+}
+
+.readiness-summary-grid span,
+.readiness-item span,
+.readiness-criterion span {
+  color: #8d98a7;
+  font-size: 12px;
+}
+
+.readiness-summary-grid strong {
+  min-width: 0;
+  color: #f2f6fb;
+  overflow-wrap: anywhere;
+}
+
+.readiness-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 8px;
+}
+
+.readiness-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid #2a3038;
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: #11161c;
+}
+
+.readiness-item > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.readiness-item strong,
+.readiness-item span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.readiness-criteria {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 8px;
+}
+
+.readiness-criterion {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px solid #2a3038;
+  border-radius: 8px;
+  padding: 9px 10px;
+}
+
+.readiness-next {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 18px;
+  color: #c7d0db;
+}
+
 .compare-list {
   display: grid;
   gap: 4px;
@@ -981,6 +1067,9 @@ pre {
     .preset-strip,
     .split-pane,
     .settings-grid,
+    .readiness-summary-grid,
+    .readiness-grid,
+    .readiness-criteria,
     .install-summary-grid,
     .install-list-grid,
     .asset-workbench,

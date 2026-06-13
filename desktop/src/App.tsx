@@ -16,6 +16,7 @@ import {
   getCapabilityReport,
   getLiveBridgeStatus,
   getProjectStatus,
+  getTwentyReadinessReport,
   listGenerationPresets,
   listBatches,
   listRuns,
@@ -48,6 +49,7 @@ import type {
   RunRepairHistory,
   RunRepairResult,
   RunRow,
+  TwentyReadinessReport,
   UiGraphHistory,
   UiGraphPushResult,
   UserGuidance,
@@ -132,6 +134,7 @@ export function App() {
   const [installPlan, setInstallPlan] = useState<InstallPlan | null>(null);
   const [installAudit, setInstallAudit] = useState<InstallAudit | null>(null);
   const [installReviewError, setInstallReviewError] = useState<string | null>(null);
+  const [twentyReadiness, setTwentyReadiness] = useState<TwentyReadinessReport | null>(null);
 
   const refresh = useCallback(async () => {
     setLoadState("loading");
@@ -150,7 +153,8 @@ export function App() {
         configState,
         connectionState,
         bridgeState,
-        installReview
+        installReview,
+        readinessReport
       ] =
         await Promise.all([
           getProjectStatus(),
@@ -165,7 +169,8 @@ export function App() {
           getConfig(),
           checkConnection(),
           getLiveBridgeStatusOrNull(),
-          fetchInstallReview()
+          fetchInstallReview(),
+          getTwentyReadinessReport()
         ]);
 
       setStatus(projectStatus);
@@ -184,6 +189,7 @@ export function App() {
       setInstallPlan(installReview.installPlan);
       setInstallAudit(installReview.installAudit);
       setInstallReviewError(installReview.error);
+      setTwentyReadiness(readinessReport);
       setLoadState(projectStatus.workspace === "No workspace selected" ? "empty" : "loaded");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
@@ -403,6 +409,7 @@ export function App() {
           onRefreshInstallPlan={handleRefreshInstallPlan}
           onVerifyLiveBridgeStatus={handleVerifyLiveBridgeStatus}
           state={loadState}
+          twentyReadiness={twentyReadiness}
         />
       );
     }

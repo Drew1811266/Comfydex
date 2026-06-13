@@ -7,7 +7,8 @@ import type {
   InstallPlan,
   InstallPlanAction,
   LiveBridgeStatus,
-  LoadState
+  LoadState,
+  TwentyReadinessReport
 } from "../lib/types";
 
 export function SettingsView({
@@ -26,7 +27,8 @@ export function SettingsView({
   onReloadLiveBridgeClient,
   onRefreshInstallPlan,
   onVerifyLiveBridgeStatus,
-  state
+  state,
+  twentyReadiness
 }: {
   busy: boolean;
   capabilityReport: CapabilityReport | null;
@@ -44,6 +46,7 @@ export function SettingsView({
   onRefreshInstallPlan: () => void;
   onVerifyLiveBridgeStatus: () => void;
   state: LoadState;
+  twentyReadiness: TwentyReadinessReport | null;
 }) {
   if (state === "loading") return <State title="Loading settings" message="Reading project configuration." />;
   if (state === "error") return <State title="Unable to load settings" message={error ?? "Unable to load."} />;
@@ -153,6 +156,63 @@ export function SettingsView({
         onRecordInstallDecision={onRecordInstallDecision}
         onRefreshInstallPlan={onRefreshInstallPlan}
       />
+      <ReadinessPanel report={twentyReadiness} />
+    </section>
+  );
+}
+
+function ReadinessPanel({ report }: { report: TwentyReadinessReport | null }) {
+  const scenarios = report?.scenarios ?? [];
+  const criteria = report?.acceptance_criteria ?? [];
+  const statusClass = report?.status === "ready_for_2_0" ? "badge ok" : "badge warn";
+
+  return (
+    <section className="tool-panel readiness-panel">
+      <div className="view-header split compact">
+        <div>
+          <p className="eyebrow">2.0 readiness</p>
+          <h2>Conversational workflow gate</h2>
+        </div>
+        <span className={statusClass}>{formatStatus(report?.status ?? "unchecked")}</span>
+      </div>
+      <div className="readiness-summary-grid">
+        <SummaryCell label="Scenarios" value={String(report?.summary.scenario_count ?? 0)} />
+        <SummaryCell label="Ready" value={String(report?.summary.ready_count ?? 0)} />
+        <SummaryCell label="Needs work" value={String(report?.summary.needs_work_count ?? 0)} />
+        <SummaryCell label="Version" value={report?.readiness_version ?? "unchecked"} />
+      </div>
+      <div className="readiness-grid">
+        {scenarios.map((scenario) => (
+          <div className="readiness-item" key={scenario.scenario_id}>
+            <div>
+              <strong>{scenario.name}</strong>
+              <span>{scenario.ready_recipe_ids.length ? scenario.ready_recipe_ids.join(", ") : scenario.gaps.join(", ")}</span>
+            </div>
+            <span className={scenario.status === "ready" ? "badge ok" : "badge warn"}>
+              {formatStatus(scenario.status)}
+            </span>
+          </div>
+        ))}
+      </div>
+      {criteria.length ? (
+        <div className="readiness-criteria">
+          {criteria.map((criterion) => (
+            <div className="readiness-criterion" key={criterion.criterion_id}>
+              <strong>{criterion.label}</strong>
+              <span className={criterion.status === "ready" ? "badge ok" : "badge warn"}>
+                {formatStatus(criterion.status)}
+              </span>
+            </div>
+          ))}
+        </div>
+      ) : null}
+      {report?.next_steps.length ? (
+        <ul className="readiness-next">
+          {report.next_steps.slice(0, 4).map((step) => (
+            <li key={step}>{step}</li>
+          ))}
+        </ul>
+      ) : null}
     </section>
   );
 }
@@ -351,6 +411,10 @@ function formatBridgeState(status: LiveBridgeStatus | null): { label: string; de
     label: "Not ready",
     detail: status.diagnostics[0]?.message ?? "Live Bridge is not ready."
   };
+}
+
+function formatStatus(value: string): string {
+  return value.replace(/[_-]/g, " ");
 }
 
 function State({ message, title }: { message: string; title: string }) {

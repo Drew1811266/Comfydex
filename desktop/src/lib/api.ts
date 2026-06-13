@@ -25,6 +25,7 @@ import type {
   RunRepairPlan,
   RunRepairResult,
   RunRow,
+  TwentyReadinessReport,
   UiGraphHistory,
   UiGraphPushResult,
   WorkflowRow
@@ -294,6 +295,150 @@ const fallbackAssetSummary = {
   technical: { total: 2, asset_count: 2, favorite_count: 1 }
 };
 
+const fallbackTwentyReadinessReport: TwentyReadinessReport = {
+  readiness_version: "1.9.0",
+  status: "needs_work",
+  summary: {
+    scenario_count: 9,
+    ready_count: 4,
+    needs_work_count: 5
+  },
+  scenarios: [
+    {
+      scenario_id: "text-to-image",
+      name: "Text To Image",
+      status: "ready",
+      recipe_ids: ["text-to-image-basic", "text-to-image-sdxl", "text-to-image-lora"],
+      ready_recipe_ids: ["text-to-image-basic", "text-to-image-sdxl"],
+      gaps: [],
+      build_checks: []
+    },
+    {
+      scenario_id: "image-to-image",
+      name: "Image To Image",
+      status: "ready",
+      recipe_ids: ["image-to-image-basic"],
+      ready_recipe_ids: ["image-to-image-basic"],
+      gaps: [],
+      build_checks: []
+    },
+    {
+      scenario_id: "controlnet",
+      name: "ControlNet",
+      status: "ready",
+      recipe_ids: ["controlnet-pose"],
+      ready_recipe_ids: ["controlnet-pose"],
+      gaps: [],
+      build_checks: []
+    },
+    {
+      scenario_id: "upscaling",
+      name: "Upscaling",
+      status: "ready",
+      recipe_ids: ["image-upscale"],
+      ready_recipe_ids: ["image-upscale"],
+      gaps: [],
+      build_checks: []
+    },
+    {
+      scenario_id: "portrait",
+      name: "Portrait",
+      status: "missing_recipe",
+      recipe_ids: [],
+      ready_recipe_ids: [],
+      gaps: ["recipe"],
+      build_checks: []
+    },
+    {
+      scenario_id: "character-consistency",
+      name: "Character Consistency",
+      status: "missing_recipe",
+      recipe_ids: [],
+      ready_recipe_ids: [],
+      gaps: ["recipe"],
+      build_checks: []
+    },
+    {
+      scenario_id: "product-image",
+      name: "Product Image",
+      status: "missing_recipe",
+      recipe_ids: [],
+      ready_recipe_ids: [],
+      gaps: ["recipe"],
+      build_checks: []
+    },
+    {
+      scenario_id: "inpainting",
+      name: "Inpainting",
+      status: "missing_recipe",
+      recipe_ids: [],
+      ready_recipe_ids: [],
+      gaps: ["recipe"],
+      build_checks: []
+    },
+    {
+      scenario_id: "background-replacement",
+      name: "Background Replacement",
+      status: "missing_recipe",
+      recipe_ids: [],
+      ready_recipe_ids: [],
+      gaps: ["recipe"],
+      build_checks: []
+    }
+  ],
+  acceptance_criteria: [
+    {
+      criterion_id: "ordinary_user_docs",
+      label: "Ordinary-user documentation",
+      status: "needs_work",
+      details: ["Readiness docs are completed during release packaging."]
+    },
+    {
+      criterion_id: "scenario_coverage",
+      label: "First-class scenario coverage",
+      status: "needs_work",
+      details: ["Some 2.0 scenarios still need ready recipes."]
+    },
+    {
+      criterion_id: "capability_reports",
+      label: "Capability and missing requirement reports",
+      status: "ready",
+      details: ["Capability resolver and install planner are available before execution."]
+    },
+    {
+      criterion_id: "install_confirmation",
+      label: "Install plan confirmation",
+      status: "ready",
+      details: ["Install plans require confirmation and record audit entries by default."]
+    },
+    {
+      criterion_id: "live_bridge_push",
+      label: "Live Bridge push path",
+      status: "ready",
+      details: ["Generated UI workflows can be handed to the existing Live Bridge push path."]
+    },
+    {
+      criterion_id: "repair_loop",
+      label: "Execution and repair loop",
+      status: "ready",
+      details: ["Failed runs can be classified and converted into conservative repair plans."]
+    },
+    {
+      criterion_id: "desktop_visibility",
+      label: "Desktop readiness visibility",
+      status: "ready",
+      details: ["Desktop shows readiness status, scenario coverage, and remaining gaps."]
+    },
+    {
+      criterion_id: "release_validation",
+      label: "Release validation metadata",
+      status: "needs_work",
+      details: ["Release checklist is completed during packaging."]
+    }
+  ],
+  next_steps: ["Scenario coverage is not complete."]
+};
+
 function hasTauri(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
@@ -465,6 +610,10 @@ export function retryRunRepair(runId: string, confirm = false): Promise<RunRepai
 
 export function listGenerationPresets(): Promise<GenerationPresets> {
   return call("list_generation_presets", fallbackGenerationPresets);
+}
+
+export function getTwentyReadinessReport(): Promise<TwentyReadinessReport> {
+  return call("twenty_readiness_report", fallbackTwentyReadinessReport);
 }
 
 export function searchAssets(filters: AssetSearchFilters = {}): Promise<AssetSearchResult> {

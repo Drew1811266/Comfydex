@@ -359,4 +359,34 @@ export type GenerationPresets = {
   style: Record<string, Record<string, unknown>>;
 };
 
+export type ReadinessScenario = {
+  scenario_id: string;
+  name: string;
+  status: "ready" | "partial" | "missing_recipe" | string;
+  recipe_ids: string[];
+  ready_recipe_ids: string[];
+  gaps: string[];
+  build_checks: Array<Record<string, unknown>>;
+};
+
+export type ReadinessCriterion = {
+  criterion_id: string;
+  label: string;
+  status: "ready" | "needs_work" | string;
+  details: string[];
+};
+
+export type TwentyReadinessReport = {
+  readiness_version: string;
+  status: "ready_for_2_0" | "needs_work" | string;
+  summary: {
+    scenario_count: number;
+    ready_count: number;
+    needs_work_count: number;
+  };
+  scenarios: ReadinessScenario[];
+  acceptance_criteria: ReadinessCriterion[];
+  next_steps: string[];
+};
+
 export type LoadState = "loading" | "empty" | "error" | "loaded";

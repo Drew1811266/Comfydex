@@ -143,6 +143,26 @@ fn list_generation_presets(app: AppHandle) -> Value {
 }
 
 #[tauri::command]
+fn twenty_readiness_report(app: AppHandle) -> Value {
+    match current_workspace(&app) {
+        Ok(Some(workspace)) => run_bridge("twenty_readiness_report", &workspace, json!({})),
+        Ok(None) => ok(json!({
+            "readiness_version": "1.9.0",
+            "status": "needs_work",
+            "summary": {
+                "scenario_count": 9,
+                "ready_count": 0,
+                "needs_work_count": 9
+            },
+            "scenarios": [],
+            "acceptance_criteria": [],
+            "next_steps": ["Select a workspace before reading the 2.0 readiness gate."]
+        })),
+        Err(message) => bridge_error("WorkspaceError", message),
+    }
+}
+
+#[tauri::command]
 fn record_install_audit(app: AppHandle, payload: Value) -> Value {
     match current_workspace(&app) {
         Ok(Some(workspace)) => run_bridge("record_install_audit", &workspace, payload),
@@ -325,6 +345,7 @@ fn main() {
             capability_report,
             create_install_plan,
             list_generation_presets,
+            twenty_readiness_report,
             record_install_audit,
             read_install_audit,
             read_ui_graph_history,
