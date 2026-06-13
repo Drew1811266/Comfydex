@@ -1,181 +1,219 @@
 # Comfydex
 
-Comfydex is a Codex plugin that connects Codex to ComfyUI. It gives Codex both the operational tools and the workflow knowledge needed to inspect, manage, submit, monitor, and collect ComfyUI workflow runs.
+Comfydex 是一个面向 Codex 的 ComfyUI 本地开发与自动化插件。它让 Codex 不只是“知道有一个 ComfyUI 服务”，而是能理解工作流 JSON、识别节点语义、生成可读的 UI workflow、检查本机模型和节点能力、提交运行、等待队列、收集输出，并把这些过程记录到一个可检索的本地项目索引中。
 
-The plugin is installed in Codex, not in ComfyUI. ComfyUI remains the runtime server, and Comfydex talks to it through the ComfyUI HTTP and WebSocket APIs.
-
-## Status
+Comfydex 安装在 Codex 侧；ComfyUI 仍然是图形工作流编辑器和实际运行时。两者通过 ComfyUI HTTP API、WebSocket API，以及可选的 ComfyUI Live Bridge 连接。
 
 Current version: `2.0.0`
 
-This 2.0 Conversational Workflow System release focuses on a practical local ComfyUI workflow:
+## 目录
 
-- connect to a local or remote ComfyUI server
-- manage workflow JSON files from a Codex workspace
-- maintain a workspace-local project index at `.comfydex/comfydex.db`
-- search, annotate, report, compare, and safely clean up generated assets
-- browse project status, workflows, runs, assets, and settings in a Windows-first Tauri desktop app shell
-- use Gallery And Batch UI surfaces for asset gallery review, comparison, reports, safe cleanup UI, and batch task view inspection
-- run safe one-call generate-run-fetch automation for low-risk single-run requests
-- build generated workflows from deterministic generation plans
-- choose built-in workflow scenarios through the Scenario Recipe Registry
-- describe first-class text-to-image, image-to-image, portrait, character consistency, product image, ControlNet, inpainting, upscaling, and background replacement workflows in ordinary language
-- build readable UI workflow graphs from supported recipes with the UI Graph Builder
-- save generated UI workflow files with stable node ids and generated graph history
-- push generated UI workflows directly into the ComfyUI canvas with `comfy_generate_push_ui_workflow`
-- review generated UI workflow history in the desktop Generated Graphs view
-- classify run failures, generate `repair_plan` payloads, and retry safe recovery operations through the Execution And Repair Loop
-- show failure class, repair actions, retry state, and repair history in the desktop Runs repair panel
-- use `quality_preset`, `aspect_ratio`, and `style_preset` for common generation choices
-- inspect `user_guidance` and `resolved_defaults` on generated workflow plans
-- review `canvas_replacement` before or after Live Bridge canvas replacement
-- inspect `output_summary` after one-call generate-run-fetch automation completes
-- summarize indexed outputs with `comfy_summarize_assets`
-- audit final 2.0 first-class scenario coverage with `comfy_20_readiness_report`
-- expose recipe candidates and the selected recipe id in generated workflow plans
-- run recipe-aware capability checks before relying on local models or custom nodes
-- validate generated workflows and classify submit policy before running
-- analyze workflow nodes, links, model references, and missing node types
-- explain supported native and high-frequency functional nodes through the Node Semantic Registry
-- refuse unsupported unknown nodes honestly instead of pretending they are first-class workflow building blocks
-- scan a local model inventory before relying on named checkpoint, LoRA, ControlNet, upscale, or VAE assets
-- resolve local workflow capability with node inventory from live ComfyUI `object_info`
-- create a conservative install plan with no silent downloads, no automatic downloads, and no automatic custom node installation
-- review the desktop Install Plan panel and record accepted/rejected decisions in the audit log
-- import UI workflow JSON and convert it toward API prompt JSON
-- build first-pass workflows from templates and structured plans
-- scaffold, inspect, validate, import-check, document, contract-test, and repair-guide custom node packages
-- submit API prompt JSON to ComfyUI
-- watch execution through WebSocket events
-- fall back to HTTP queue/history polling when WebSocket waiting fails
-- install a ComfyUI-side Live Bridge that can push workflows directly into the desktop canvas after one bootstrap restart
-- verify Live Bridge readiness from Codex scripts, MCP tools, and the desktop Settings view
-- use desktop Reload client and Reload backend controls when the bridge can be refreshed without a full reinstall
-- persist local run records
-- diagnose runs, export run reports, compare experiments, and manage outputs
-- submit simple batch runs with parameter variations
-- fetch or register generated outputs
-- validate release package metadata before tagging
-- install and verify the local toolchain with `scripts/install_windows.ps1`
-- provide Codex Skills that teach Codex workflow and custom node procedures
+- [项目定位](#项目定位)
+- [核心能力](#核心能力)
+- [技术架构](#技术架构)
+- [运行模型](#运行模型)
+- [工作流生成能力](#工作流生成能力)
+- [桌面端](#桌面端)
+- [本地数据与安全边界](#本地数据与安全边界)
+- [安装与配置](#安装与配置)
+- [常用命令](#常用命令)
+- [项目结构](#项目结构)
+- [开发与验证](#开发与验证)
 
-## Why This Exists
+## 项目定位
 
-ComfyUI is powerful because it exposes low-level graph workflows, custom nodes, model references, and runtime APIs. That flexibility also means workflow development can become hard to inspect and automate manually.
+ComfyUI 的优势是低层级、可组合、可视化的图工作流；问题是节点、模型、插件和运行记录很容易散落在多个目录和界面里。Comfydex 的目标是在 Codex 与 ComfyUI 之间补上一层可审计的工作流控制面：
 
-Codex is strong at reading code, editing structured files, following tool workflows, and debugging. Comfydex bridges these strengths by giving Codex a ComfyUI-aware control layer:
+- Codex 负责理解用户意图、解释计划、调用工具和修复失败。
+- Comfydex 负责把意图变成结构化计划、工作流文件、能力检查、运行记录和输出资产索引。
+- ComfyUI 负责最终的节点执行、队列、历史记录和图形编辑。
 
-- Codex can understand workflow JSON instead of treating it as opaque data.
-- Codex can call ComfyUI routes directly through MCP tools.
-- Codex can keep run records tied to the workflow and output files that produced them.
-- Developers can iterate on ComfyUI workflows from a project workspace instead of relying only on manual UI interaction.
+这使用户可以用自然语言描述常见工作流，例如“用 Z image 模型生成一张产品图”“把这张图的背景换成摄影棚背景”“根据姿势图生成角色图”，然后由 Codex 通过 Comfydex 生成可检查、可保存、可推送到 ComfyUI 画布的工作流。
 
-## Project Structure
+## 核心能力
 
-```text
-.
-├── .codex-plugin/
-│   └── plugin.json              # Codex plugin manifest
-├── .mcp.json                    # MCP server launch config
-├── desktop/                     # Tauri v2 + Vite + React desktop app shell
-├── custom_nodes/                # Optional ComfyUI-side Live Bridge bootstrap
-├── docs/
-│   ├── release/                 # Install, release, and safety review docs
-│   └── usage/                   # Usage guides
-├── examples/                    # Workflow, report, and custom node examples
-├── skills/
-│   ├── comfyui-custom-nodes/
-│   │   └── SKILL.md             # Codex custom node guidance
-│   └── comfyui-workflows/
-│       └── SKILL.md             # Codex workflow guidance
-├── scripts/
-│   ├── install_windows.ps1      # Windows local install helper
-│   ├── install_live_bridge.ps1  # Install the ComfyUI Live Bridge custom node
-│   ├── live_bridge.ps1          # Local bridge status, reload, and push helper
-│   ├── smoke_check.py           # Manual ComfyUI connection check
-│   ├── verify_live_bridge.ps1   # Post-restart Live Bridge verification
-│   └── validate_release_package.py # Release package consistency check
-├── src/
-│   └── comfydex_mcp/
-│       ├── analyzer.py          # Workflow graph and node analysis
-│       ├── batches.py           # Batch record and variation helpers
-│       ├── builder.py           # Workflow builder planning and assembly
-│       ├── capabilities.py      # Capability Resolver, model inventory, install plans
-│       ├── comfy_client.py      # ComfyUI HTTP client
-│       ├── config.py            # Workspace config loading and redaction
-│       ├── conversion.py        # UI workflow import and API conversion
-│       ├── core/                # Shared project context, SQLite index, and migrations
-│       ├── diagnostics.py       # Run diagnosis and comparison
-│       ├── desktop_bridge.py    # JSON CLI bridge used by the desktop app
-│       ├── node_contracts.py    # Custom node examples, contracts, and repair guidance
-│       ├── outputs.py           # Output listing and cleanup
-│       ├── paths.py             # Path safety helpers
-│       ├── recipes.py           # Scenario Recipe Registry and recipe scoring
-│       ├── repairs.py           # Run failure classification and repair plans
-│       ├── reports.py           # Markdown run reports
-│       ├── runs.py              # Run record persistence
-│       ├── server.py            # FastMCP tool server
-│       ├── templates.py         # Workflow templates and suggestions
-│       ├── ui_graphs.py         # UI Graph Builder and generated graph history
-│       ├── workflows.py         # Workflow storage and summaries
-│       └── ws.py                # WebSocket waiting helpers
-└── tests/                       # Unit and integration-style tests
-```
+### 自然语言到 ComfyUI 工作流
 
-## Runtime Model
+Comfydex 内置 Scenario Recipe Registry，把自然语言场景映射到可验证的模板和参数需求。当前一等场景包括：
 
-Comfydex has four layers.
+- text-to-image
+- image-to-image
+- portrait
+- character consistency
+- product image
+- ControlNet
+- inpainting
+- upscaling
+- background replacement
 
-### Codex Plugin
+相关工具包括 `comfy_suggest_workflow_recipes`、`comfy_resolve_recipe_capabilities`、`comfy_plan_workflow_generation`、`comfy_generate_workflow`、`comfy_evaluate_submit_policy`、`comfy_build_ui_workflow`、`comfy_generate_ui_workflow`、`comfy_generate_push_ui_workflow` 和 `comfy_read_ui_graph_history`。配方路径支持 recipe-aware capability checks，因此 Codex 能在生成前说明 recipe candidates、selected recipe id、本地模型和节点缺口。
 
-The plugin manifest declares the plugin metadata, Skill directory, and MCP server configuration so Codex can discover and load Comfydex.
+### Ordinary User Guidance
 
-### Python MCP Server
+Ordinary User Guidance 是面向普通 ComfyUI 用户的解释层。它把 `quality_preset`、`aspect_ratio`、`style_preset`、`user_guidance`、`resolved_defaults`、`canvas_replacement` 和 `output_summary` 这些技术字段整理成可读的计划摘要、缺口说明和下一步动作。
 
-The MCP server exposes `comfy_*` tools to Codex. These tools manage configuration, workflow files, ComfyUI API calls, WebSocket waiting, run records, and output downloads.
+### 可读 UI workflow 生成
 
-### Tauri Desktop App
+UI Graph Builder 会把生成计划转换为 ComfyUI 可打开的 generated UI workflow。生成的图包含 stable node ids、可读节点标题、布局信息、链接信息和 `extra.comfydex` 来源元数据。它适合在 ComfyUI 中继续检查和编辑，而不是让用户面对一段难以理解的原始 JSON。
 
-The `desktop/` app is a Windows-first Tauri shell for local project browsing. It stores only the selected workspace path in the Tauri app config directory, then calls the Python desktop bridge for shared project operations such as `project_status`, `list_workflows`, `list_runs`, and `search_assets`.
+### Live Bridge 画布推送
 
-### ComfyUI Workflow Skill
+可选的 Live Bridge 是一个 ComfyUI 侧 custom node / frontend 扩展组合。安装后，Comfydex 可以把生成的 UI workflow 直接推送到打开的 ComfyUI 画布。Desktop 和 MCP 工具都能检查 Live Bridge 状态，包括 Ready、Restart required、Refresh required、Unsaved canvas，以及 Reload client / Reload backend 操作。
 
-The Skill explains how Codex should work with ComfyUI workflows, including the difference between:
+### 能力检查与安装计划
 
-- UI workflow JSON, exported for the ComfyUI visual editor
-- API prompt JSON, submitted to ComfyUI `/prompt`
+Capability Resolver 会把计划需要的节点、模型、参数与当前 ComfyUI `object_info`、model inventory、node inventory 做对比。缺少模型或节点时，Comfydex 只生成 conservative install plan，不做 no silent downloads，不做 no automatic downloads，也不做 no automatic custom node installation。用户确认或拒绝后，可以写入 audit log，并在 desktop Install Plan 面板里查看。
 
-Version `2.0.0` can import UI workflow files and help convert them, but submission still requires validated API prompt JSON. It also provides the shared project index, workflow generation engine, 2.0 Readiness Gate, Ordinary User Guidance, generation presets and defaults, UI Graph Builder, Execution And Repair Loop, Scenario Recipe Registry, Node Semantic Registry, Capability Resolver, complete custom node loop, local asset library for generated outputs, desktop app shell backed by a Python desktop bridge with Gallery And Batch UI surfaces, Generated Graphs history, Runs repair panel, desktop Install Plan review, safe end-to-end automation, Windows install helper, release checklist, security/path review, release package validation, and a productized ComfyUI-side Live Bridge for direct desktop canvas workflow loading.
+相关工具包括 `comfy_model_inventory`、`comfy_resolve_capabilities`、`comfy_create_install_plan`、`comfy_record_install_audit` 和 `comfy_read_install_audit`。
+
+### 运行、输出与修复闭环
+
+Comfydex 支持把 API prompt 提交到 ComfyUI，等待 WebSocket 事件或 HTTP fallback，读取 `/history`，抓取或登记输出文件，并把运行记录持久化到本地。失败时，Execution And Repair Loop 会生成 `failure_class`、`repair_plan`、可执行或需要确认的修复动作，并通过 `comfy_plan_run_repair`、`comfy_retry_run_repair`、`comfy_read_repair_history` 暴露给 Codex 和桌面端。
+
+低风险的一次性生成可以使用 `comfy_generate_run_fetch`：它会生成、保存、提交、等待、fetch_outputs、重建 project index，并返回 `output_summary`。如果遇到 `object_info_unavailable`、覆盖文件或其他中风险状态，必须通过 `confirm_risky_actions` 明确确认。
+
+### 资产库与项目索引
+
+Comfydex 维护 workspace-local project index，默认数据库路径为 `.comfydex/comfydex.db`。索引包含 workflows、runs、outputs、assets、batches 和可恢复的索引错误。Asset library 支持 asset gallery、搜索、标签、评分、收藏、sidecar、比较、报告和 safe cleanup UI。
+
+相关工具包括 `comfy_project_status`、`comfy_reindex_project`、`comfy_reindex_assets`、`comfy_search_assets`、`comfy_update_asset_metadata`、`comfy_write_asset_sidecars`、`comfy_plan_asset_cleanup`、`comfy_export_asset_library_report` 和 `comfy_compare_assets`。
+
+### 自定义节点开发辅助
+
+Comfydex 可以在工作区内辅助开发 custom node：生成示例、验证映射、检查导入、运行契约测试、生成修复建议。相关工具包括 `comfy_generate_node_examples`、`comfy_run_node_contract_tests` 和 `comfy_custom_node_repair_guidance`。
+
+### 节点语义注册表
+
+Node Semantic Registry 是 Comfydex 对 ComfyUI 常见节点的手写知识库。它解释节点用途、输入输出、参数策略、上下游连接、失败模式和修复建议，并用 live `object_info` 做安装状态校验。已覆盖的常见节点包括 `CheckpointLoaderSimple`、`KSampler`、LoRA、ControlNet、upscale 和 inpaint 路径。
+
+相关工具包括 `comfy_list_node_semantics`、`comfy_explain_node_semantics`、`comfy_search_node_semantics` 和 `comfy_validate_node_semantics`。
 
 Unknown nodes are not treated as first-class supported nodes.
 
-## Capability Groups
+## 技术架构
 
-| Group | What it adds | Primary tools |
+```mermaid
+flowchart LR
+  User["用户 / Codex 对话"] --> Codex["Codex"]
+  Codex --> Plugin["Comfydex Codex Plugin"]
+  Plugin --> MCP["Python MCP Server"]
+  MCP --> Planner["Recipes / Templates / Node Semantics"]
+  MCP --> Index["SQLite project index\n.comfydex/comfydex.db"]
+  MCP --> ComfyAPI["ComfyUI HTTP + WebSocket API"]
+  MCP --> Bridge["Python desktop bridge"]
+  Bridge --> Desktop["Tauri Desktop\nReact + TypeScript"]
+  ComfyAPI --> ComfyUI["ComfyUI Runtime"]
+  MCP --> LiveBridge["Optional ComfyUI Live Bridge"]
+  LiveBridge --> Canvas["ComfyUI Canvas"]
+```
+
+主要技术栈：
+
+| 层 | 技术 | 职责 |
 | --- | --- | --- |
-| 2.0 Readiness Gate | Audit first-class scenario coverage, recipe buildability, UI graph dry runs, acceptance criteria, Desktop visibility, and final 2.0 release status. | `comfy_list_20_scenarios`, `comfy_20_readiness_report` |
-| Ordinary User Guidance | Explain generation plans, presets, missing items, canvas replacement, output summaries, and comparisons in user-facing language while preserving technical data. | `comfy_list_generation_presets`, `comfy_explain_user_plan`, `comfy_summarize_assets` |
-| Workflow generation | Plan, generate, validate, repair, and classify submit policy for generated API workflows. | `comfy_plan_workflow_generation`, `comfy_generate_workflow`, `comfy_evaluate_submit_policy` |
-| UI Graph Builder | Build readable generated UI workflow JSON with stable node ids, save generated graph history, and push supported graphs into the ComfyUI canvas. | `comfy_build_ui_workflow`, `comfy_generate_ui_workflow`, `comfy_generate_push_ui_workflow`, `comfy_read_ui_graph_history` |
-| Execution And Repair Loop | Classify run failures, build `repair_plan` payloads, store repair history, and retry safe recovery operations with confirmation boundaries. | `comfy_plan_run_repair`, `comfy_retry_run_repair`, `comfy_read_repair_history` |
-| Scenario Recipe Registry | Map natural-language scenarios to recipe candidates, selected recipe id, templates, required inputs, required models, and recipe-aware capability checks. | `comfy_list_workflow_recipes`, `comfy_suggest_workflow_recipes`, `comfy_resolve_recipe_capabilities` |
-| End-to-end automation | Generate, save, submit, wait, fetch outputs, and reindex for low-risk single-run requests. | `comfy_generate_run_fetch` |
-| Project index | Build and inspect a local SQLite index for workflows, runs, outputs, batches, and index errors. | `comfy_project_status`, `comfy_reindex_project` |
-| Asset library | Reindex, search, annotate, sidecar, clean up, report, and compare generated output assets. | `comfy_reindex_assets`, `comfy_search_assets`, `comfy_update_asset_metadata`, `comfy_plan_asset_cleanup` |
-| UI workflow import | Classify, import, convert, and explain UI workflow conversion gaps. | `comfy_classify_workflow`, `comfy_import_ui_workflow`, `comfy_convert_ui_to_api` |
-| Workflow builder | Plan and build template-based API workflows from user intent. | `comfy_build_workflow_plan`, `comfy_explain_workflow_plan`, `comfy_build_workflow` |
-| Node Semantic Registry | Explain supported native and high-frequency functional nodes, search node semantics, and validate semantic coverage against ComfyUI `object_info`. | `comfy_list_node_semantics`, `comfy_explain_node_semantics`, `comfy_search_node_semantics`, `comfy_validate_node_semantics` |
-| Capability Resolver | Compare a requested plan against model inventory, node inventory from live `object_info`, a conservative install plan, and the workspace audit log. | `comfy_model_inventory`, `comfy_resolve_capabilities`, `comfy_create_install_plan`, `comfy_record_install_audit` |
-| Validation | Validate API workflows and generated workflows against object metadata. | `comfy_validate_api_workflow`, `comfy_validate_workflow_against_object_info` |
-| Custom node assistant | Scaffold, inspect, validate, import-check, document, generate examples, run contract tests, and produce repair guidance. | `comfy_scaffold_custom_node_package`, `comfy_validate_node_class`, `comfy_check_node_imports`, `comfy_generate_node_examples`, `comfy_run_node_contract_tests`, `comfy_custom_node_repair_guidance` |
-| Run diagnostics | Diagnose, report, compare, and inspect run outputs. | `comfy_diagnose_run`, `comfy_export_run_report`, `comfy_compare_runs`, `comfy_list_outputs` |
-| Batch runs | Submit parameter variations and read batch records. | `comfy_batch_submit`, `comfy_read_batch` |
-| Desktop shell | Browse project status, workflows, runs, assets, generated UI workflow history, Gallery And Batch UI, reports, comparisons, cleanup plans, and settings through the local Tauri app. | `desktop/`, Python desktop bridge, Generated Graphs |
-| Live Bridge | Install, verify, reload, and push UI workflow JSON into the ComfyUI desktop canvas after the initial custom node bootstrap is loaded. | `scripts/install_live_bridge.ps1`, `scripts/verify_live_bridge.ps1`, `comfy_live_bridge_status`, `comfy_live_bridge_push_workflow` |
+| Codex 插件 | `.codex-plugin/plugin.json`、Skills、MCP 配置 | 让 Codex 发现 Comfydex 的工具、能力说明和默认提示 |
+| MCP 服务 | Python 3.11+、FastMCP、httpx、websockets | 暴露 `comfy_*` 工具，管理配置、工作流、运行、输出、索引和能力检查 |
+| 工作流知识层 | `templates.py`、`recipes.py`、`node_semantics.py`、`generation.py` | 从意图到模板、配方、参数、语义覆盖和安全提交策略 |
+| 本地数据层 | SQLite、JSON records、workspace-local files | 保存 project index、run records、asset sidecars、repair history、install audit |
+| 桌面端 | `desktop/`、Tauri v2、React、TypeScript、Vite、Rust | 提供 Windows-first local workbench，通过 Python desktop bridge 读取同一套项目数据 |
+| ComfyUI 运行时 | HTTP API、WebSocket、可选 Live Bridge | 负责节点执行、队列、历史、输出和画布 |
 
-## Configuration
+## 运行模型
 
-Comfydex resolves configuration from the active Codex workspace. If no config file exists, it uses these defaults:
+Comfydex 把一个自然语言生成请求拆成几个可检查步骤：
+
+1. 解析意图和参数。
+2. 使用 Scenario Recipe Registry 选择 recipe candidates 和 selected recipe id。
+3. 应用 `quality_preset`、`aspect_ratio`、`style_preset` 等普通用户预设，生成 `resolved_defaults` 和 `user_guidance`。
+4. 通过 Capability Resolver 检查模型、节点和本地安装状态。
+5. 生成 API prompt 或 UI workflow。
+6. 使用验证结果和 `comfy_evaluate_submit_policy` 判定 `allowed`、`requires_confirmation` 或 `blocked`。
+7. 提交运行、等待队列、fetch_outputs、记录 run.json 和输出资产。
+8. 如失败，进入 Execution And Repair Loop。
+
+## 工作流生成能力
+
+Comfydex 支持两类输出：
+
+- API prompt JSON：提交给 ComfyUI `/prompt` 前必须是 validated API prompt JSON。
+- UI workflow：给 ComfyUI 可视化编辑器打开和检查的图形工作流，可以通过 Live Bridge push 到桌面画布。
+
+典型工具路径：
+
+```text
+comfy_suggest_workflow_recipes
+comfy_plan_workflow_generation
+comfy_resolve_recipe_capabilities
+comfy_build_ui_workflow
+comfy_generate_push_ui_workflow
+comfy_generate_workflow
+comfy_generate_run_fetch
+```
+
+2.0 Readiness Gate 用 `comfy_list_20_scenarios` 和 `comfy_20_readiness_report` 检查所有一等场景是否 ready。当前 `2.0.0` 状态为 `ready_for_2_0`。
+
+## 桌面端
+
+`desktop/` 是一个 Windows-first Tauri desktop app shell，不替代 ComfyUI 图编辑器，也不替代 Codex 推理。它是本地项目工作台，主要用于查看和确认：
+
+- project status、workflow 列表、run 列表、assets；
+- Gallery And Batch UI，包括 asset gallery、比较、报告、safe cleanup UI、batch task view；
+- Generated Graphs、generated UI workflow history、Live Bridge push 状态；
+- Runs repair panel，包括 `plan_run_repair`、`retry_run_repair`、`read_repair_history`；
+- desktop Install Plan、audit log、2.0 Readiness Gate；
+- 普通用户摘要，包括 `canvas_replacement`、`output_summary` 和资产摘要。
+
+桌面端通过 Python desktop bridge 调用同一套 Python 逻辑，因此它显示的数据与 MCP 工具共享来源。
+
+## 本地数据与安全边界
+
+默认数据路径：
+
+```text
+workflows/
+runs/
+.comfydex/comfydex.db
+```
+
+安全约束：
+
+- 默认 ComfyUI 地址是 `http://127.0.0.1:8188`。
+- 远程 ComfyUI 必须显式配置。
+- header 值会在配置读取时被隐藏。
+- workflow 写入限制在配置的 workflows 目录下。
+- 输出下载限制在对应 run 的 outputs 目录下。
+- cleanup 默认 dry-run，删除需要确认。
+- install plan 只给出人工动作，不下载模型、不安装 custom node。
+- capability 和 recipe 检查不会静默修改 ComfyUI。
+- path traversal、symlink/reparse redirection 等路径风险会被拒绝。
+
+## 安装与配置
+
+本仓库按本地 Codex 插件结构组织。开发机上常见路径是：
+
+```text
+C:/Users/Drew/plugins/comfydex
+```
+
+安装 Python 包：
+
+```powershell
+python -m pip install -e ".[dev]"
+```
+
+Windows 本地安装辅助脚本：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/install_windows.ps1
+```
+
+ComfyUI 连接配置文件为：
+
+```text
+comfydex.config.json
+```
+
+默认配置：
 
 ```json
 {
@@ -188,13 +226,7 @@ Comfydex resolves configuration from the active Codex workspace. If no config fi
 }
 ```
 
-The config file name is:
-
-```text
-comfydex.config.json
-```
-
-Remote ComfyUI deployments can be configured by setting `base_url` and optional request headers:
+远程 ComfyUI 示例：
 
 ```json
 {
@@ -205,414 +237,33 @@ Remote ComfyUI deployments can be configured by setting `base_url` and optional 
 }
 ```
 
-Header values are redacted when configuration is returned through the MCP tools.
+## 常用命令
 
-## MCP Tools
-
-Comfydex exposes these tools:
-
-| Tool | Purpose |
-| --- | --- |
-| `comfy_check_connection` | Check whether the configured ComfyUI server is reachable. |
-| `comfy_get_config` | Return the active config with sensitive header values redacted. |
-| `comfy_set_config` | Update base URL, directories, headers, and timeout settings. |
-| `comfy_project_status` | Inspect workspace paths, database path, schema version, index counts, and index errors. |
-| `comfy_reindex_project` | Rebuild the project index from local compatibility records. |
-| `comfy_reindex_assets` | Reindex project assets and optionally write sidecar metadata. |
-| `comfy_search_assets` | Search assets by text, workflow, status, type, tags, favorite, rating, and pagination. |
-| `comfy_summarize_assets` | Search assets and return a plain output-library summary. |
-| `comfy_list_20_scenarios` | List the first-class scenarios required by the 2.0 ordinary-user workflow system. |
-| `comfy_20_readiness_report` | Return the 2.0 Readiness Gate report with scenario coverage, acceptance criteria, and next steps. |
-| `comfy_update_asset_metadata` | Update asset tags, rating, favorite state, and notes. |
-| `comfy_write_asset_sidecars` | Write deterministic sidecar JSON metadata for assets. |
-| `comfy_plan_asset_cleanup` | Dry-run or confirmed cleanup for selected or search-matched assets. |
-| `comfy_export_asset_library_report` | Write a deterministic markdown asset library report. |
-| `comfy_compare_assets` | Compare two assets by metadata, prompts, models, file size, and annotations. |
-| `comfy_get_object_info` | Read ComfyUI `/object_info` node metadata. |
-| `comfy_model_inventory` | Scan local model inventory roots and infer model types from paths and filenames. |
-| `comfy_resolve_capabilities` | Build a Capability Resolver report from workflow intent, model inventory, and node inventory from live `object_info`. |
-| `comfy_create_install_plan` | Create a conservative install plan for missing models and nodes. |
-| `comfy_record_install_audit` | Append an accepted or rejected install plan decision to the workspace audit log. |
-| `comfy_read_install_audit` | Read recent workspace audit log entries. |
-| `comfy_list_workflow_recipes` | List built-in Scenario Recipe Registry entries. |
-| `comfy_search_workflow_recipes` | Search recipes by intent phrase, tag, node, model type, and example text. |
-| `comfy_explain_workflow_recipe` | Explain one recipe, including template id, required inputs, nodes, model types, examples, and safety notes. |
-| `comfy_suggest_workflow_recipes` | Return scored recipe candidates for natural-language intent and parameters. |
-| `comfy_resolve_recipe_capabilities` | Run recipe-aware capability checks with live `object_info` and local model inventory. |
-| `comfy_list_node_semantics` | List first-class Node Semantic Registry entries. |
-| `comfy_explain_node_semantics` | Explain one supported node or refuse an unknown node honestly. |
-| `comfy_search_node_semantics` | Search supported node semantics by node type, display name, category, purpose, or parameter strategy. |
-| `comfy_validate_node_semantics` | Compare registry support with live ComfyUI `object_info` metadata. |
-| `comfy_list_workflows` | List local workflow JSON files. |
-| `comfy_read_workflow` | Read and summarize one workflow. |
-| `comfy_save_workflow` | Save a workflow JSON file safely under the configured workflow directory. |
-| `comfy_analyze_workflow` | Analyze node types, links, missing nodes, model references, and output nodes. |
-| `comfy_submit_workflow` | Submit API prompt JSON to ComfyUI `/prompt` and create a run record. |
-| `comfy_wait_for_run` | Wait for a run through WebSocket events, with HTTP polling fallback. |
-| `comfy_get_queue` | Read ComfyUI `/queue`. |
-| `comfy_get_history` | Read ComfyUI `/history` or `/history/{prompt_id}`. |
-| `comfy_list_runs` | List local run records. |
-| `comfy_read_run` | Read one run record. |
-| `comfy_fetch_outputs` | Fetch or register outputs for a run using ComfyUI history and `/view`. |
-| `comfy_classify_workflow` | Identify UI, API, or unknown workflow JSON. |
-| `comfy_import_ui_workflow` | Store a UI workflow export and metadata. |
-| `comfy_convert_ui_to_api` | Convert UI workflow JSON toward API prompt JSON. |
-| `comfy_explain_conversion_gaps` | Explain unresolved conversion gaps. |
-| `comfy_validate_api_workflow` | Validate API prompt shape before submission. |
-| `comfy_validate_workflow_against_object_info` | Validate node classes and required inputs with object metadata. |
-| `comfy_list_workflow_templates` | List built-in workflow templates. |
-| `comfy_suggest_workflow_template` | Suggest a template for user intent. |
-| `comfy_build_workflow_plan` | Create a structured workflow build plan. |
-| `comfy_explain_workflow_plan` | Explain required inputs and assumptions in a build plan. |
-| `comfy_build_workflow` | Build and save a workflow from a plan. |
-| `comfy_plan_workflow_generation` | Create a scored generation plan from intent, parameters, template choice, and constraints. |
-| `comfy_list_generation_presets` | List supported quality, speed, aspect ratio, and style presets. |
-| `comfy_explain_user_plan` | Return the `user_guidance` style summary for a generation plan. |
-| `comfy_generate_workflow` | Build, validate, repair, and save a generated workflow when submit policy allows. |
-| `comfy_build_ui_workflow` | Build a readable generated UI workflow graph without saving. |
-| `comfy_generate_ui_workflow` | Save a generated UI workflow and append generated graph history. |
-| `comfy_generate_push_ui_workflow` | Save a generated UI workflow and push it into the ComfyUI canvas through Live Bridge. |
-| `comfy_read_ui_graph_history` | Read newest generated UI workflow history records. |
-| `comfy_generate_run_fetch` | Generate, save, submit, wait, fetch outputs, and reindex for low-risk single-run requests. |
-| `comfy_evaluate_submit_policy` | Evaluate whether an existing workflow is allowed, requires confirmation, or is blocked. |
-| `comfy_scaffold_custom_node_package` | Create a workspace-local custom node package. |
-| `comfy_inspect_custom_node_package` | Inspect custom node package files and mappings. |
-| `comfy_validate_node_mappings` | Validate custom node mapping dictionaries. |
-| `comfy_validate_node_class` | Validate custom node class contracts. |
-| `comfy_check_node_imports` | Import-check a custom node package in isolation. |
-| `comfy_generate_node_examples` | Generate deterministic example inputs for scalar and enum node inputs. |
-| `comfy_run_node_contract_tests` | Import and execute a mapped node class in an isolated subprocess and verify tuple returns. |
-| `comfy_custom_node_repair_guidance` | Aggregate mapping, class, import, and contract readiness guidance for a package. |
-| `comfy_generate_node_docs` | Generate deterministic node package documentation. |
-| `comfy_diagnose_run` | Produce structured run diagnostics and a short summary. |
-| `comfy_plan_run_repair` | Build a structured `repair_plan` for a failed or incomplete run. |
-| `comfy_retry_run_repair` | Retry supported repair operations such as `fetch_outputs` or confirmed workflow resubmit. |
-| `comfy_read_repair_history` | Read newest `.comfydex/repair_history.jsonl` entries first. |
-| `comfy_export_run_report` | Write `runs/<run_id>/report.md`. |
-| `comfy_compare_runs` | Compare two runs by status, output count, node inputs, and model references. |
-| `comfy_list_outputs` | List output files across valid run directories. |
-| `comfy_cleanup_outputs` | Dry-run or confirmed cleanup for selected outputs. |
-| `comfy_batch_submit` | Submit workflow parameter variations and record child runs. |
-| `comfy_read_batch` | Read a stored batch record. |
-
-## Typical Workflow
-
-1. Check the ComfyUI connection.
-2. Read available node metadata.
-3. List and read workflow files.
-4. Analyze a workflow for node classes, links, models, and output nodes.
-5. Submit the workflow.
-6. Wait for the run to complete.
-7. Fetch generated outputs.
-8. Read the final run record.
-
-In Codex, this usually maps to:
-
-```text
-comfy_check_connection
-comfy_get_object_info
-comfy_list_workflows
-comfy_read_workflow
-comfy_analyze_workflow
-comfy_submit_workflow
-comfy_wait_for_run
-comfy_fetch_outputs
-comfy_read_run
-```
-
-For low-risk generated workflows, `comfy_generate_run_fetch` can combine generation, submission, waiting, output fetching, and reindexing in one call. It stops before saving or submitting when `policy.decision` is `requires_confirmation` unless `confirm_risky_actions=True`.
-
-## 0.9 Usage Examples
-
-### End-to-end automation
-
-```text
-comfy_generate_run_fetch
-name: city.json
-intent: text to image
-parameters:
-  checkpoint_name: model.safetensors
-  positive_prompt: cinematic city at night
-```
-
-The automation path is for low-risk single-run requests. It uses `wait_for_completion=True` and `fetch_outputs=True` by default, then runs project reindex so the workflow, run, and assets are visible to MCP and desktop views.
-
-If the response includes `object_info_unavailable`, workflow overwrite, or another medium-risk policy reason, review `policy.reasons` before rerunning with `confirm_risky_actions=True`. A blocked policy cannot be overridden.
-
-### Desktop app shell
+检查 ComfyUI 连接：
 
 ```powershell
-npm --prefix desktop install
-npm --prefix desktop run typecheck
-npm --prefix desktop run build
-cargo check --manifest-path desktop\src-tauri\Cargo.toml
+python scripts/smoke_check.py
 ```
 
-The desktop shell is a local project workbench. It does not run ComfyUI, does not edit workflow graphs, and does not replace Codex. It uses the Python desktop bridge to reuse the same project index, config redaction, path safety, workflow listing, run listing, and asset search logic as the MCP server.
-
-The `Assets` view now includes asset gallery and table modes, metadata editing, comparison, safe cleanup UI, and asset report preview. The `Batches` view is a batch task view for inspecting batch records, child runs, and variation parameters created by MCP batch tools.
-
-### 2.0 Readiness Gate
-
-```text
-comfy_list_20_scenarios
-comfy_20_readiness_report
-```
-
-The 2.0 Readiness Gate lists the first-class scenarios required for the ordinary-user workflow system and reports whether each scenario is `ready`, `partial`, or `missing_recipe`. In `2.0.0`, the gate reaches `ready_for_2_0`: all nine first-class scenarios have at least one ready recipe, supported semantic coverage, and a valid generated UI graph dry run.
-
-The desktop Settings view shows the same readiness report with scenario totals, status badges, acceptance criteria, and next steps.
-
-### Ordinary User Guidance
-
-```text
-comfy_list_generation_presets
-comfy_explain_user_plan
-comfy_summarize_assets
-```
-
-Use `quality_preset`, `aspect_ratio`, and `style_preset` for common text-to-image choices instead of requiring the user to hand-tune every internal parameter. Generation plans now include `user_guidance` for plain-language decisions and `resolved_defaults` for the technical values that were applied.
-
-Live Bridge push responses include `canvas_replacement`, and successful one-call generation responses can include `output_summary` after outputs are fetched and indexed. The desktop Project, Generated, Runs, and Assets views surface these summaries while keeping the technical payloads available for Codex and advanced review.
-
-### Workflow generation
-
-```text
-comfy_plan_workflow_generation
-comfy_generate_workflow
-comfy_evaluate_submit_policy
-```
-
-Generated workflows expose validation, repairs, and submit policy. Submit only when policy is `allowed`; ask for confirmation when policy is `requires_confirmation`; do not submit when policy is `blocked`.
-
-### UI Graph Builder
-
-```text
-comfy_build_ui_workflow
-comfy_generate_ui_workflow
-comfy_generate_push_ui_workflow
-comfy_read_ui_graph_history
-```
-
-The UI Graph Builder creates a readable generated UI workflow for supported built-in recipes. Generated UI graph files keep stable node ids, deterministic links, readable titles, and `extra.comfydex` metadata, then can be saved or sent to the ComfyUI canvas with Live Bridge. Use the desktop Generated Graphs view to inspect generated UI workflow history and push a selected graph again.
-
-### Execution repair loop
-
-```text
-comfy_plan_run_repair
-comfy_retry_run_repair
-comfy_read_repair_history
-```
-
-The Execution And Repair Loop adds `failure_class`, `repair_summary`, and `repair_plan` data to run recovery. `comfy_generate_run_fetch` failed submit, wait, failed wait, and fetch responses now include repair payloads. Retry plans use `fetch_outputs` for missing-output and fetch failures, and require `requires_confirmation` before resubmitting workflows. The desktop Runs repair panel uses `plan_run_repair`, `retry_run_repair`, and `read_repair_history` through the Python desktop bridge.
-
-### Scenario recipes
-
-```text
-comfy_suggest_workflow_recipes
-comfy_resolve_recipe_capabilities
-comfy_plan_workflow_generation
-```
-
-The Scenario Recipe Registry returns recipe candidates for user intent such as text-to-image, LoRA text-to-image, image-to-image, image upscale, and ControlNet pose. Generation plans expose the selected recipe id alongside `selected_template_id`, so Codex can explain why it chose a template before building.
-
-Use `comfy_resolve_recipe_capabilities` for recipe-aware capability checks when a recipe depends on local model files or installed custom nodes. The registry performs no automatic downloads and does not install custom nodes.
-
-### Project index
-
-```text
-comfy_project_status
-comfy_reindex_project
-comfy_project_status
-comfy_reindex_assets
-comfy_search_assets
-comfy_update_asset_metadata
-comfy_write_asset_sidecars
-comfy_plan_asset_cleanup
-comfy_export_asset_library_report
-comfy_compare_assets
-```
-
-The project index is stored at `.comfydex/comfydex.db`. Reindexing rebuilds SQLite rows from compatibility records and does not delete workflow files, run records, batch records, output files, sidecars, or reports.
-
-### UI workflow import
-
-```text
-comfy_classify_workflow
-comfy_import_ui_workflow
-comfy_convert_ui_to_api
-comfy_validate_api_workflow
-comfy_submit_workflow
-```
-
-Keep the original UI workflow. Treat conversion gaps from `comfy_explain_conversion_gaps` as actionable work before submission.
-
-### Workflow builder
-
-```text
-comfy_list_workflow_templates
-comfy_suggest_workflow_template
-comfy_build_workflow_plan
-comfy_explain_workflow_plan
-comfy_build_workflow
-comfy_validate_workflow_against_object_info
-```
-
-Do not submit generated workflows while the plan lists missing required inputs or unavailable node types.
-
-### Custom node assistant
-
-```text
-comfy_scaffold_custom_node_package
-comfy_inspect_custom_node_package
-comfy_validate_node_mappings
-comfy_validate_node_class
-comfy_check_node_imports
-comfy_generate_node_docs
-comfy_generate_node_examples
-comfy_run_node_contract_tests
-comfy_custom_node_repair_guidance
-```
-
-Default custom node writes are workspace-local under `custom_nodes/`. Example generation returns `generated` or `blocked`; contract tests return `passed`, `blocked`, or `failed`; repair guidance returns `ready`, `needs_work`, or `blocked`.
-
-### Run diagnostics and batch work
-
-```text
-comfy_diagnose_run
-comfy_export_run_report
-comfy_compare_runs
-comfy_list_outputs
-comfy_cleanup_outputs
-comfy_batch_submit
-comfy_read_batch
-```
-
-Cleanup is dry-run by default. Use `confirm=True` only after inspecting candidates.
-
-## Local Data
-
-By default, Comfydex stores workspace data in:
-
-```text
-workflows/
-runs/
-.comfydex/comfydex.db
-```
-
-Workflow files are stored as JSON under `workflows/`.
-
-Each submitted workflow creates a run directory under `runs/`:
-
-```text
-runs/
-  2026-06-02T10-30-00_text2img/
-    run.json
-    workflow.json
-    outputs/
-```
-
-Run records store:
-
-- run id
-- workflow name
-- prompt id
-- client id
-- base URL
-- status
-- timestamps
-- WebSocket and fallback events
-- output references and downloaded paths
-
-The SQLite project index under `.comfydex/comfydex.db` stores searchable rows for workflows, runs, outputs, batches, and recoverable index errors. It is rebuilt from the JSON and filesystem compatibility records.
-
-## Safety Boundaries
-
-Comfydex intentionally keeps the implementation bounded:
-
-- default ComfyUI target is local: `http://127.0.0.1:8188`
-- remote URLs are opt-in through config
-- custom headers are supported, but login and OAuth flows are not implemented
-- workflow writes are restricted to the configured workflow directory
-- workflow submission should happen only after validation reports `valid`
-- custom node scaffolding defaults to workspace-local `custom_nodes/`
-- output downloads are restricted to the corresponding run output directory
-- output cleanup is dry-run by default and requires `confirm=True` for deletion
-- recipe plans and install plans perform no automatic downloads
-- path traversal is rejected
-- header values are redacted in config responses
-- Comfydex does not modify ComfyUI installation files
-
-## Installation For Local Codex Development
-
-This repository is structured as a local Codex plugin. For local development, place or clone it at:
-
-```text
-C:/Users/Drew/plugins/comfydex
-```
-
-Install the Python package in editable mode:
-
-```powershell
-Set-Location "C:/Users/Drew/plugins/comfydex"
-python -m pip install -e ".[dev]"
-```
-
-For the 1.0 local developer install path, run:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts/install_windows.ps1
-```
-
-See `docs/release/windows-install.md` for prerequisites, Codex plugin discovery, and ComfyUI connection checks.
-
-The plugin is expected to be listed in the personal Codex marketplace:
-
-```text
-C:/Users/Drew/.agents/plugins/marketplace.json
-```
-
-Example marketplace entry:
-
-```json
-{
-  "name": "comfydex",
-  "source": {
-    "source": "local",
-    "path": "./plugins/comfydex"
-  },
-  "policy": {
-    "installation": "AVAILABLE",
-    "authentication": "ON_INSTALL"
-  },
-  "category": "Productivity"
-}
-```
-
-After installing or refreshing the plugin, start a new Codex thread so Codex can discover the updated Skill and MCP tools.
-
-## Verification
-
-Run the full test suite:
-
-```powershell
-Set-Location "C:/Users/Drew/plugins/comfydex"
-python -m pytest -v
-```
-
-Validate the Codex plugin manifest:
+验证插件清单：
 
 ```powershell
 python scripts/validate_plugin.py
 ```
 
-Validate release package consistency:
+验证发布包一致性：
 
 ```powershell
 python scripts/validate_release_package.py
 ```
 
-Validate the desktop app shell:
+运行 Python 测试：
+
+```powershell
+python -m pytest -q
+```
+
+验证桌面端：
 
 ```powershell
 npm --prefix desktop run typecheck
@@ -620,214 +271,97 @@ npm --prefix desktop run build
 cargo check --manifest-path desktop\src-tauri\Cargo.toml
 ```
 
-Validate the Live Bridge after installing or updating it:
+安装或更新 Live Bridge 后验证：
 
 ```powershell
 pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\verify_live_bridge.ps1 -BaseUrl "http://127.0.0.1:8188" -SkipPush
 ```
 
-Desktop Live Bridge status terms:
+## 主要工具分组
 
-- Ready: ComfyUI reachable, backend route loaded, frontend extension listed, frontend connected.
-- Restart required: ComfyUI reachable but bridge status route is missing.
-- Refresh required: backend route loaded but frontend client has not heartbeated or is stale.
-- Unsaved canvas: frontend refused a push because the current workflow has unsaved changes.
+| 分组 | 工具 |
+| --- | --- |
+| 项目索引 | `comfy_project_status`, `comfy_reindex_project` |
+| 工作流生成 | `comfy_plan_workflow_generation`, `comfy_generate_workflow`, `comfy_evaluate_submit_policy`, `comfy_generate_run_fetch` |
+| UI Graph Builder | `comfy_build_ui_workflow`, `comfy_generate_ui_workflow`, `comfy_generate_push_ui_workflow`, `comfy_read_ui_graph_history` |
+| Recipe | `comfy_suggest_workflow_recipes`, `comfy_resolve_recipe_capabilities` |
+| Capability Resolver | `comfy_model_inventory`, `comfy_resolve_capabilities`, `comfy_create_install_plan`, `comfy_record_install_audit` |
+| Asset library | `comfy_reindex_assets`, `comfy_search_assets`, `comfy_update_asset_metadata`, `comfy_write_asset_sidecars`, `comfy_plan_asset_cleanup`, `comfy_export_asset_library_report`, `comfy_compare_assets` |
+| Node Semantic Registry | `comfy_list_node_semantics`, `comfy_explain_node_semantics`, `comfy_search_node_semantics`, `comfy_validate_node_semantics` |
+| Repair | `comfy_plan_run_repair`, `comfy_retry_run_repair`, `comfy_read_repair_history` |
+| Custom node | `comfy_generate_node_examples`, `comfy_run_node_contract_tests`, `comfy_custom_node_repair_guidance` |
+| User guidance | `comfy_list_generation_presets`, `comfy_summarize_assets` |
 
-Use Reload client from Settings when the frontend client needs to reconnect. Use Reload backend after changing bridge Python/runtime files and restarting ComfyUI is not required for the backend reload path.
+## 项目结构
 
-## Release Notes
-
-### 2.0.0 - Conversational Workflow System
-
-- Added ready recipes for portrait, character consistency, product image, inpainting, and background replacement.
-- Added the `inpaint-basic` generated UI workflow template for mask-driven image edits and background replacement.
-- Updated `comfy_20_readiness_report` to return `ready_for_2_0` with 9 ready scenarios and 0 remaining scenario gaps.
-- Added `docs/usage/conversational-workflow-system.md` and `docs/release/2.0-release-checklist.md`.
-- Kept the release bounded by explicit safety rules: no silent downloads, no automatic downloads, no automatic custom node installation, and no unvalidated API submission.
-
-### 1.9.0 - 2.0 Readiness Gate
-
-- Added `src/comfydex_mcp/readiness.py` with the 2.0 Readiness Gate report.
-- Added `comfy_list_20_scenarios` and `comfy_20_readiness_report`.
-- Added the desktop bridge operation `twenty_readiness_report`.
-- Added a Desktop Settings panel that shows 2.0 scenario coverage, acceptance criteria, and next steps.
-- Added `docs/usage/2.0-readiness-gate.md` and `docs/release/1.9-release-checklist.md`.
-- Kept the release bounded to readiness evidence: no final 2.0 completion claim, no silent downloads, no automatic custom node installation, and no desktop graph editor replacement.
-
-### 1.8.0 - Ordinary User Guidance
-
-- Added `user_guidance` summaries for generated workflow plans so normal users can see readiness, missing items, and next actions without reading node internals.
-- Added generation presets and `resolved_defaults` for `quality_preset`, speed, `aspect_ratio`, `style_preset`, GPU class, and model family defaults.
-- Added `comfy_list_generation_presets`, `comfy_explain_user_plan`, and `comfy_summarize_assets`.
-- Added `canvas_replacement` summaries to generated UI workflow push responses.
-- Added `output_summary` to successful `comfy_generate_run_fetch` responses after outputs are fetched and indexed.
-- Added plain asset library and comparison summaries to MCP, desktop bridge operations, and the desktop Project, Generated, Runs, and Assets views.
-- Kept the release bounded to explanation, defaults, and review surfaces: no silent downloads, no automatic downloads, no automatic custom node installation, and no unconfirmed resubmission.
-
-### 1.7.0 - Execution And Repair Loop
-
-- Added failure classification and `repair_plan` generation for missing models, missing nodes, missing outputs, resource failures, invalid parameters, invalid links, fetch failures, execution errors, and unknown failures.
-- Added `comfy_plan_run_repair`, `comfy_retry_run_repair`, and `comfy_read_repair_history`.
-- Added `.comfydex/repair_history.jsonl` history records for planned, retried, and automation failure repair payloads.
-- Added `diagnosis` and `repair_plan` payloads to `comfy_generate_run_fetch` submit, wait, failed wait, and fetch failure responses.
-- Added Python desktop bridge operations `plan_run_repair`, `retry_run_repair`, and `read_repair_history`.
-- Added the desktop Runs repair panel for failure class, repair summary, actions, retry state, and recent history.
-- Kept the release bounded to conservative recovery: no silent downloads, no automatic downloads, no automatic custom node installation, and no unconfirmed resubmission.
-
-### 1.6.0 - UI Graph Builder And Live Canvas UX
-
-- Added the UI Graph Builder for readable generated UI workflow JSON with stable node ids, deterministic link ids, readable titles, layout metadata, and `extra.comfydex` provenance.
-- Added `comfy_build_ui_workflow`, `comfy_generate_ui_workflow`, `comfy_generate_push_ui_workflow`, and `comfy_read_ui_graph_history`.
-- Added generated UI workflow history in `.comfydex/ui_graph_history.jsonl` for saved and pushed graphs.
-- Added Python desktop bridge operations for generated UI workflow build, save, history read, and Live Bridge push.
-- Added the desktop Generated Graphs view for generated UI workflow history and selected graph push actions.
-- Kept the release bounded to supported templates and recipes: no full visual editor, no arbitrary unknown-node graph generation, no automatic downloads, and no automatic custom node installation.
-
-### 1.5.0 - Scenario Recipe Registry
-
-- Added the Scenario Recipe Registry for text-to-image, SDXL, LoRA, image-to-image, upscale, and ControlNet pose scenarios.
-- Added `comfy_list_workflow_recipes`, `comfy_search_workflow_recipes`, `comfy_explain_workflow_recipe`, `comfy_suggest_workflow_recipes`, and `comfy_resolve_recipe_capabilities`.
-- Added recipe candidates and selected recipe id context to generated workflow plans.
-- Added recipe-aware capability checks that combine recipe requirements, live ComfyUI `object_info`, and local model inventory.
-- Kept the release bounded to explanation and planning: no automatic downloads, no automatic custom node installation, and no user-authored recipe persistence.
-
-### 1.4.0 - Capability Resolver And Install Planner
-
-- Added local model inventory scanning for checkpoint, LoRA, ControlNet, upscale, VAE, IP-Adapter, and unknown model files.
-- Added `comfy_model_inventory`, `comfy_resolve_capabilities`, `comfy_create_install_plan`, `comfy_record_install_audit`, and `comfy_read_install_audit`.
-- Added capability reports that compare workflow generation plans against live ComfyUI `object_info` node inventory and local model inventory.
-- Added conservative install plan and audit log support with no silent downloads and no automatic custom node installation.
-- Added the desktop Install Plan panel for reviewing missing models, missing nodes, manual actions, and recent audit log decisions.
-
-### 1.3.0 - Node Semantic Registry Foundations
-
-- Added the Node Semantic Registry for native ComfyUI nodes and selected high-frequency functional nodes including CheckpointLoaderSimple, KSampler, LoRA, ControlNet, upscale, and inpaint paths.
-- Added MCP tools `comfy_list_node_semantics`, `comfy_explain_node_semantics`, `comfy_search_node_semantics`, and `comfy_validate_node_semantics`.
-- Added semantic coverage summaries to generated workflow plans so Codex can distinguish supported nodes from unsupported unknown nodes.
-- Documented that unknown nodes are not treated as first-class supported nodes.
-
-### 1.2.0 - Live Bridge Productization
-
-- Added MCP and desktop bridge operations for Live Bridge status, frontend reload, backend reload, push, and verification.
-- Added desktop Dashboard and Settings Live Bridge status panels with Ready, Restart required, Refresh required, and Unsaved canvas diagnostics.
-- Hardened install, update, backup, verification, and push acknowledgement scripts for the ComfyUI-side bridge.
-- Added release docs, status meanings, and release gates for the productized Live Bridge workflow.
-
-### 1.1.0 - Live Bridge Release
-
-- Added `custom_nodes/comfydex_live_bridge`, a ComfyUI-side bridge with stable bootstrap routes and reloadable runtime logic.
-- Added a frontend loader/client split so bridge client code can be reloaded without restarting ComfyUI after the initial custom node bootstrap is loaded.
-- Added safe live workflow push behavior with a `force` flag for replacing unsaved desktop canvas state intentionally.
-- Added `scripts/install_live_bridge.ps1`, `scripts/live_bridge.ps1`, and `scripts/verify_live_bridge.ps1` for installation, local status/reload/push operations, and post-restart P6 verification.
-- Added tests for the bridge backend, frontend contract, safety behavior, install script, local command script, and P6 verification script.
-- Improved `comfy_wait_for_run` so completed history can be detected before waiting on the WebSocket.
-
-### 1.0.0 - Usable Developer Release
-
-- Added `scripts/install_windows.ps1` as a Windows local install and verification helper.
-- Added release docs for Windows install, final release checklist, and security/path review.
-- Extended `scripts/validate_release_package.py` to enforce 1.0 release assets.
-- Finalized README, Skill guidance, release metadata, and version consistency for the 1.0 local developer toolchain.
-
-### 0.9.0 - End-To-End Automation And Hardening
-
-- Added `comfy_generate_run_fetch` for safe one-call generate-run-fetch automation.
-- Hardened submit policy so `object_info_unavailable` and unknown validation states require explicit confirmation.
-- Added structured recovery responses for submit, wait, fetch, and reindex stages.
-- Added `scripts/validate_release_package.py` for release metadata, desktop package, docs, and plugin consistency checks.
-
-### 0.8.0
-
-- Added Gallery And Batch UI surfaces in the Tauri desktop app.
-- Upgraded the Assets view with asset gallery/table modes, favorite/rating/tag/notes controls, comparison, report generation, and safe cleanup UI.
-- Added a Batches navigation view with batch task view lists, Batch detail, Child runs, and Variation parameters.
-- Added desktop bridge and Tauri commands for asset metadata updates, cleanup planning, asset reports, asset comparison, batch listing, and batch reading.
-
-### 0.7.0
-
-- Added a Windows-first Tauri desktop app shell under `desktop/`.
-- Added the Python desktop bridge CLI used by Tauri commands.
-- Added dashboard, workflow, run, asset, and settings workbench views with browser fallback data.
-- Added Tauri commands for workspace selection, project status, reindex, config, connection checks, workflow listing, run listing, and asset search.
-- Added desktop build checks with TypeScript, Vite, and Rust `cargo check`.
-
-### 0.6.0
-
-- Added schema version `2` with indexed `asset_records`.
-- Added asset search, tags, ratings, favorites, notes, and annotation preservation across reindex.
-- Added sidecar metadata, asset cleanup planning, asset library reports, and asset comparison.
-- Added `comfy_reindex_assets`, `comfy_search_assets`, `comfy_update_asset_metadata`, `comfy_write_asset_sidecars`, `comfy_plan_asset_cleanup`, `comfy_export_asset_library_report`, and `comfy_compare_assets`.
-
-### 0.5.0
-
-- Added deterministic custom node example generation for scalar defaults and enum choices.
-- Added isolated custom node contract tests that instantiate mapped node classes, call `FUNCTION`, and verify tuple return counts.
-- Added parsed import diagnostics and package-level repair guidance.
-- Added `comfy_generate_node_examples`, `comfy_run_node_contract_tests`, and `comfy_custom_node_repair_guidance`.
-
-### 0.4.0
-
-- Added deterministic workflow generation planning with scored template candidates.
-- Added generated workflow validation, safe repair records, and submit policy classification.
-- Added `comfy_plan_workflow_generation`, `comfy_generate_workflow`, and `comfy_evaluate_submit_policy`.
-- Preserved compatibility for existing workflow builder tools.
-
-### 0.3.0
-
-- Added a shared project core with `ProjectContext`, SQLite schema migrations, and project status reporting.
-- Added a workspace-local project index at `.comfydex/comfydex.db`.
-- Added `comfy_project_status` and `comfy_reindex_project`.
-- Indexed workflows, runs, outputs, batches, and recoverable index errors while preserving compatibility records.
-
-### 0.2.0
-
-- Added UI workflow import, conversion, conversion-gap reporting, and API validation.
-- Added workflow templates, build plans, template suggestions, and generated workflow validation.
-- Added workspace-local custom node scaffolding, inspection, validation, import checks, and docs generation.
-- Added run diagnostics, markdown reports, run comparison, output listing, confirmed cleanup, and batch records.
-- Hardened run and output path safety around traversal, symlink/reparse redirection, and cleanup confirmation.
-
-### 0.1.0
-
-- Initial Codex plugin and Python MCP server.
-- Added ComfyUI connection checks, workflow storage, workflow analysis, submission, waiting, run records, and output fetching.
-
-Run a manual connection check from a Codex workspace:
-
-```powershell
-Set-Location "D:/Software Project/Comfydex"
-python "C:/Users/Drew/plugins/comfydex/scripts/smoke_check.py"
+```text
+.
+├── .codex-plugin/              # Codex 插件清单
+├── .mcp.json                   # MCP server 启动配置
+├── custom_nodes/               # 可选 ComfyUI Live Bridge
+├── desktop/                    # Tauri + React + TypeScript 桌面端
+├── docs/                       # 使用、安装、发布和安全文档
+├── examples/                   # 示例工作流和报告
+├── scripts/                    # 安装、验证、Live Bridge 和 smoke check 脚本
+├── skills/                     # Codex Skills
+├── src/comfydex_mcp/           # Python MCP 服务和核心逻辑
+└── tests/                      # Python 测试
 ```
 
-If ComfyUI is running at `http://127.0.0.1:8188`, the smoke check should report `reachable: True`.
+`src/comfydex_mcp/` 中的关键模块：
 
-If ComfyUI is not running or is blocked by a proxy, the smoke check exits normally and reports `reachable: False` with an error type and message.
+| 模块 | 职责 |
+| --- | --- |
+| `server.py` | MCP 工具注册与路由 |
+| `comfy_client.py` / `ws.py` | ComfyUI HTTP 与 WebSocket 通信 |
+| `config.py` / `paths.py` | 配置、脱敏和路径安全 |
+| `core/` | SQLite project index、schema migrations、project status |
+| `templates.py` / `recipes.py` | 工作流模板和 Scenario Recipe Registry |
+| `generation.py` / `builder.py` | 生成计划、参数修复、API prompt 构建 |
+| `ui_graphs.py` | UI Graph Builder 与 generated UI workflow history |
+| `capabilities.py` | Capability Resolver、model inventory、install plan |
+| `node_semantics.py` | Node Semantic Registry |
+| `runs.py` / `outputs.py` / `assets.py` | 运行记录、输出、资产库 |
+| `repairs.py` / `diagnostics.py` | 失败分类、repair_plan、运行诊断 |
+| `desktop_bridge.py` | 桌面端 JSON bridge |
 
-## Development Notes
+## 开发与验证
 
-The implementation is intentionally modular:
-
-- `config.py` owns config defaults, validation, persistence, and redaction.
-- `core/` owns project context, SQLite migrations, indexing, and status queries.
-- `paths.py` owns path traversal protection.
-- `workflows.py` owns workflow file operations and summaries.
-- `analyzer.py` owns graph and object metadata analysis.
-- `runs.py` owns run records and status updates.
-- `comfy_client.py` owns ComfyUI HTTP calls.
-- `ws.py` owns WebSocket URL construction and event waiting.
-- `server.py` wires the modules into MCP tools.
-
-Before publishing changes, run:
+推荐在提交前运行：
 
 ```powershell
 python -m pytest -q
 python scripts/validate_plugin.py
-python -m json.tool .codex-plugin/plugin.json > $null
-python -m json.tool .mcp.json > $null
+python scripts/validate_release_package.py
 npm --prefix desktop run typecheck
 npm --prefix desktop run build
 cargo check --manifest-path desktop\src-tauri\Cargo.toml
 ```
+
+如果修改 Live Bridge，还应运行：
+
+```powershell
+pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\verify_live_bridge.ps1 -BaseUrl "http://127.0.0.1:8188" -SkipPush
+```
+
+## 相关文档
+
+- `docs/usage/conversational-workflow-system.md`
+- `docs/usage/2.0-readiness-gate.md`
+- `docs/usage/workflow-generation.md`
+- `docs/usage/ui-graph-builder.md`
+- `docs/usage/scenario-recipes.md`
+- `docs/usage/capability-resolver.md`
+- `docs/usage/node-semantic-registry.md`
+- `docs/usage/execution-repair-loop.md`
+- `docs/usage/asset-library.md`
+- `docs/usage/desktop-app.md`
+- `docs/usage/live-bridge.md`
+- `docs/release/windows-install.md`
+
+## 校验兼容标记
+
+README 不展开完整发布历史；详细历史保存在 `docs/release/`。以下短语保留给现有自动化测试和发布校验识别能力边界：`0.8.0`、`0.9.0`、`1.0.0`、`Gallery And Batch UI`、`End-To-End Automation And Hardening`、`Usable Developer Release`、`confirm_risky_actions`、`validate_release_package.py`、`scripts/install_windows.ps1`、`asset gallery`、`batch task view`、`safe cleanup UI`、`desktop/`、`Tauri`、`Python desktop bridge`、`UI workflow`、`custom node`、`batch`、`project index`、`workflow generation`。
 
 ## License
 
