@@ -31,6 +31,69 @@ export type RunRow = {
   output_count: number;
 };
 
+export type RunDiagnosis = {
+  run_id?: string | null;
+  status?: string;
+  failure_class?: string;
+  repair_summary?: string;
+  summary?: string;
+  signals?: string[];
+  missing_node_types?: string[];
+  missing_model_references?: string[];
+  retryable?: boolean;
+};
+
+export type RunRepairAction = {
+  kind: string;
+  target?: string;
+  target_type?: string;
+  requires_confirmation?: boolean;
+  automatic?: boolean;
+};
+
+export type RunRepairRetry = {
+  supported: boolean;
+  operation?: string;
+  arguments?: Record<string, unknown>;
+  requires_confirmation?: boolean;
+};
+
+export type RunRepairPlan = {
+  status: string;
+  run_id: string;
+  workflow_name?: string | null;
+  failure_class: string;
+  summary: string;
+  actions: RunRepairAction[];
+  retry: RunRepairRetry;
+};
+
+export type RunRepairHistoryEntry = {
+  timestamp: string;
+  run_id: string;
+  workflow_name?: string | null;
+  status: string;
+  failure_class?: string | null;
+  retry_supported?: boolean;
+  action_count?: number;
+};
+
+export type RunRepairHistory = {
+  path: string;
+  entries: RunRepairHistoryEntry[];
+};
+
+export type RunRepairResult = {
+  status: string;
+  run_id: string;
+  diagnosis?: RunDiagnosis;
+  repair_plan: RunRepairPlan;
+  history_record?: RunRepairHistoryEntry;
+  repair_history_record?: RunRepairHistoryEntry;
+  retry_result?: Record<string, unknown>;
+  next_actions?: string[];
+};
+
 export type AssetRow = {
   asset_id: string;
   filename: string;

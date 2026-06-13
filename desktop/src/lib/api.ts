@@ -20,6 +20,9 @@ import type {
   InstallPlanAction,
   LiveBridgeStatus,
   ProjectStatus,
+  RunRepairHistory,
+  RunRepairPlan,
+  RunRepairResult,
   RunRow,
   UiGraphHistory,
   UiGraphPushResult,
@@ -201,6 +204,61 @@ const fallbackUiGraphHistory: UiGraphHistory = {
   ]
 };
 
+function fallbackRepairPlan(runId: string): RunRepairPlan {
+  return {
+    status: "retry_available",
+    run_id: runId,
+    workflow_name: "portrait-lora.json",
+    failure_class: "execution_error",
+    summary: "The run failed during execution; review the recorded event and retry after correction.",
+    actions: [
+      {
+        kind: "inspect_history",
+        requires_confirmation: false,
+        automatic: false
+      }
+    ],
+    retry: {
+      supported: true,
+      operation: "resubmit_workflow",
+      arguments: { run_id: runId, workflow_name: "portrait-lora.json" },
+      requires_confirmation: true
+    }
+  };
+}
+
+function fallbackRepairResult(runId: string, status = "planned"): RunRepairResult {
+  const repairPlan = fallbackRepairPlan(runId);
+  return {
+    status,
+    run_id: runId,
+    diagnosis: {
+      run_id: runId,
+      status: "failed",
+      failure_class: repairPlan.failure_class,
+      repair_summary: repairPlan.summary,
+      signals: ["execution_error"],
+      retryable: true
+    },
+    repair_plan: repairPlan
+  };
+}
+
+const fallbackRepairHistory: RunRepairHistory = {
+  path: ".comfydex/repair_history.jsonl",
+  entries: [
+    {
+      timestamp: "2026-06-08T01:15:00+00:00",
+      run_id: "2026-06-08T01-00-00_portrait",
+      workflow_name: "portrait-lora.json",
+      status: "planned",
+      failure_class: "execution_error",
+      retry_supported: true,
+      action_count: 1
+    }
+  ]
+};
+
 function hasTauri(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
@@ -333,8 +391,32 @@ export function listRuns(): Promise<RunRow[]> {
       status: "completed",
       updated_at: "2026-06-08T00:00:00+00:00",
       output_count: 2
+    },
+    {
+      run_id: "2026-06-08T01-00-00_portrait",
+      workflow_name: "portrait-lora.json",
+      status: "failed",
+      updated_at: "2026-06-08T01:15:00+00:00",
+      output_count: 0
     }
   ]);
+}
+
+export function planRunRepair(runId: string): Promise<RunRepairResult> {
+  return call("plan_run_repair", fallbackRepairResult(runId), {
+    payload: { run_id: runId }
+  });
+}
+
+export function readRepairHistory(limit = 20): Promise<RunRepairHistory> {
+  return call("read_repair_history", fallbackRepairHistory, { payload: { limit } });
+}
+
+export function retryRunRepair(runId: string, confirm = false): Promise<RunRepairResult> {
+  const fallback = fallbackRepairResult(runId, confirm ? "retried" : "requires_confirmation");
+  return call("retry_run_repair", fallback, {
+    payload: { run_id: runId, confirm }
+  });
 }
 
 export function searchAssets(filters: AssetSearchFilters = {}): Promise<AssetSearchResult> {

@@ -19,13 +19,16 @@ import {
   listBatches,
   listRuns,
   listWorkflows,
+  planRunRepair,
   pushUiWorkflow,
+  readRepairHistory,
   readUiGraphHistory,
   readInstallAudit,
   reloadLiveBridgeBackend,
   reloadLiveBridgeClient,
   reindexProject,
   recordInstallAudit,
+  retryRunRepair,
   searchAssets
 } from "./lib/api";
 import type {
@@ -39,6 +42,8 @@ import type {
   LiveBridgeStatus,
   LoadState,
   ProjectStatus,
+  RunRepairHistory,
+  RunRepairResult,
   RunRow,
   UiGraphHistory,
   WorkflowRow
@@ -106,6 +111,10 @@ export function App() {
   const [connection, setConnection] = useState<ConnectionResult | null>(null);
   const [workflows, setWorkflows] = useState<WorkflowRow[]>([]);
   const [runs, setRuns] = useState<RunRow[]>([]);
+  const [runRepair, setRunRepair] = useState<RunRepairResult | null>(null);
+  const [runRepairHistory, setRunRepairHistory] = useState<RunRepairHistory | null>(null);
+  const [runRepairBusy, setRunRepairBusy] = useState(false);
+  const [runRepairError, setRunRepairError] = useState<string | null>(null);
   const [assets, setAssets] = useState<AssetRow[]>([]);
   const [uiGraphHistory, setUiGraphHistory] = useState<UiGraphHistory | null>(null);
   const [batches, setBatches] = useState<BatchSummary[]>([]);
@@ -126,6 +135,7 @@ export function App() {
         runRows,
         assetResult,
         generatedHistory,
+        repairHistory,
         batchRows,
         configState,
         connectionState,
@@ -138,6 +148,7 @@ export function App() {
           listRuns(),
           searchAssets(),
           readUiGraphHistory(),
+          readRepairHistory(),
           listBatches(),
           getConfig(),
           checkConnection(),
@@ -150,6 +161,7 @@ export function App() {
       setRuns(runRows);
       setAssets(assetResult.assets);
       setUiGraphHistory(generatedHistory);
+      setRunRepairHistory(repairHistory);
       setBatches(batchRows);
       setConfigState(configState);
       setConnection(connectionState);
@@ -290,9 +302,55 @@ export function App() {
     }
   }
 
+  async function handlePlanRunRepair(runId: string) {
+    setRunRepairBusy(true);
+    setRunRepairError(null);
+    try {
+      const repair = await planRunRepair(runId);
+      const history = await readRepairHistory();
+      setRunRepair(repair);
+      setRunRepairHistory(history);
+    } catch (caught) {
+      setRunRepairError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setRunRepairBusy(false);
+    }
+  }
+
+  async function handleRetryRunRepair(runId: string, confirm = false) {
+    setRunRepairBusy(true);
+    setRunRepairError(null);
+    try {
+      const repair = await retryRunRepair(runId, confirm);
+      const [history, runRows] = await Promise.all([readRepairHistory(), listRuns()]);
+      setRunRepair(repair);
+      setRunRepairHistory(history);
+      setRuns(runRows);
+    } catch (caught) {
+      setRunRepairError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setRunRepairBusy(false);
+    }
+  }
+
   const currentView = (() => {
     if (view === "workflows") return <WorkflowsView error={error} state={loadState} workflows={workflows} />;
-    if (view === "runs") return <RunsView error={error} runs={runs} state={loadState} />;
+    if (view === "runs") {
+      return (
+        <RunsView
+          busy={runRepairBusy}
+          error={error}
+          onPlanRepair={handlePlanRunRepair}
+          onRefresh={() => void refresh()}
+          onRetryRepair={handleRetryRunRepair}
+          repair={runRepair}
+          repairError={runRepairError}
+          repairHistory={runRepairHistory}
+          runs={runs}
+          state={loadState}
+        />
+      );
+    }
     if (view === "assets") return <AssetsView assets={assets} error={error} state={loadState} />;
     if (view === "generated") {
       return (

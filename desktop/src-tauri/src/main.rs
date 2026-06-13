@@ -191,6 +191,33 @@ fn list_runs(app: AppHandle) -> Value {
 }
 
 #[tauri::command]
+fn plan_run_repair(app: AppHandle, payload: Value) -> Value {
+    match current_workspace(&app) {
+        Ok(Some(workspace)) => run_bridge("plan_run_repair", &workspace, payload),
+        Ok(None) => bridge_error("WorkspaceError", "workspace must be selected before planning run repair"),
+        Err(message) => bridge_error("WorkspaceError", message),
+    }
+}
+
+#[tauri::command]
+fn read_repair_history(app: AppHandle, payload: Value) -> Value {
+    match current_workspace(&app) {
+        Ok(Some(workspace)) => run_bridge("read_repair_history", &workspace, payload),
+        Ok(None) => ok(json!({ "path": ".comfydex/repair_history.jsonl", "entries": [] })),
+        Err(message) => bridge_error("WorkspaceError", message),
+    }
+}
+
+#[tauri::command]
+fn retry_run_repair(app: AppHandle, payload: Value) -> Value {
+    match current_workspace(&app) {
+        Ok(Some(workspace)) => run_bridge("retry_run_repair", &workspace, payload),
+        Ok(None) => bridge_error("WorkspaceError", "workspace must be selected before retrying run repair"),
+        Err(message) => bridge_error("WorkspaceError", message),
+    }
+}
+
+#[tauri::command]
 fn search_assets(app: AppHandle, payload: Value) -> Value {
     match current_workspace(&app) {
         Ok(Some(workspace)) => run_bridge("search_assets", &workspace, payload),
@@ -274,6 +301,9 @@ fn main() {
             push_ui_workflow,
             list_workflows,
             list_runs,
+            plan_run_repair,
+            read_repair_history,
+            retry_run_repair,
             search_assets,
             update_asset_metadata,
             plan_asset_cleanup,

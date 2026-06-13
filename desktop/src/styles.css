@@ -352,6 +352,15 @@ tbody tr:hover td {
   background: #1d2630;
 }
 
+tbody tr {
+  cursor: pointer;
+}
+
+tbody tr:focus-visible td {
+  outline: 2px solid #38bdf8;
+  outline-offset: -2px;
+}
+
 .badge {
   display: inline-flex;
   align-items: center;
@@ -383,6 +392,12 @@ tbody tr:hover td {
   white-space: nowrap;
 }
 
+.detail-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
 dl {
   display: grid;
   grid-template-columns: 96px minmax(0, 1fr);
@@ -395,6 +410,80 @@ dd {
   margin: 0;
   color: #e5e7eb;
   overflow-wrap: anywhere;
+}
+
+.runs-workbench {
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
+}
+
+.runs-table th:nth-child(3),
+.runs-table th:nth-child(4) {
+  width: 92px;
+}
+
+.runs-table th:nth-child(5) {
+  width: 170px;
+}
+
+.repair-panel {
+  margin-top: 16px;
+  border-top: 1px solid #2a3038;
+  padding-top: 12px;
+}
+
+.repair-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.repair-summary,
+.inline-error {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.inline-error {
+  color: #fecaca;
+}
+
+.repair-action-list,
+.repair-history ul {
+  display: grid;
+  gap: 6px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.repair-action-list li,
+.repair-history li {
+  display: grid;
+  grid-template-columns: 16px minmax(92px, 1fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: #cbd5e1;
+}
+
+.repair-action-list strong,
+.repair-history strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: #e5e7eb;
+  font-weight: 600;
+}
+
+.repair-retry-button {
+  width: 100%;
+  margin-top: 12px;
+}
+
+.repair-history {
+  margin-top: 14px;
+  border-top: 1px solid #2a3038;
+  padding-top: 12px;
 }
 
 .settings-grid {
@@ -863,6 +952,23 @@ pre {
   .status-band-body p,
   .status-band-body span {
     max-width: calc(100vw - 112px);
+  }
+
+  .runs-table th:nth-child(2),
+  .runs-table td:nth-child(2),
+  .runs-table th:nth-child(5),
+  .runs-table td:nth-child(5) {
+    display: none;
+  }
+
+  .runs-table th:nth-child(3),
+  .runs-table th:nth-child(4) {
+    width: 74px;
+  }
+
+  .runs-table th,
+  .runs-table td {
+    padding: 0 8px;
   }
 
   .install-table,
