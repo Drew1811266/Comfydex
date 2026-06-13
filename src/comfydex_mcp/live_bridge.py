@@ -105,6 +105,41 @@ def _normalized_status(
     }
 
 
+def explain_canvas_replacement(
+    status: dict[str, Any],
+    *,
+    workflow_name: str,
+    force: bool,
+) -> dict[str, Any]:
+    diagnostics = status.get("diagnostics") if isinstance(status, dict) else []
+    codes = {
+        str(item.get("code"))
+        for item in diagnostics
+        if isinstance(item, dict) and item.get("code")
+    }
+    has_unsaved_canvas = "unsaved_canvas" in codes
+    requires_confirmation = has_unsaved_canvas and not force
+    return {
+        "title": (
+            "Review before replacing the canvas"
+            if requires_confirmation
+            else "Canvas replacement is ready"
+        ),
+        "summary": f"Comfydex will load {workflow_name} into the visible ComfyUI canvas.",
+        "severity": "warn" if requires_confirmation else "ok",
+        "requires_confirmation": requires_confirmation,
+        "next_actions": (
+            ["Save the current ComfyUI canvas or run again with force=True."]
+            if requires_confirmation
+            else []
+        ),
+        "technical": {
+            "diagnostic_codes": sorted(codes),
+            "force": force,
+        },
+    }
+
+
 async def push_live_workflow(
     config: ComfydexConfig,
     workflow: dict[str, Any],

@@ -11,6 +11,7 @@ from comfydex_mcp.assets import (
     compare_assets,
     export_asset_library_report,
     plan_asset_cleanup,
+    summarize_asset_library,
     write_asset_sidecars,
 )
 from comfydex_mcp.config import ComfydexConfig
@@ -315,6 +316,19 @@ def test_export_asset_library_report_writes_markdown(tmp_path: Path):
     assert "favorite" in result["markdown"]
 
 
+def test_summarize_asset_library_returns_user_summary(tmp_path: Path):
+    ctx = _indexed_context(tmp_path)
+    cat_id = _asset_id_for_filename(ctx, "cat.png")
+    update_asset_metadata(ctx, cat_id, tags=["cat"], rating=5, favorite=True)
+
+    result = summarize_asset_library(ctx, {"limit": 10})
+
+    assert result["total"] == 2
+    assert result["summary"]["title"] == "2 outputs indexed"
+    assert "1 favorite" in result["summary"]["summary"]
+    assert "sdxl.safetensors" in " ".join(result["summary"]["bullets"])
+
+
 def test_compare_assets_reports_asset_differences(tmp_path: Path):
     ctx = _indexed_context(tmp_path)
     cat_id = _asset_id_for_filename(ctx, "cat.png")
@@ -330,3 +344,5 @@ def test_compare_assets_reports_asset_differences(tmp_path: Path):
     assert result["differences"]["model_references"]["changed"] is True
     assert result["differences"]["tags"]["left"] == ["cat"]
     assert result["differences"]["rating"]["right"] == 3
+    assert result["summary"]["title"] == "Outputs are different"
+    assert "rating" in result["summary"]["technical"]["changed_fields"]

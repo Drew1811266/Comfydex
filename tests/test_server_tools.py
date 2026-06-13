@@ -763,6 +763,7 @@ async def test_comfy_asset_library_tools(monkeypatch, tmp_path: Path):
     cleanup = await server.comfy_plan_asset_cleanup(asset_ids=[asset_id])
     report = await server.comfy_export_asset_library_report(filters={"query": "cat"})
     comparison = await server.comfy_compare_assets(asset_id, asset_id)
+    summary = await server.comfy_summarize_assets({"limit": 10})
 
     assert reindex["asset_count"] == 1
     assert search["total"] == 1
@@ -771,6 +772,8 @@ async def test_comfy_asset_library_tools(monkeypatch, tmp_path: Path):
     assert cleanup["dry_run"] is True
     assert Path(report["path"]).exists()
     assert comparison["differences"]["prompt_text"]["changed"] is False
+    assert comparison["summary"]["title"] == "Outputs match"
+    assert summary["summary"]["title"] == "1 output indexed"
 
 
 @pytest.mark.asyncio
@@ -791,6 +794,23 @@ async def test_comfy_asset_library_tool_is_registered_with_mcp(
 
 
 @pytest.mark.asyncio
+async def test_comfy_summarize_assets_tool_is_registered_with_mcp(
+    monkeypatch,
+    tmp_path: Path,
+):
+    monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
+    _write_server_asset_workspace(tmp_path)
+    await server.comfy_reindex_assets()
+
+    _content, structured = await server.mcp.call_tool(
+        "comfy_summarize_assets",
+        {"filters": {"limit": 10}},
+    )
+
+    assert structured["summary"]["title"] == "1 output indexed"
+
+
+@pytest.mark.asyncio
 async def test_comfy_plan_workflow_generation_tool(monkeypatch, tmp_path: Path):
     monkeypatch.setenv("CODEX_WORKSPACE", str(tmp_path))
 
@@ -803,6 +823,31 @@ async def test_comfy_plan_workflow_generation_tool(monkeypatch, tmp_path: Path):
     )
 
     assert result["selected_template_id"] == "sdxl-text-to-image"
+    assert result["user_guidance"]["title"] == "Ready to create an image"
+
+
+@pytest.mark.asyncio
+async def test_comfy_list_generation_presets_tool():
+    result = await server.comfy_list_generation_presets()
+
+    assert "quality" in result
+    assert "high" in result["quality"]
+
+
+@pytest.mark.asyncio
+async def test_comfy_explain_user_plan_tool():
+    plan = await server.comfy_plan_workflow_generation(
+        "text to image",
+        {
+            "checkpoint_name": "z-image.safetensors",
+            "positive_prompt": "lake",
+        },
+    )
+
+    result = await server.comfy_explain_user_plan(plan)
+
+    assert result["title"] == "Ready to create an image"
+    assert result["technical"]["template_id"]
 
 
 @pytest.mark.asyncio
@@ -970,7 +1015,11 @@ async def test_comfy_generate_push_ui_workflow_saves_and_pushes(
     async def fake_push(config, workflow, **kwargs):
         pushed["workflow"] = workflow
         pushed["kwargs"] = kwargs
-        return {"ok": True, "acknowledged": True}
+        return {
+            "ok": True,
+            "acknowledged": True,
+            "diagnostics": [{"code": "unsaved_canvas", "message": "Unsaved"}],
+        }
 
     monkeypatch.setattr(server, "push_live_workflow", fake_push)
 
@@ -987,6 +1036,8 @@ async def test_comfy_generate_push_ui_workflow_saves_and_pushes(
     assert pushed["workflow"]["nodes"]
     assert pushed["kwargs"]["name"] == "lake.ui.json"
     assert pushed["kwargs"]["force"] is True
+    assert result["canvas_replacement"]["requires_confirmation"] is False
+    assert "unsaved_canvas" in result["canvas_replacement"]["technical"]["diagnostic_codes"]
     assert [entry["status"] for entry in history["entries"][:2]] == ["pushed", "saved"]
 
 
@@ -1077,6 +1128,8 @@ async def test_comfy_generate_run_fetch_completes_low_risk_flow(
     assert result["run"]["status"] == "completed"
     assert result["outputs"]["outputs"][0]["filename"] == "city.png"
     assert Path(result["outputs"]["outputs"][0]["downloaded_path"]).exists()
+    assert result["user_guidance"]["title"] == "Ready to create an image"
+    assert result["output_summary"]["title"] == "1 output indexed"
     assert result["index"]["status"] == "completed"
 
 

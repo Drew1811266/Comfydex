@@ -12,6 +12,7 @@ from .core.database import migrate_project, open_database
 from .core.project import ProjectContext
 from .core.store import get_asset_row, list_asset_rows, update_asset_annotation
 from .paths import ensure_directory, is_redirected_path
+from .user_guidance import explain_asset_comparison_for_user, summarize_assets_for_user
 
 ASSET_ID_PATTERN = re.compile(r"[a-f0-9]{64}")
 TEXT_MAX_LENGTH = 1000
@@ -52,6 +53,15 @@ def search_assets(
         "offset": offset,
         "assets": assets[offset : offset + limit],
     }
+
+
+def summarize_asset_library(
+    context: ProjectContext,
+    filters: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    result = search_assets(context, filters)
+    result["summary"] = summarize_assets_for_user(result)
+    return result
 
 
 def get_asset(context: ProjectContext, asset_id: str) -> dict[str, Any]:
@@ -226,7 +236,7 @@ def compare_assets(
         "rating": (left["rating"], right["rating"]),
         "favorite": (left["favorite"], right["favorite"]),
     }
-    return {
+    result = {
         "left": left,
         "right": right,
         "differences": {
@@ -234,6 +244,8 @@ def compare_assets(
             for name, values in fields.items()
         },
     }
+    result["summary"] = explain_asset_comparison_for_user(result)
+    return result
 
 
 def _normalize_filters(filters: dict[str, Any]) -> dict[str, Any]:

@@ -19,6 +19,7 @@ from .assets import (
     export_asset_library_report,
     plan_asset_cleanup,
     search_assets,
+    summarize_asset_library,
     update_asset_metadata,
     write_asset_sidecars,
 )
@@ -61,6 +62,7 @@ from .generation import (
     plan_workflow_generation,
 )
 from .live_bridge import (
+    explain_canvas_replacement,
     get_live_bridge_status,
     push_live_workflow,
     reload_live_bridge_backend,
@@ -84,6 +86,7 @@ from .outputs import cleanup_outputs, list_outputs as list_run_outputs
 from .node_scaffold import scaffold_custom_node_package, safe_custom_nodes_dir
 from .patching import patch_workflow
 from .paths import is_redirected_path, safe_json_path, safe_output_path, safe_package_dir
+from .presets import list_generation_presets
 from .recipes import (
     get_workflow_recipe,
     list_workflow_recipes,
@@ -111,6 +114,7 @@ from .templates import (
     list_workflow_templates,
     suggest_workflow_template,
 )
+from .user_guidance import explain_generation_plan_for_user
 from .ui_graphs import (
     append_ui_graph_history,
     build_ui_workflow_from_plan,
@@ -781,6 +785,15 @@ async def comfy_search_assets(
 
 
 @mcp.tool()
+async def comfy_summarize_assets(
+    filters: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    ctx = tool_context()
+    project = project_context_from_config(ctx.config)
+    return summarize_asset_library(project, filters)
+
+
+@mcp.tool()
 async def comfy_update_asset_metadata(
     asset_id: str,
     tags: list[str] | None = None,
@@ -1139,6 +1152,16 @@ async def comfy_plan_workflow_generation(
 
 
 @mcp.tool()
+async def comfy_list_generation_presets() -> dict[str, Any]:
+    return list_generation_presets()
+
+
+@mcp.tool()
+async def comfy_explain_user_plan(plan: dict[str, Any]) -> dict[str, Any]:
+    return explain_generation_plan_for_user(plan)
+
+
+@mcp.tool()
 async def comfy_generate_workflow(
     name: str,
     intent: str,
@@ -1301,6 +1324,11 @@ async def comfy_generate_push_ui_workflow(
         force=force,
         wait_for_ack=wait_for_ack,
     )
+    canvas_replacement = explain_canvas_replacement(
+        push_result,
+        workflow_name=name,
+        force=force,
+    )
     summary = saved.get("summary", {})
     history_record = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -1316,6 +1344,7 @@ async def comfy_generate_push_ui_workflow(
     append_ui_graph_history(ctx.workspace, history_record)
     saved["status"] = "pushed" if push_result.get("ok") else "push_failed"
     saved["push_result"] = push_result
+    saved["canvas_replacement"] = canvas_replacement
     saved["push_history_record"] = history_record
     return saved
 
@@ -1423,6 +1452,7 @@ async def comfy_generate_run_fetch(
         "workflow_name": name,
         "policy": policy,
         "generation": generation,
+        "user_guidance": generation.get("plan", {}).get("user_guidance"),
         "next_actions": [],
     }
     if object_info_warning is not None:
@@ -1605,6 +1635,14 @@ async def comfy_generate_run_fetch(
         response["index"] = index_result
     if index_warning is not None:
         response["index_warning"] = index_warning
+    if fetch_outputs:
+        try:
+            response["output_summary"] = summarize_asset_library(
+                project_context_from_config(ctx.config),
+                {"run_id": run_id, "limit": 50, "offset": 0},
+            )["summary"]
+        except Exception as exc:
+            response["output_summary_warning"] = str(exc)
     response.update(
         {
             "status": "completed",
