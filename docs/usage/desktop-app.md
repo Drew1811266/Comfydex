@@ -1,6 +1,6 @@
 # Comfydex Desktop App
 
-Comfydex `1.7.0` provides a Windows-first Tauri desktop app shell under `desktop/`. The desktop app is a local project workbench for browsing Comfydex project state, asset gallery records, reports, cleanup plans, comparisons, batch records, generated UI workflow history, Generated Graphs, run repair plans, and Live Bridge readiness; it does not replace Codex or the Python MCP server.
+Comfydex `1.8.0` provides a Windows-first Tauri desktop app shell under `desktop/`. The desktop app is a local project workbench for browsing Comfydex project state, plain output summaries, asset gallery records, reports, cleanup plans, comparisons, batch records, generated UI workflow history, Generated Graphs, run repair plans, and Live Bridge readiness; it does not replace Codex or the Python MCP server.
 
 The app uses a Python desktop bridge:
 
@@ -100,7 +100,9 @@ The Runs view lists execution records returned by `list_runs`.
 
 It shows run id, workflow name, status, output count, updated time, and a selected run summary. Queue submission and batch execution remain MCP/Codex workflows in `0.7.0`.
 
-Comfydex `1.7.0` adds the Runs repair panel. Select a run, use Plan repair to call `plan_run_repair`, inspect the failure class, repair summary, repair actions, retry state, and recent repair history, then use the retry action when the returned plan supports it.
+Comfydex `1.8.0` adds ordinary-user summaries on top of the existing Project, Generated, Runs, and Assets views. The Project view displays the current output library summary, Generated shows preset groups and canvas replacement summaries, Runs can display plain repair guidance when present, and Assets shows output and comparison summaries while keeping the technical rows and JSON available.
+
+Comfydex `1.7.0` added the Runs repair panel. Select a run, use Plan repair to call `plan_run_repair`, inspect the failure class, repair summary, repair actions, retry state, and recent repair history, then use the retry action when the returned plan supports it.
 
 The retry path calls `retry_run_repair`. Fetch-output repairs can run without confirmation; resubmit repairs first return `requires_confirmation` and require a second explicit confirm action. Repair history comes from `read_repair_history`.
 

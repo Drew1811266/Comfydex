@@ -6,9 +6,9 @@ The plugin is installed in Codex, not in ComfyUI. ComfyUI remains the runtime se
 
 ## Status
 
-Current version: `1.7.0`
+Current version: `1.8.0`
 
-This 1.7 Execution And Repair Loop Release focuses on a practical local ComfyUI workflow:
+This 1.8 Ordinary User Guidance Release focuses on a practical local ComfyUI workflow:
 
 - connect to a local or remote ComfyUI server
 - manage workflow JSON files from a Codex workspace
@@ -25,6 +25,11 @@ This 1.7 Execution And Repair Loop Release focuses on a practical local ComfyUI 
 - review generated UI workflow history in the desktop Generated Graphs view
 - classify run failures, generate `repair_plan` payloads, and retry safe recovery operations through the Execution And Repair Loop
 - show failure class, repair actions, retry state, and repair history in the desktop Runs repair panel
+- use `quality_preset`, `aspect_ratio`, and `style_preset` for common generation choices
+- inspect `user_guidance` and `resolved_defaults` on generated workflow plans
+- review `canvas_replacement` before or after Live Bridge canvas replacement
+- inspect `output_summary` after one-call generate-run-fetch automation completes
+- summarize indexed outputs with `comfy_summarize_assets`
 - expose recipe candidates and the selected recipe id in generated workflow plans
 - run recipe-aware capability checks before relying on local models or custom nodes
 - validate generated workflows and classify submit policy before running
@@ -138,7 +143,7 @@ The Skill explains how Codex should work with ComfyUI workflows, including the d
 - UI workflow JSON, exported for the ComfyUI visual editor
 - API prompt JSON, submitted to ComfyUI `/prompt`
 
-Version `1.7.0` can import UI workflow files and help convert them, but submission still requires validated API prompt JSON. It also provides the shared project index, workflow generation engine, UI Graph Builder, Execution And Repair Loop, Scenario Recipe Registry, Node Semantic Registry, Capability Resolver, complete custom node loop, local asset library for generated outputs, desktop app shell backed by a Python desktop bridge with Gallery And Batch UI surfaces, Generated Graphs history, Runs repair panel, desktop Install Plan review, safe end-to-end automation, Windows install helper, release checklist, security/path review, release package validation, and a productized ComfyUI-side Live Bridge for direct desktop canvas workflow loading.
+Version `1.8.0` can import UI workflow files and help convert them, but submission still requires validated API prompt JSON. It also provides the shared project index, workflow generation engine, Ordinary User Guidance, generation presets and defaults, UI Graph Builder, Execution And Repair Loop, Scenario Recipe Registry, Node Semantic Registry, Capability Resolver, complete custom node loop, local asset library for generated outputs, desktop app shell backed by a Python desktop bridge with Gallery And Batch UI surfaces, Generated Graphs history, Runs repair panel, desktop Install Plan review, safe end-to-end automation, Windows install helper, release checklist, security/path review, release package validation, and a productized ComfyUI-side Live Bridge for direct desktop canvas workflow loading.
 
 Unknown nodes are not treated as first-class supported nodes.
 
@@ -146,6 +151,7 @@ Unknown nodes are not treated as first-class supported nodes.
 
 | Group | What it adds | Primary tools |
 | --- | --- | --- |
+| Ordinary User Guidance | Explain generation plans, presets, missing items, canvas replacement, output summaries, and comparisons in user-facing language while preserving technical data. | `comfy_list_generation_presets`, `comfy_explain_user_plan`, `comfy_summarize_assets` |
 | Workflow generation | Plan, generate, validate, repair, and classify submit policy for generated API workflows. | `comfy_plan_workflow_generation`, `comfy_generate_workflow`, `comfy_evaluate_submit_policy` |
 | UI Graph Builder | Build readable generated UI workflow JSON with stable node ids, save generated graph history, and push supported graphs into the ComfyUI canvas. | `comfy_build_ui_workflow`, `comfy_generate_ui_workflow`, `comfy_generate_push_ui_workflow`, `comfy_read_ui_graph_history` |
 | Execution And Repair Loop | Classify run failures, build `repair_plan` payloads, store repair history, and retry safe recovery operations with confirmation boundaries. | `comfy_plan_run_repair`, `comfy_retry_run_repair`, `comfy_read_repair_history` |
@@ -211,6 +217,7 @@ Comfydex exposes these tools:
 | `comfy_reindex_project` | Rebuild the project index from local compatibility records. |
 | `comfy_reindex_assets` | Reindex project assets and optionally write sidecar metadata. |
 | `comfy_search_assets` | Search assets by text, workflow, status, type, tags, favorite, rating, and pagination. |
+| `comfy_summarize_assets` | Search assets and return a plain output-library summary. |
 | `comfy_update_asset_metadata` | Update asset tags, rating, favorite state, and notes. |
 | `comfy_write_asset_sidecars` | Write deterministic sidecar JSON metadata for assets. |
 | `comfy_plan_asset_cleanup` | Dry-run or confirmed cleanup for selected or search-matched assets. |
@@ -254,6 +261,8 @@ Comfydex exposes these tools:
 | `comfy_explain_workflow_plan` | Explain required inputs and assumptions in a build plan. |
 | `comfy_build_workflow` | Build and save a workflow from a plan. |
 | `comfy_plan_workflow_generation` | Create a scored generation plan from intent, parameters, template choice, and constraints. |
+| `comfy_list_generation_presets` | List supported quality, speed, aspect ratio, and style presets. |
+| `comfy_explain_user_plan` | Return the `user_guidance` style summary for a generation plan. |
 | `comfy_generate_workflow` | Build, validate, repair, and save a generated workflow when submit policy allows. |
 | `comfy_build_ui_workflow` | Build a readable generated UI workflow graph without saving. |
 | `comfy_generate_ui_workflow` | Save a generated UI workflow and append generated graph history. |
@@ -337,6 +346,18 @@ cargo check --manifest-path desktop\src-tauri\Cargo.toml
 The desktop shell is a local project workbench. It does not run ComfyUI, does not edit workflow graphs, and does not replace Codex. It uses the Python desktop bridge to reuse the same project index, config redaction, path safety, workflow listing, run listing, and asset search logic as the MCP server.
 
 The `Assets` view now includes asset gallery and table modes, metadata editing, comparison, safe cleanup UI, and asset report preview. The `Batches` view is a batch task view for inspecting batch records, child runs, and variation parameters created by MCP batch tools.
+
+### Ordinary User Guidance
+
+```text
+comfy_list_generation_presets
+comfy_explain_user_plan
+comfy_summarize_assets
+```
+
+Use `quality_preset`, `aspect_ratio`, and `style_preset` for common text-to-image choices instead of requiring the user to hand-tune every internal parameter. Generation plans now include `user_guidance` for plain-language decisions and `resolved_defaults` for the technical values that were applied.
+
+Live Bridge push responses include `canvas_replacement`, and successful one-call generation responses can include `output_summary` after outputs are fetched and indexed. The desktop Project, Generated, Runs, and Assets views surface these summaries while keeping the technical payloads available for Codex and advanced review.
 
 ### Workflow generation
 
@@ -599,6 +620,16 @@ Desktop Live Bridge status terms:
 Use Reload client from Settings when the frontend client needs to reconnect. Use Reload backend after changing bridge Python/runtime files and restarting ComfyUI is not required for the backend reload path.
 
 ## Release Notes
+
+### 1.8.0 - Ordinary User Guidance
+
+- Added `user_guidance` summaries for generated workflow plans so normal users can see readiness, missing items, and next actions without reading node internals.
+- Added generation presets and `resolved_defaults` for `quality_preset`, speed, `aspect_ratio`, `style_preset`, GPU class, and model family defaults.
+- Added `comfy_list_generation_presets`, `comfy_explain_user_plan`, and `comfy_summarize_assets`.
+- Added `canvas_replacement` summaries to generated UI workflow push responses.
+- Added `output_summary` to successful `comfy_generate_run_fetch` responses after outputs are fetched and indexed.
+- Added plain asset library and comparison summaries to MCP, desktop bridge operations, and the desktop Project, Generated, Runs, and Assets views.
+- Kept the release bounded to explanation, defaults, and review surfaces: no silent downloads, no automatic downloads, no automatic custom node installation, and no unconfirmed resubmission.
 
 ### 1.7.0 - Execution And Repair Loop
 

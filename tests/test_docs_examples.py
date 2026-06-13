@@ -609,6 +609,50 @@ def test_release_checklist_1_7_covers_execution_repair_release_gates():
         assert marker in checklist
 
 
+def test_ordinary_user_guidance_doc_covers_1_8_user_polish():
+    usage = (ROOT / "docs" / "usage" / "ordinary-user-polish.md").read_text(
+        encoding="utf-8"
+    )
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+
+    for marker in (
+        "Ordinary User Guidance",
+        "quality_preset",
+        "aspect_ratio",
+        "style_preset",
+        "user_guidance",
+        "resolved_defaults",
+        "canvas_replacement",
+        "output_summary",
+        "comfy_list_generation_presets",
+        "comfy_summarize_assets",
+    ):
+        assert marker in usage
+        assert marker in readme
+
+
+def test_release_checklist_1_8_covers_ordinary_user_release_gates():
+    checklist = (ROOT / "docs" / "release" / "1.8-release-checklist.md").read_text(
+        encoding="utf-8"
+    )
+
+    for marker in (
+        "python -m pytest -q",
+        "plain user guidance helpers",
+        "generation presets",
+        "MCP user guidance tools",
+        "desktop bridge user guidance operations",
+        "desktop ordinary-user UI polish",
+        "Browser desktop and mobile verification",
+        "npm run typecheck",
+        "npm run build",
+        "cargo check",
+        "validate_release_package.py",
+        "version files report `1.8.0`",
+    ):
+        assert marker in checklist
+
+
 def test_workflow_generation_doc_explains_submit_policy():
     text = (ROOT / "docs" / "usage" / "workflow-generation.md").read_text(
         encoding="utf-8"
