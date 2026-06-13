@@ -6,15 +6,17 @@ import {
   planAssetCleanup,
   updateAssetMetadata
 } from "../lib/api";
-import type { AssetComparison, AssetReport, AssetRow, CleanupPlan, LoadState } from "../lib/types";
+import type { AssetComparison, AssetReport, AssetRow, CleanupPlan, LoadState, UserGuidance } from "../lib/types";
 
 type AssetMode = "gallery" | "table";
 
 export function AssetsView({
+  assetSummary,
   assets,
   error,
   state
 }: {
+  assetSummary: UserGuidance | null;
   assets: AssetRow[];
   error: string | null;
   state: LoadState;
@@ -150,6 +152,8 @@ export function AssetsView({
           </button>
         </div>
       </div>
+
+      {assetSummary ? <GuidanceSummary guidance={assetSummary} /> : null}
 
       <div className="toolbar asset-toolbar">
         <label className="search-box">
@@ -294,7 +298,10 @@ export function AssetsView({
             Compare
           </button>
           {comparison ? (
-            <pre>{JSON.stringify(changedDifferences(comparison), null, 2)}</pre>
+            <>
+              {comparison.summary ? <GuidanceSummary guidance={comparison.summary} compact /> : null}
+              <pre>{JSON.stringify(changedDifferences(comparison), null, 2)}</pre>
+            </>
           ) : null}
         </section>
 
@@ -347,6 +354,18 @@ export function AssetsView({
             </>
           ) : null}
         </section>
+      </div>
+    </section>
+  );
+}
+
+function GuidanceSummary({ compact = false, guidance }: { compact?: boolean; guidance: UserGuidance }) {
+  return (
+    <section className={compact ? "inline-guidance" : "plain-summary-band"} aria-label="Asset summary">
+      <span className={guidance.severity === "ok" ? "badge ok" : "badge warn"}>{guidance.severity}</span>
+      <div>
+        <h2>{guidance.title}</h2>
+        <p>{guidance.summary}</p>
       </div>
     </section>
   );

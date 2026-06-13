@@ -1,13 +1,22 @@
 import { RefreshCw, Upload } from "lucide-react";
 import { useMemo, useState } from "react";
-import type { LoadState, UiGraphHistory, UiGraphHistoryEntry } from "../lib/types";
+import type {
+  GenerationPresets,
+  LoadState,
+  UiGraphHistory,
+  UiGraphHistoryEntry,
+  UiGraphPushResult,
+  UserGuidance
+} from "../lib/types";
 
 type GeneratedGraphsViewProps = {
   busy: boolean;
   error: string | null;
   history: UiGraphHistory | null;
+  lastPush: UiGraphPushResult | null;
   onPush: (workflowName: string) => void;
   onRefresh: () => void;
+  presets: GenerationPresets | null;
   state: LoadState;
 };
 
@@ -15,8 +24,10 @@ export function GeneratedGraphsView({
   busy,
   error,
   history,
+  lastPush,
   onPush,
   onRefresh,
+  presets,
   state
 }: GeneratedGraphsViewProps) {
   const entries = history?.entries ?? [];
@@ -25,6 +36,8 @@ export function GeneratedGraphsView({
     () => entries.find((entry) => entryKey(entry) === selectedKey) ?? entries[0],
     [entries, selectedKey]
   );
+  const replacementGuidance =
+    selected && lastPush?.workflow_name === selected.workflow_name ? lastPush.canvas_replacement ?? null : null;
 
   if (state === "loading") return <State title="Loading generated graphs" message="Reading graph history." />;
   if (state === "error") return <State title="Unable to load generated graphs" message={error ?? "Unable to load."} />;
@@ -46,6 +59,8 @@ export function GeneratedGraphsView({
           </button>
         </div>
       </div>
+
+      {presets ? <PresetStrip presets={presets} /> : null}
 
       <div className="split-pane generated-workbench">
         <table className="generated-table">
@@ -111,10 +126,52 @@ export function GeneratedGraphsView({
             <dt>Path</dt>
             <dd>{selected?.path ?? history?.path ?? ""}</dd>
           </dl>
+          {replacementGuidance ? <GuidanceSummary guidance={replacementGuidance} /> : null}
           {selected?.push_result ? (
             <pre>{JSON.stringify(selected.push_result, null, 2)}</pre>
           ) : null}
         </aside>
+      </div>
+    </section>
+  );
+}
+
+function PresetStrip({ presets }: { presets: GenerationPresets }) {
+  return (
+    <section className="preset-strip" aria-label="Generation presets">
+      <div>
+        <span className="eyebrow">Quality</span>
+        <PresetKeys values={Object.keys(presets.quality)} />
+      </div>
+      <div>
+        <span className="eyebrow">Aspect</span>
+        <PresetKeys values={Object.keys(presets.aspect_ratio)} />
+      </div>
+      <div>
+        <span className="eyebrow">Style</span>
+        <PresetKeys values={Object.keys(presets.style)} />
+      </div>
+    </section>
+  );
+}
+
+function PresetKeys({ values }: { values: string[] }) {
+  return (
+    <div className="preset-chip-row">
+      {values.slice(0, 5).map((value) => (
+        <span className="preset-chip" key={value}>{value}</span>
+      ))}
+    </div>
+  );
+}
+
+function GuidanceSummary({ guidance }: { guidance: UserGuidance }) {
+  return (
+    <section className="inline-guidance" aria-label="Canvas replacement summary">
+      <span className={guidance.severity === "ok" ? "badge ok" : "badge warn"}>{guidance.severity}</span>
+      <div>
+        <strong>{guidance.title}</strong>
+        <p>{guidance.summary}</p>
       </div>
     </section>
   );

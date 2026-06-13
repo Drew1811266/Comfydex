@@ -4,7 +4,8 @@ import type {
   LoadState,
   RunRepairHistory,
   RunRepairResult,
-  RunRow
+  RunRow,
+  UserGuidance
 } from "../lib/types";
 
 export function RunsView({
@@ -151,7 +152,11 @@ function RepairPanel({
       {repairError ? <p className="inline-error">{repairError}</p> : null}
       {repair ? (
         <>
-          <p className="repair-summary">{repair.repair_plan.summary}</p>
+          {repair.user_guidance ? (
+            <GuidanceSummary guidance={repair.user_guidance} />
+          ) : (
+            <p className="repair-summary">{repair.repair_plan.summary}</p>
+          )}
           <ul className="repair-action-list">
             {repair.repair_plan.actions.map((action, index) => (
               <li key={`${action.kind}-${action.target ?? index}`}>
@@ -179,6 +184,18 @@ function RepairPanel({
       ) : (
         <p className="repair-summary">No repair plan loaded.</p>
       )}
+    </section>
+  );
+}
+
+function GuidanceSummary({ guidance }: { guidance: UserGuidance }) {
+  return (
+    <section className="inline-guidance" aria-label="Repair summary">
+      <span className={guidance.severity === "ok" ? "badge ok" : "badge warn"}>{guidance.severity}</span>
+      <div>
+        <strong>{guidance.title}</strong>
+        <p>{guidance.summary}</p>
+      </div>
     </section>
   );
 }

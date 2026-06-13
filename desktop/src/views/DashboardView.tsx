@@ -1,7 +1,8 @@
 import { Plug, RefreshCcw, RotateCw } from "lucide-react";
-import type { ConnectionResult, LiveBridgeStatus, LoadState, ProjectStatus } from "../lib/types";
+import type { ConnectionResult, LiveBridgeStatus, LoadState, ProjectStatus, UserGuidance } from "../lib/types";
 
 type DashboardProps = {
+  assetSummary: UserGuidance | null;
   busy: boolean;
   connection: ConnectionResult | null;
   error: string | null;
@@ -14,6 +15,7 @@ type DashboardProps = {
 };
 
 export function DashboardView({
+  assetSummary,
   busy,
   connection,
   error,
@@ -101,6 +103,8 @@ export function DashboardView({
         </StatusBand>
       </div>
 
+      {assetSummary ? <GuidanceSummary guidance={assetSummary} /> : null}
+
       <div className="metric-grid">
         <Metric label="Schema" value={status?.schema_version ?? "loading"} />
         <Metric label="Workflows" value={counts?.workflows ?? 0} />
@@ -124,6 +128,18 @@ export function DashboardView({
           <span>Connection result</span>
           <strong>{connection?.message ?? "Connection has not been checked"}</strong>
         </div>
+      </div>
+    </section>
+  );
+}
+
+function GuidanceSummary({ guidance }: { guidance: UserGuidance }) {
+  return (
+    <section className="plain-summary-band" aria-label="Output summary">
+      <span className={guidance.severity === "ok" ? "badge ok" : "badge warn"}>{guidance.severity}</span>
+      <div>
+        <h2>{guidance.title}</h2>
+        <p>{guidance.summary}</p>
       </div>
     </section>
   );

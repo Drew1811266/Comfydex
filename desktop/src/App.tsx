@@ -16,6 +16,7 @@ import {
   getCapabilityReport,
   getLiveBridgeStatus,
   getProjectStatus,
+  listGenerationPresets,
   listBatches,
   listRuns,
   listWorkflows,
@@ -29,7 +30,8 @@ import {
   reindexProject,
   recordInstallAudit,
   retryRunRepair,
-  searchAssets
+  searchAssets,
+  summarizeAssets
 } from "./lib/api";
 import type {
   AssetRow,
@@ -37,6 +39,7 @@ import type {
   CapabilityReport,
   ConfigState,
   ConnectionResult,
+  GenerationPresets,
   InstallAudit,
   InstallPlan,
   LiveBridgeStatus,
@@ -46,6 +49,8 @@ import type {
   RunRepairResult,
   RunRow,
   UiGraphHistory,
+  UiGraphPushResult,
+  UserGuidance,
   WorkflowRow
 } from "./lib/types";
 import { AssetsView } from "./views/AssetsView";
@@ -116,7 +121,10 @@ export function App() {
   const [runRepairBusy, setRunRepairBusy] = useState(false);
   const [runRepairError, setRunRepairError] = useState<string | null>(null);
   const [assets, setAssets] = useState<AssetRow[]>([]);
+  const [assetSummary, setAssetSummary] = useState<UserGuidance | null>(null);
   const [uiGraphHistory, setUiGraphHistory] = useState<UiGraphHistory | null>(null);
+  const [generationPresets, setGenerationPresets] = useState<GenerationPresets | null>(null);
+  const [lastGraphPush, setLastGraphPush] = useState<UiGraphPushResult | null>(null);
   const [batches, setBatches] = useState<BatchSummary[]>([]);
   const [config, setConfigState] = useState<ConfigState | null>(null);
   const [liveBridgeStatus, setLiveBridgeStatus] = useState<LiveBridgeStatus | null>(null);
@@ -134,7 +142,9 @@ export function App() {
         workflowRows,
         runRows,
         assetResult,
+        assetSummaryResult,
         generatedHistory,
+        presets,
         repairHistory,
         batchRows,
         configState,
@@ -147,7 +157,9 @@ export function App() {
           listWorkflows(),
           listRuns(),
           searchAssets(),
+          summarizeAssets(),
           readUiGraphHistory(),
+          listGenerationPresets(),
           readRepairHistory(),
           listBatches(),
           getConfig(),
@@ -160,7 +172,9 @@ export function App() {
       setWorkflows(workflowRows);
       setRuns(runRows);
       setAssets(assetResult.assets);
+      setAssetSummary(assetSummaryResult.summary ?? assetResult.summary ?? null);
       setUiGraphHistory(generatedHistory);
+      setGenerationPresets(presets);
       setRunRepairHistory(repairHistory);
       setBatches(batchRows);
       setConfigState(configState);
@@ -288,7 +302,8 @@ export function App() {
     setActionBusy(true);
     setError(null);
     try {
-      await pushUiWorkflow(workflowName, true);
+      const pushResult = await pushUiWorkflow(workflowName, true);
+      setLastGraphPush(pushResult);
       const [history, bridgeState] = await Promise.all([
         readUiGraphHistory(),
         getLiveBridgeStatusOrNull()
@@ -351,15 +366,19 @@ export function App() {
         />
       );
     }
-    if (view === "assets") return <AssetsView assets={assets} error={error} state={loadState} />;
+    if (view === "assets") {
+      return <AssetsView assetSummary={assetSummary} assets={assets} error={error} state={loadState} />;
+    }
     if (view === "generated") {
       return (
         <GeneratedGraphsView
           busy={actionBusy}
           error={error}
           history={uiGraphHistory}
+          lastPush={lastGraphPush}
           onPush={handlePushGeneratedGraph}
           onRefresh={() => void refresh()}
+          presets={generationPresets}
           state={loadState}
         />
       );
@@ -390,6 +409,7 @@ export function App() {
     return (
       <DashboardView
         busy={actionBusy}
+        assetSummary={assetSummary}
         connection={connection}
         error={error}
         liveBridgeStatus={liveBridgeStatus}

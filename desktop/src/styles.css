@@ -253,6 +253,42 @@ p {
   min-width: 0;
 }
 
+.plain-summary-band,
+.inline-guidance {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  min-width: 0;
+  border-top: 1px solid #2a3038;
+  border-bottom: 1px solid #2a3038;
+  padding: 12px 0;
+}
+
+.plain-summary-band {
+  margin: 0 0 10px;
+}
+
+.inline-guidance {
+  margin: 12px 0 0;
+}
+
+.plain-summary-band h2,
+.inline-guidance h2,
+.inline-guidance strong {
+  display: block;
+  margin: 0 0 4px;
+  font-size: 14px;
+  letter-spacing: 0;
+}
+
+.plain-summary-band p,
+.inline-guidance p {
+  margin: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 .status-band {
   display: grid;
   grid-template-columns: minmax(112px, 150px) minmax(0, 1fr);
@@ -672,6 +708,41 @@ textarea {
   grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
 }
 
+.preset-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  min-width: 0;
+  margin-bottom: 12px;
+  border-top: 1px solid #2a3038;
+  border-bottom: 1px solid #2a3038;
+  padding: 10px 0;
+}
+
+.preset-strip > div {
+  min-width: 0;
+}
+
+.preset-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.preset-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  max-width: 100%;
+  border: 1px solid #334155;
+  border-radius: 999px;
+  color: #cbd5e1;
+  background: #111827;
+  padding: 0 8px;
+  overflow-wrap: anywhere;
+}
+
 .generated-table th:nth-child(1) {
   width: 24%;
 }
@@ -907,6 +978,7 @@ pre {
     .metric-grid,
     .info-grid,
     .status-grid,
+    .preset-strip,
     .split-pane,
     .settings-grid,
     .install-summary-grid,
